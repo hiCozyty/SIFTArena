@@ -16,6 +16,15 @@
                         "topK": 20,
                         "chat_template_kwargs": { "enable_thinking": true }
                     }
+                },
+                "qwen/qwen3.5-122b-a10b": {
+                    "name": "qwen/qwen3.5-122b-a10b",
+                    "options": {
+                        "temperature": 0.6,
+                        "topP": 0.95,
+                        "topK": 20,
+                        "chat_template_kwargs": { "enable_thinking": true }
+                    }
                 }
             }
         }
