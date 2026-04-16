@@ -2,39 +2,26 @@
 
 ## Prerequisites
 
-Install Rust via [rustup](https://rustup.rs/):
+### Get NVIDIA API Key
+
+1. Get your API key from [NVIDIA NIM](https://build.nvidia.com/)
+2. Copy your API key
+
+## Setup
+
+### 1. Configure Environment
+
+Create a `.env` file in the root directory:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+cp .env.example .env
 ```
 
-## Build
+Edit `.env` and add your API key:
 
-```bash
-cargo build --release
+```env
+NVIDIA_API_KEY=nvapi-your-key-here
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_MODEL=qwen/qwen3.5-397b-a17b
 ```
 
-## Run
-
-```bash
-cargo run
-```
-
-Or run the release binary:
-
-```bash
-./target/release/start
-```
-
-## Usage
-
-On first run, `start` will prompt you to enter your NVIDIA API key:
-
-```
-$ cargo run
-Enter your NVIDIA API key: nvapi-xxxxxxxxxxxx
-API key saved to .env
-ShadowProtocol ready
-```
-
-Subsequent runs will skip the prompt and display "ShadowProtocol ready".

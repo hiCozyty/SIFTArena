@@ -1,18 +1,6 @@
 .env
 AGENTS.md
 
-# Rust
-/target/
-**/target/
-Cargo.lock
-.rust-analyzer/
-
-# Rust backup files
-*.rs.bk
-*.pdb
-
-# macOS
-.DS_Store
-
-# Linux
-*~
+# Bun.js / Node.js
+node_modules/
+*.log
