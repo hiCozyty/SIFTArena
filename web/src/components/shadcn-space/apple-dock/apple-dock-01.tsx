@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useRef, useState, type PropsWithChildren } from "react"
-import { motion } from "motion/react"
+import { LazyMotion, m, domAnimation } from "motion/react"
 import type { MotionProps } from "motion/react"
 import {
   Folder,
@@ -26,41 +26,51 @@ const DEFAULT_SIZE = 40
 const appleDockVariants =
   "mx-auto mt-8 flex h-[58px] w-max items-center justify-center gap-2 rounded-2xl border p-2 backdrop-blur-md supports-backdrop-blur:bg-white/10 supports-backdrop-blur:dark:bg-black/10"
 
-const AppleDock = React.forwardRef<HTMLDivElement, AppleDockProps>(
-  (
-    { children, iconSize = DEFAULT_SIZE, direction = "middle", ...props },
-    ref
-  ) => {
-    const renderChildren = () => {
-      return React.Children.map(children, (child) => {
-        if (
-          React.isValidElement<AppleDockIconProps>(child) &&
-          child.type === AppleDockIcon
-        ) {
-          return React.cloneElement(child, {
-            ...child.props,
-            size: iconSize,
-          })
-        }
-        return child
+function AppleDockInner({
+  children,
+  iconSize = DEFAULT_SIZE,
+  direction = "middle",
+  className,
+  ref,
+  ...props
+}: AppleDockProps & { ref?: React.Ref<HTMLDivElement> }) {
+  return (
+    <div
+      ref={ref}
+      {...props}
+      className={cn(appleDockVariants, {
+        "items-start": direction === "top",
+        "items-center": direction === "middle",
+        "items-end": direction === "bottom",
+      })}
+    >
+      <AppleDockContent iconSize={iconSize}>{children}</AppleDockContent>
+    </div>
+  )
+}
+
+function AppleDockContent({
+  children,
+  iconSize,
+}: {
+  children: React.ReactNode
+  iconSize: number
+}) {
+  return React.Children.map(children, (child) => {
+    if (
+      React.isValidElement<AppleDockIconProps>(child) &&
+      child.type === AppleDockIcon
+    ) {
+      return React.cloneElement(child, {
+        ...child.props,
+        size: iconSize,
       })
     }
+    return child
+  })
+}
 
-    return (
-      <div
-        ref={ref}
-        {...props}
-        className={cn(appleDockVariants, {
-          "items-start": direction === "top",
-          "items-center": direction === "middle",
-          "items-end": direction === "bottom",
-        })}
-      >
-        {renderChildren()}
-      </div>
-    )
-  }
-)
+const AppleDock = AppleDockInner
 
 AppleDock.displayName = "AppleDock"
 
@@ -92,6 +102,7 @@ export const AppleDockIcon = ({
   return (
     <div
       ref={ref}
+      role="button"
       style={{
         width: size,
         height: size,
@@ -105,13 +116,15 @@ export const AppleDockIcon = ({
       onMouseUp={handleMouseUp}
       {...props}
     >
-      <motion.div
-        animate={{ scale: isClicked ? 0.7 : 1 }}
-        transition={{ duration: 0.15 }}
-        className="flex aspect-square h-full w-full items-center justify-center rounded-full"
-      >
-        {children}
-      </motion.div>
+      <LazyMotion features={domAnimation}>
+        <m.div
+          animate={{ scale: isClicked ? 0.7 : 1 }}
+          transition={{ duration: 0.15 }}
+          className="flex aspect-square h-full w-full items-center justify-center rounded-full"
+        >
+          {children}
+        </m.div>
+      </LazyMotion>
     </div>
   )
 }
@@ -175,7 +188,7 @@ export default function AppleDockDemo() {
               className={cn(bgColor, textColor)}
               aria-label={label}
             >
-              <IconComponent className="h-6 w-6" />
+              <IconComponent className="size-6" />
             </AppleDockIcon>
           ))}
         </AppleDock>

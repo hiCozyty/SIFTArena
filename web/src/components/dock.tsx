@@ -26,7 +26,7 @@ export default function BottomDock() {
                 : "bg-transparent text-muted-foreground hover:text-primary"
             }
           >
-            <Home className="h-5 w-5" />
+            <Home className="size-5" />
           </AppleDockIcon>
         </Link>
         <Link to="/settings">
@@ -37,7 +37,7 @@ export default function BottomDock() {
                 : "bg-transparent text-muted-foreground hover:text-primary"
             }
           >
-            <Settings className="h-5 w-5" />
+            <Settings className="size-5" />
           </AppleDockIcon>
         </Link>
       </AppleDock>

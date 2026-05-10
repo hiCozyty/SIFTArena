@@ -1,0 +1,64 @@
+const fetchers = []
+const operations = new Map()
+let polling = false
+let client = null
+const subscriptions = new Set()
+
+function broadcast(type, data, error) {
+  if (client && subscriptions.has(type)) {
+    client.send(JSON.stringify(error ? { type, error } : { type, data }))
+  }
+}
+
+export function addFetcher(type, fetchFn) {
+  fetchers.push({ type, fetchFn })
+}
+
+export function addOperation(type, handler) {
+  operations.set(type, handler)
+}
+
+export function createWsHandler(ludusUrl, apiKey) {
+  if (!polling) {
+    polling = true
+    setInterval(async () => {
+      for (const { type, fetchFn } of fetchers) {
+        if (!client || !subscriptions.has(type)) continue
+        try {
+          const data = await fetchFn(ludusUrl, apiKey)
+          broadcast(type, data)
+        } catch (err) {
+          broadcast(type, null, err.message)
+        }
+      }
+    }, 1000)
+  }
+
+  return {
+    open(ws) {
+      client = ws
+      ws.send(JSON.stringify({ type: "connected" }))
+    },
+    message(ws, message) {
+      try {
+        const data = JSON.parse(message)
+
+        if (data.type === "subscribe") { subscriptions.add(data.channel); return }
+        if (data.type === "unsubscribe") { subscriptions.delete(data.channel); return }
+
+        const handler = operations.get(data.type)
+        if (handler) {
+          handler(ludusUrl, apiKey, data)
+            .then(result => ws.send(JSON.stringify({ type: data.type, result })))
+            .catch(err => ws.send(JSON.stringify({ type: data.type, error: err.message })))
+        }
+      } catch {}
+    },
+    close(ws) {
+      if (client === ws) {
+        client = null
+        subscriptions.clear()
+      }
+    },
+  }
+}

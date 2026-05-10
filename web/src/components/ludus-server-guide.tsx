@@ -196,9 +196,9 @@ export function LudusServerGuide({
 
           <CommandGroup heading="">
             <div className="space-y-2 px-2 pb-2">
-              {steps.map((step, index) => (
+              {steps.map((step) => (
                 <Card
-                  key={index}
+                  key={step.title}
                   className="rounded-xl border py-3 !shadow-none !ring-0"
                 >
                   <CardContent className="px-3 py-0">

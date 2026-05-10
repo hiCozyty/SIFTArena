@@ -5,19 +5,11 @@ import { defineConfig } from "vite"
 
 // https://vite.dev/config/
 export default defineConfig({
+  envPrefix: ["VITE_", "LUDUS_"],
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-    },
-  },
-  server: {
-    proxy: {
-      "/api/nvidia": {
-        target: "https://integrate.api.nvidia.com",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/nvidia/, "/v1"),
-      },
     },
   },
 })

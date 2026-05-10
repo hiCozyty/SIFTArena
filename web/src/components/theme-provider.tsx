@@ -55,7 +55,7 @@ function disableTransitionsTemporarily() {
 
 export function ThemeProvider({
   children,
-  defaultTheme = "system",
+  defaultTheme = "dark",
   storageKey = "theme",
   disableTransitionOnChange = true,
   ...props
@@ -156,7 +156,7 @@ export function ThemeProvider({
 }
 
 export const useTheme = () => {
-  const context = React.useContext(ThemeProviderContext)
+  const context = React.use(ThemeProviderContext)
 
   if (context === undefined) {
     throw new Error("useTheme must be used within a ThemeProvider")

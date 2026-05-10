@@ -12,13 +12,14 @@
         }
     },
     "mcp": {
-        "shadcn": {
+        "Ludus API": {
             "type": "local",
-            "command": [
-                "npx",
-                "shadcn@latest",
-                "mcp"
-            ],
+            "command": ["bunx","-y", "apidog-mcp-server@latest", "--site-id=761007"],
+            "enabled": true
+        },
+        "context7": {
+            "type": "remote",
+            "url": "https://mcp.context7.com/mcp",
             "enabled": true
         }
     }
