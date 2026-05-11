@@ -5,7 +5,7 @@ let state: WsState = "disconnected"
 const handlers = new Set<(data: Record<string, unknown>) => void>()
 let sendQueue: string[] = []
 
-export function connect(url: string) {
+export function connect(url: string, onClose?: () => void) {
   if (ws && state !== "disconnected") return
   state = "connecting"
   ws = new WebSocket(url)
@@ -28,6 +28,7 @@ export function connect(url: string) {
     state = "disconnected"
     ws = null
     sendQueue = []
+    onClose?.()
   }
 }
 

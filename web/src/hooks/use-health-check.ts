@@ -45,10 +45,17 @@ export function useHealthCheck() {
     }
 
     timeoutRef.current = setTimeout(() => {
+      if (resolvedRef.current) return
       backendWs.close()
+      scheduleTransition({ type: "connection-error" })
     }, TIMEOUT_MS)
 
-    backendWs.connect(WS_URL)
+    backendWs.connect(WS_URL, () => {
+      if (resolvedRef.current) return
+      clearTimeout(timeoutRef.current)
+      clearTimeout(delayedRef.current)
+      scheduleTransition({ type: "connection-error" })
+    })
     backendWs.send({ type: "healthCheck" })
 
     unsubscribeRef.current = backendWs.subscribe((data: Record<string, unknown>) => {

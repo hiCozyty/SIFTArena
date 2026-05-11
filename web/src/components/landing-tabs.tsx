@@ -14,6 +14,7 @@ import { Loader2, Lock } from "lucide-react"
 import { useHealthCheck } from "@/hooks/use-health-check"
 import { ConnectionErrorContent, HealthErrorContent } from "@/components/backend-gate"
 import { LudusServerGuide } from "@/components/ludus-server-guide"
+import { InteractiveTimeline } from "@/components/interactive-timeline"
 
 interface CompletionState {
   labRangeCompleted: boolean
@@ -119,6 +120,9 @@ function LabRangeContent({
 }) {
   const { status, connect } = useHealthCheck()
   const [showGuide, setShowGuide] = useState(false)
+  const [timelineItems, setTimelineItems] = useState([
+    { id: "1", title: "placeholder-title", description: "placeholder-description" },
+  ])
   const templatesQueryRan = useRef(false)
 
   useEffect(() => {
@@ -142,6 +146,28 @@ function LabRangeContent({
     return () => unsub()
   }, [status.type])
 
+  useEffect(() => {
+    if (status.type !== "ok") return
+    const timers = [
+      setTimeout(() => {
+        setTimelineItems((prev) => [...prev, { id: "2", title: "Checking templates", description: "Querying Ludus for available VM templates" }])
+      }, 1500),
+      setTimeout(() => {
+        setTimelineItems((prev) => [...prev, { id: "3", title: "Templates found", description: "5 templates available, 0 built" }])
+      }, 3000),
+      setTimeout(() => {
+        setTimelineItems((prev) => [...prev, { id: "4", title: "Building debian-11", description: "Template build in progress..." }])
+      }, 4500),
+      setTimeout(() => {
+        setTimelineItems((prev) => [...prev, { id: "5", title: "Building kali", description: "Template build in progress..." }])
+      }, 6000),
+      setTimeout(() => {
+        setTimelineItems((prev) => [...prev, { id: "6", title: "Building win11", description: "Template build in progress..." }])
+      }, 7500),
+    ]
+    return () => timers.forEach(clearTimeout)
+  }, [status.type])
+
   if (status.type === "idle" || status.type === "connecting") {
     return (
       <div className="flex min-h-[80vh] items-center justify-center">
@@ -149,7 +175,7 @@ function LabRangeContent({
           <CardHeader>
             <CardTitle>Connecting to Backend</CardTitle>
             <CardDescription>
-              Attempting to establish a connection to the shadow server...
+              Attempting to establish a connection to the backend server...
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -215,13 +241,11 @@ function LabRangeContent({
             <LudusIcon className="size-6 text-primary" />
           </div>
           <div>
-            <h3 className="font-semibold text-lg">Lab Range</h3>
-            <p className="text-muted-foreground text-sm">Lab environment management</p>
+            <h3 className="font-semibold text-lg">Ludus Lab Range</h3>
+            <p className="text-muted-foreground text-sm">Lab provisioning and management</p>
           </div>
         </div>
-        <p className="text-muted-foreground text-sm">
-          Content for <strong>Lab Range</strong> goes here.
-        </p>
+        <InteractiveTimeline items={timelineItems} maxItems={3} />
         <div className="mt-4">
           {completed ? (
             <p className="text-sm text-green-600">✓ Lab Range setup completed</p>
