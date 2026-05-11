@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
 import { Home, Settings } from "lucide-react"
 import { AppleDock, AppleDockIcon } from "@/components/shadcn-space/apple-dock/apple-dock-01"
 import { useTheme } from "@/components/theme-provider"
@@ -14,7 +13,6 @@ import {
 } from "@/components/ui/breadcrumb"
 
 export default function BottomDock() {
-  const navigate = useNavigate()
   const { theme, setTheme } = useTheme()
   const [settingsOpen, setSettingsOpen] = useState(false)
 
@@ -29,10 +27,7 @@ export default function BottomDock() {
         >
           <AppleDockIcon
             className="bg-transparent text-primary"
-            onClick={() => {
-              setSettingsOpen(false)
-              navigate("/")
-            }}
+            onClick={() => setSettingsOpen(false)}
           >
             <Home className="size-5" />
           </AppleDockIcon>

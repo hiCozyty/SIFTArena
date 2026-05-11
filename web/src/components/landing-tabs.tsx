@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import * as backendWs from "@/lib/backend-ws"
 import { RiTrophyLine, RiVoiceprintLine } from "@remixicon/react"
 import { LudusIcon } from "@/components/icons/ludus-icon"
@@ -10,11 +10,17 @@ import { BrandSpeedtestIcon } from "@/components/icons/tabler-brand-speedtest"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Loader2, Lock } from "lucide-react"
+import { Loader2, Lock, Info } from "lucide-react"
 import { useHealthCheck } from "@/hooks/use-health-check"
 import { ConnectionErrorContent, HealthErrorContent } from "@/components/backend-gate"
 import { LudusServerGuide } from "@/components/ludus-server-guide"
 import { InteractiveTimeline } from "@/components/interactive-timeline"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface CompletionState {
   labRangeCompleted: boolean
@@ -111,6 +117,12 @@ function LeaderboardContent() {
   )
 }
 
+const REQUIRED_TEMPLATES = [
+  "debian-11-x64-server-template",
+  "kali-x64-desktop-template",
+  "win11-22h2-x64-enterprise-template",
+]
+
 function LabRangeContent({
   completed,
   onComplete,
@@ -120,10 +132,10 @@ function LabRangeContent({
 }) {
   const { status, connect } = useHealthCheck()
   const [showGuide, setShowGuide] = useState(false)
+  const [gatePhase, setGatePhase] = useState<"checking-templates" | "templates-incomplete" | "show-content">("checking-templates")
   const [timelineItems, setTimelineItems] = useState([
     { id: "1", title: "placeholder-title", description: "placeholder-description" },
   ])
-  const templatesQueryRan = useRef(false)
 
   useEffect(() => {
     if (status.type === "idle") {
@@ -132,19 +144,26 @@ function LabRangeContent({
   }, [connect, status.type])
 
   useEffect(() => {
-    if (status.type !== "ok" || templatesQueryRan.current) return
-    templatesQueryRan.current = true
+    if (status.type !== "ok") {
+      return
+    }
+    if (gatePhase !== "checking-templates") return
 
     const unsub = backendWs.subscribe((data) => {
       if (data.type === "templatesList") {
-        console.log("templatesList:", data)
+        const result = data.result as Array<{ name: string; built: boolean }> | undefined
+        if (!result) return
+        const allBuilt = REQUIRED_TEMPLATES.every(
+          (name) => result.find((t) => t.name === name)?.built === true
+        )
+        setGatePhase(allBuilt ? "show-content" : "templates-incomplete")
         unsub()
       }
     })
     backendWs.send({ type: "templatesList" })
 
     return () => unsub()
-  }, [status.type])
+  }, [status.type, gatePhase])
 
   useEffect(() => {
     if (status.type !== "ok") return
@@ -225,6 +244,70 @@ function LabRangeContent({
                 onRetry={connect}
                 onShowGuide={() => setShowGuide(true)}
               />
+            </CardContent>
+          </Card>
+        </div>
+        <LudusServerGuide open={showGuide} onOpenChange={setShowGuide} />
+      </>
+    )
+  }
+
+  if (status.type === "ok" && gatePhase === "checking-templates") {
+    return (
+      <>
+        <div className="flex min-h-[80vh] items-center justify-center">
+          <Card className="w-full max-w-sm gap-2 py-4">
+            <CardHeader>
+              <CardTitle>Checking Templates</CardTitle>
+              <CardDescription>
+                Checking existing templates...
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex justify-center py-4">
+                <Loader2 className="size-8 animate-spin text-muted-foreground" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        <LudusServerGuide open={showGuide} onOpenChange={setShowGuide} />
+      </>
+    )
+  }
+
+  if (status.type === "ok" && gatePhase === "templates-incomplete") {
+    return (
+      <>
+        <div className="flex min-h-[80vh] items-center justify-center">
+          <Card className="w-full max-w-xs gap-2 py-4">
+            <CardHeader>
+              <CardTitle>Templates Error</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex items-center justify-center gap-2">
+                <p className="text-sm text-muted-foreground">
+                  Required templates are not yet built.
+                </p>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="rounded-full p-1 hover:bg-accent">
+                        <Info className="size-4 text-muted-foreground" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="text-xs">
+                      <ul className="list-inside list-disc">
+                        {REQUIRED_TEMPLATES.map((t) => (
+                          <li key={t}>{t}</li>
+                        ))}
+                      </ul>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <Button onClick={() => setGatePhase("show-content")} size="sm" className="w-fit self-center">
+                Build
+              </Button>
             </CardContent>
           </Card>
         </div>
