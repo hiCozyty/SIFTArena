@@ -1,5 +1,7 @@
 import { useState } from "react"
-import { RiCommandLine, RiArrowDropDownLine, RiCheckLine } from "@remixicon/react"
+import { RiCommandLine, RiArrowDropDownLine, RiCheckLine, RiTrophyLine, RiRobot2Line, RiBarChartLine } from "@remixicon/react"
+import { LudusIcon } from "@/components/icons/ludus-icon"
+import { CalderaIcon } from "@/components/icons/caldera-icon"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import {
   Select,
@@ -47,7 +49,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import TabsWithIconsExample from "@/components/examples/tabs/standard/tabs-with-icons"
+
 import SegmentedControlExample from "@/components/examples/button-group/interactive/button-group-segmented-control"
 import SheetWithTabsExample from "@/components/examples/sheet/multi-section/sheet-with-tabs"
 import MenubarExample from "@/components/examples/menubar/standard/simple-text-menubar"
@@ -66,6 +68,14 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   "Attack Configuration": "Configure attack parameters",
   "SIFT Agent": "Select deployed SIFT agents",
   "Run Benchmark": "Execute performance benchmarks",
+}
+
+const TAB_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  Leaderboard: RiTrophyLine,
+  "Lab Range": LudusIcon,
+  "Attack Configuration": CalderaIcon,
+  "SIFT Agent": RiRobot2Line,
+  "Run Benchmark": RiBarChartLine,
 }
 
 function ContentPreview({ section }: { section: string }) {
@@ -182,9 +192,26 @@ export function PreviewUiPage() {
 
         <PatternCard
           name="Tabs with Icons"
-          description="Tabs with icon + label for visual scannability — from shadcnio."
+          description="Tabs with custom SVG icons per section. Ludus for Lab Range, Caldera for Attack Configuration, remixicons for the rest."
         >
-          <TabsWithIconsExample />
+          <Tabs defaultValue={SECTIONS[0]} className="w-full">
+            <TabsList>
+              {SECTIONS.map((s) => {
+                const Icon = TAB_ICONS[s]
+                return (
+                  <TabsTrigger key={s} value={s}>
+                    <Icon />
+                    {s}
+                  </TabsTrigger>
+                )
+              })}
+            </TabsList>
+            {SECTIONS.map((s) => (
+              <TabsContent key={s} value={s}>
+                <ContentPreview section={s} />
+              </TabsContent>
+            ))}
+          </Tabs>
         </PatternCard>
 
         <PatternCard

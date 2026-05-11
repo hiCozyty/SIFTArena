@@ -5,12 +5,10 @@ const LUDUS_SERVER_URL = process.env.LUDUS_SERVER_URL + "/api/v2"
 const LUDUS_API_KEY = process.env.LUDUS_API_KEY
 const BUN_SERVER_PORT = parseInt(process.env.BUN_SERVER_PORT)
 
-console.log("--- Server startup debug ---")
 console.log("CWD:", process.cwd())
 console.log("LUDUS_SERVER_URL:", process.env.LUDUS_SERVER_URL)
 console.log("LUDUS_API_KEY (first 5):", process.env.LUDUS_API_KEY?.slice(0, 5))
 console.log("BUN_SERVER_PORT:", process.env.BUN_SERVER_PORT)
-console.log("---")
 
 function maskKey(key) {
   if (!key) return undefined
@@ -42,6 +40,7 @@ const corsHeaders = {
 }
 
 addFetcher("templatesList", fetchTemplates)
+addOperation("templatesList", fetchTemplates)
 addFetcher("templatesStatus", fetchTemplatesStatus)
 addOperation("buildTemplates", buildTemplates)
 addOperation("healthCheck", healthCheck)
