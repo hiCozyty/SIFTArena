@@ -132,40 +132,76 @@ function LabRangeContent({
 }) {
   const { status, connect } = useHealthCheck()
   const [showGuide, setShowGuide] = useState(false)
-  const [gatePhase, setGatePhase] = useState<"checking-templates" | "templates-incomplete" | "show-content">("checking-templates")
+  const [gatePhase, setGatePhase] = useState<"checking-templates" | "templates-error" | "templates-incomplete" | "show-content">("checking-templates")
+  const [templatesError, setTemplatesError] = useState("")
   const [timelineItems, setTimelineItems] = useState([
     { id: "1", title: "placeholder-title", description: "placeholder-description" },
   ])
 
+  const P = "[lr]"
+  console.log(P, `render — status.type=${status.type} gatePhase=${gatePhase} completed=${completed}`)
+
   useEffect(() => {
+    console.log(P, `effect[connect] — status.type=${status.type}`)
     if (status.type === "idle") {
+      console.log(P, `effect[connect] — calling connect()`)
       connect()
     }
   }, [connect, status.type])
 
   useEffect(() => {
+    console.log(P, `effect[templates] — running — status.type=${status.type} gatePhase=${gatePhase}`)
     if (status.type !== "ok") {
+      console.log(P, `effect[templates] — early return (status != ok)`)
       return
     }
-    if (gatePhase !== "checking-templates") return
+    if (gatePhase !== "checking-templates") {
+      console.log(P, `effect[templates] — early return (gatePhase=${gatePhase})`)
+      return
+    }
 
     const unsub = backendWs.subscribe((data) => {
+      console.log(P, `effect[templates] — ws message received: type=${data.type}`, data)
       if (data.type === "templatesList") {
+        const error = data.error as string | undefined
+        if (error) {
+          console.log(P, `effect[templates] — backend returned error: "${error}" — transitioning gatePhase: checking-templates -> templates-error`)
+          setTemplatesError(error)
+          setGatePhase("templates-error")
+          unsub()
+          return
+        }
         const result = data.result as Array<{ name: string; built: boolean }> | undefined
-        if (!result) return
+        if (!result) {
+          console.log(P, `effect[templates] — templatesList result is undefined/missing — treating as error`)
+          setTemplatesError("Empty response from backend")
+          setGatePhase("templates-error")
+          unsub()
+          return
+        }
         const allBuilt = REQUIRED_TEMPLATES.every(
           (name) => result.find((t) => t.name === name)?.built === true
         )
-        setGatePhase(allBuilt ? "show-content" : "templates-incomplete")
+        const nextPhase = allBuilt ? "show-content" : "templates-incomplete"
+        console.log(P, `effect[templates] — templatesList result: allBuilt=${allBuilt} transitioning gatePhase: ${gatePhase} -> ${nextPhase}`)
+        setGatePhase(nextPhase)
+        console.log(P, `effect[templates] — calling unsub() after processing templatesList`)
         unsub()
+      } else {
+        console.log(P, `effect[templates] — ignoring message type=${data.type}`)
       }
     })
+    console.log(P, `effect[templates] — subscribed, now sending templatesList`)
     backendWs.send({ type: "templatesList" })
 
-    return () => unsub()
+    return () => {
+      console.log(P, `effect[templates] — cleanup — calling unsub()`)
+      unsub()
+    }
   }, [status.type, gatePhase])
 
   useEffect(() => {
+    console.log(P, `effect[timeline] — running — status.type=${status.type}`)
     if (status.type !== "ok") return
     const timers = [
       setTimeout(() => {
@@ -184,7 +220,10 @@ function LabRangeContent({
         setTimelineItems((prev) => [...prev, { id: "6", title: "Building win11", description: "Template build in progress..." }])
       }, 7500),
     ]
-    return () => timers.forEach(clearTimeout)
+    return () => {
+      console.log(P, `effect[timeline] — cleanup — clearing ${timers.length} timers`)
+      timers.forEach(clearTimeout)
+    }
   }, [status.type])
 
   if (status.type === "idle" || status.type === "connecting") {
@@ -275,16 +314,40 @@ function LabRangeContent({
     )
   }
 
+  if (status.type === "ok" && gatePhase === "templates-error") {
+    return (
+      <>
+        <div className="flex min-h-[80vh] items-center justify-center">
+          <Card className="w-full max-w-sm gap-2 py-4">
+            <CardHeader>
+              <CardTitle>Template Error</CardTitle>
+              <CardDescription>
+                Backend returned an error
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <p className="text-sm text-destructive">{templatesError}</p>
+              <Button onClick={() => { console.log(P, `Retry button clicked — resetting gatePhase -> checking-templates`); setTemplatesError(""); setGatePhase("checking-templates"); }} size="sm" className="w-fit self-center">
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+        <LudusServerGuide open={showGuide} onOpenChange={setShowGuide} />
+      </>
+    )
+  }
+
   if (status.type === "ok" && gatePhase === "templates-incomplete") {
     return (
       <>
         <div className="flex min-h-[80vh] items-center justify-center">
-          <Card className="w-full max-w-xs gap-2 py-4">
+          <Card className="max-w-xs gap-2 py-4">
             <CardHeader>
               <CardTitle>Templates Error</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
-              <div className="flex items-center justify-center gap-2">
+              <div className="flex items-center gap-2">
                 <p className="text-sm text-muted-foreground">
                   Required templates are not yet built.
                 </p>
@@ -305,7 +368,7 @@ function LabRangeContent({
                   </Tooltip>
                 </TooltipProvider>
               </div>
-              <Button onClick={() => setGatePhase("show-content")} size="sm" className="w-fit self-center">
+              <Button onClick={() => { console.log(P, `Build button clicked — setting gatePhase -> show-content`); setGatePhase("show-content"); }} size="sm" className="w-fit self-center">
                 Build
               </Button>
             </CardContent>
@@ -333,7 +396,7 @@ function LabRangeContent({
           {completed ? (
             <p className="text-sm text-green-600">✓ Lab Range setup completed</p>
           ) : (
-            <Button onClick={onComplete}>Complete Lab Range Setup</Button>
+            <Button onClick={() => { console.log(P, `Complete Lab Range Setup button clicked`); onComplete(); }}>Complete Lab Range Setup</Button>
           )}
         </div>
       </div>
