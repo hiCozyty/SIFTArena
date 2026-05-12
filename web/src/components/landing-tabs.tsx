@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import * as backendWs from "@/lib/backend-ws"
 import { RiTrophyLine, RiVoiceprintLine } from "@remixicon/react"
 import { LudusIcon } from "@/components/icons/ludus-icon"
@@ -123,6 +123,10 @@ const REQUIRED_TEMPLATES = [
   "win11-22h2-x64-enterprise-template",
 ]
 
+function isReallyBuilt(t: { built: boolean; status: string }): boolean {
+  return t.built && t.status !== "not_built" && t.status !== "building"
+}
+
 function LabRangeContent({
   completed,
   onComplete,
@@ -134,97 +138,212 @@ function LabRangeContent({
   const [showGuide, setShowGuide] = useState(false)
   const [gatePhase, setGatePhase] = useState<"checking-templates" | "templates-error" | "templates-incomplete" | "show-content">("checking-templates")
   const [templatesError, setTemplatesError] = useState("")
-  const [timelineItems, setTimelineItems] = useState([
-    { id: "1", title: "placeholder-title", description: "placeholder-description" },
-  ])
-
-  const P = "[lr]"
-  console.log(P, `render — status.type=${status.type} gatePhase=${gatePhase} completed=${completed}`)
+  const [buildActive, setBuildActive] = useState(false)
+  const [templatesResult, setTemplatesResult] = useState<Array<{ name: string; built: boolean; status: string; os: string }>>([])
+  const [timelineItems, setTimelineItems] = useState<Array<{ id: string; title: string; description: string; status?: string }>>([])
+  const [rangeActive, setRangeActive] = useState(false)
+  const builtSentRef = useRef<Set<string>>(new Set())
+  const deleteSentRef = useRef(false)
 
   useEffect(() => {
-    console.log(P, `effect[connect] — status.type=${status.type}`)
     if (status.type === "idle") {
-      console.log(P, `effect[connect] — calling connect()`)
       connect()
     }
   }, [connect, status.type])
 
-  useEffect(() => {
-    console.log(P, `effect[templates] — running — status.type=${status.type} gatePhase=${gatePhase}`)
-    if (status.type !== "ok") {
-      console.log(P, `effect[templates] — early return (status != ok)`)
-      return
-    }
-    if (gatePhase !== "checking-templates") {
-      console.log(P, `effect[templates] — early return (gatePhase=${gatePhase})`)
-      return
-    }
+useEffect(() => {
+    if (status.type !== "ok") return
+    if (gatePhase !== "checking-templates") return
 
     const unsub = backendWs.subscribe((data) => {
-      console.log(P, `effect[templates] — ws message received: type=${data.type}`, data)
       if (data.type === "templatesList") {
         const error = data.error as string | undefined
         if (error) {
-          console.log(P, `effect[templates] — backend returned error: "${error}" — transitioning gatePhase: checking-templates -> templates-error`)
           setTemplatesError(error)
           setGatePhase("templates-error")
           unsub()
           return
         }
-        const result = data.result as Array<{ name: string; built: boolean }> | undefined
-        if (!result) {
-          console.log(P, `effect[templates] — templatesList result is undefined/missing — treating as error`)
+        const result = data.result as Array<{ name: string; built: boolean; status: string; os: string }> | undefined
+        if (result == null) {
           setTemplatesError("Empty response from backend")
           setGatePhase("templates-error")
           unsub()
           return
         }
-        const allBuilt = REQUIRED_TEMPLATES.every(
-          (name) => result.find((t) => t.name === name)?.built === true
-        )
+setTemplatesResult(result)
+        const allItems = REQUIRED_TEMPLATES.map((name, i) => {
+          const t = result.find((t) => t.name === name)
+          if (!t) return null
+          if (isReallyBuilt(t)) {
+            return { id: `build-${i + 1}`, title: `Finished building ${name}`, description: "", status: "built" }
+          }
+          return { id: `build-${i + 1}`, title: `Building ${name}`, description: t.status, status: t.status }
+        }).filter((item): item is NonNullable<typeof item> => item != null)
+        const firstUnbuiltIdx = allItems.findIndex((item) => item.status !== "built")
+        const visible = firstUnbuiltIdx === -1 ? allItems : allItems.slice(0, firstUnbuiltIdx + 1)
+        const allBuilt = allItems.every((item) => item.status === "built")
+        if (allBuilt) {
+          setRangeActive(true)
+          setTimelineItems([...visible, {
+            id: "delete-vms",
+            title: "Deleting any existing VMs",
+            description: "Checking which VMs to delete, if any...",
+            status: "building",
+          }])
+        } else {
+          setTimelineItems(visible)
+        }
         const nextPhase = allBuilt ? "show-content" : "templates-incomplete"
-        console.log(P, `effect[templates] — templatesList result: allBuilt=${allBuilt} transitioning gatePhase: ${gatePhase} -> ${nextPhase}`)
         setGatePhase(nextPhase)
-        console.log(P, `effect[templates] — calling unsub() after processing templatesList`)
         unsub()
-      } else {
-        console.log(P, `effect[templates] — ignoring message type=${data.type}`)
       }
     })
-    console.log(P, `effect[templates] — subscribed, now sending templatesList`)
     backendWs.send({ type: "templatesList" })
 
     return () => {
-      console.log(P, `effect[templates] — cleanup — calling unsub()`)
       unsub()
     }
   }, [status.type, gatePhase])
 
   useEffect(() => {
-    console.log(P, `effect[timeline] — running — status.type=${status.type}`)
     if (status.type !== "ok") return
-    const timers = [
-      setTimeout(() => {
-        setTimelineItems((prev) => [...prev, { id: "2", title: "Checking templates", description: "Querying Ludus for available VM templates" }])
-      }, 1500),
-      setTimeout(() => {
-        setTimelineItems((prev) => [...prev, { id: "3", title: "Templates found", description: "5 templates available, 0 built" }])
-      }, 3000),
-      setTimeout(() => {
-        setTimelineItems((prev) => [...prev, { id: "4", title: "Building debian-11", description: "Template build in progress..." }])
-      }, 4500),
-      setTimeout(() => {
-        setTimelineItems((prev) => [...prev, { id: "5", title: "Building kali", description: "Template build in progress..." }])
-      }, 6000),
-      setTimeout(() => {
-        setTimelineItems((prev) => [...prev, { id: "6", title: "Building win11", description: "Template build in progress..." }])
-      }, 7500),
-    ]
+    if (!buildActive) return
+
+    backendWs.send({ type: "subscribe", channel: "templatesList" })
+
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type !== "templatesList") return
+      const error = data.error as string | undefined
+      if (error) {
+        setTemplatesError(error)
+        setGatePhase("templates-error")
+        setBuildActive(false)
+        unsub()
+        backendWs.send({ type: "unsubscribe", channel: "templatesList" })
+        return
+      }
+      const result = data.result as Array<{ name: string; built: boolean; status: string; os: string }> | undefined
+      if (result == null) {
+        setTemplatesError("Empty response from backend")
+        setGatePhase("templates-error")
+        setBuildActive(false)
+        unsub()
+        backendWs.send({ type: "unsubscribe", channel: "templatesList" })
+        return
+      }
+
+      setTemplatesResult(result)
+
+      const latestLog = data.latestLog as string | undefined
+
+      setTimelineItems((prev) => {
+        const currentIndex = prev.findIndex((item) => item.status !== "built")
+
+        if (currentIndex === -1) {
+          if (prev.length < REQUIRED_TEMPLATES.length) {
+            const nextName = REQUIRED_TEMPLATES[prev.length]
+            const nextT = result.find((t) => t.name === nextName)
+            if (nextT) {
+              if (!isReallyBuilt(nextT) && !builtSentRef.current.has(nextT.name)) {
+                backendWs.send({ type: "buildTemplates", templates: [nextT.name] })
+                builtSentRef.current.add(nextT.name)
+              }
+              return [...prev, {
+                id: `build-${prev.length + 1}`,
+                title: isReallyBuilt(nextT) ? `Finished building ${nextName}` : `Building ${nextName}`,
+                description: isReallyBuilt(nextT) ? "" : nextT.status,
+                status: isReallyBuilt(nextT) ? "built" : nextT.status,
+              }]
+            }
+          }
+          if (REQUIRED_TEMPLATES.every((name) => {
+            const t = result.find((r) => r.name === name)
+            return t ? isReallyBuilt(t) : false
+          })) {
+            setBuildActive(false)
+            if (!prev.some((item) => item.id === "delete-vms")) {
+              setRangeActive(true)
+              return [...prev, {
+                id: "delete-vms",
+                title: "Deleting any existing VMs",
+                description: "Checking which VMs to delete, if any...",
+                status: "building",
+              }]
+            }
+          }
+          return prev
+        }
+
+        const currentName = REQUIRED_TEMPLATES[currentIndex]
+        const templateInResult = result.find((t) => t.name === currentName)
+        if (!templateInResult) return prev
+
+        if (!isReallyBuilt(templateInResult) && !builtSentRef.current.has(templateInResult.name)) {
+          backendWs.send({ type: "buildTemplates", templates: [templateInResult.name] })
+          builtSentRef.current.add(templateInResult.name)
+        }
+
+        const updated = prev.map((item, i) => {
+          if (i !== currentIndex) return item
+          if (isReallyBuilt(templateInResult)) {
+            return { ...item, title: `Finished building ${templateInResult.name}`, description: "", status: "built" }
+          }
+          return { ...item, description: latestLog || templateInResult.status, status: templateInResult.status }
+        })
+
+        return updated
+      })
+    })
+
     return () => {
-      console.log(P, `effect[timeline] — cleanup — clearing ${timers.length} timers`)
-      timers.forEach(clearTimeout)
+      backendWs.send({ type: "unsubscribe", channel: "templatesList" })
+      unsub()
     }
-  }, [status.type])
+  }, [status.type, buildActive])
+
+  useEffect(() => {
+    if (status.type !== "ok") return
+    if (!rangeActive) return
+
+    if (!deleteSentRef.current) {
+      backendWs.send({ type: "subscribe", channel: "rangeStatus" })
+      backendWs.send({ type: "deleteRangeVMs" })
+      deleteSentRef.current = true
+    }
+
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type === "rangeStatus") {
+        const result = data.result as Array<{ name: string; isRouter: boolean }> | undefined
+        const latestLog = data.latestLog as string | undefined
+        if (!result) return
+
+        setTimelineItems((prev) =>
+          prev.map((item) => {
+            if (item.id !== "delete-vms") return item
+            const deletable = result.filter((v) => !v.isRouter && !v.name?.includes("attacker-kali"))
+            if (deletable.length === 0) {
+              return { ...item, title: "Finished deleting any existing VMs", description: "", status: "built" }
+            }
+            return { ...item, description: latestLog || item.description }
+          })
+        )
+      }
+
+      if (data.type === "deleteRangeVMs" && data.error) {
+        setTimelineItems((prev) =>
+          prev.map((item) =>
+            item.id !== "delete-vms" ? item : { ...item, description: data.error as string, status: "failed" }
+          )
+        )
+      }
+    })
+
+    return () => {
+      backendWs.send({ type: "unsubscribe", channel: "rangeStatus" })
+      unsub()
+    }
+  }, [status.type, rangeActive])
 
   if (status.type === "idle" || status.type === "connecting") {
     return (
@@ -327,7 +446,7 @@ function LabRangeContent({
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <p className="text-sm text-destructive">{templatesError}</p>
-              <Button onClick={() => { console.log(P, `Retry button clicked — resetting gatePhase -> checking-templates`); setTemplatesError(""); setGatePhase("checking-templates"); }} size="sm" className="w-fit self-center">
+              <Button onClick={() => { setTemplatesError(""); setGatePhase("checking-templates"); }} size="sm" className="w-fit self-center">
                 Retry
               </Button>
             </CardContent>
@@ -368,7 +487,7 @@ function LabRangeContent({
                   </Tooltip>
                 </TooltipProvider>
               </div>
-              <Button onClick={() => { console.log(P, `Build button clicked — setting gatePhase -> show-content`); setGatePhase("show-content"); }} size="sm" className="w-fit self-center">
+              <Button onClick={() => { setGatePhase("show-content"); setBuildActive(true); }} size="sm" className="w-fit self-center">
                 Build
               </Button>
             </CardContent>
@@ -396,7 +515,7 @@ function LabRangeContent({
           {completed ? (
             <p className="text-sm text-green-600">✓ Lab Range setup completed</p>
           ) : (
-            <Button onClick={() => { console.log(P, `Complete Lab Range Setup button clicked`); onComplete(); }}>Complete Lab Range Setup</Button>
+            <Button onClick={() => { onComplete(); }}>Complete Lab Range Setup</Button>
           )}
         </div>
       </div>

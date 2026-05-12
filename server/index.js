@@ -1,5 +1,6 @@
 import { createWsHandler, addFetcher, addOperation } from "./poller.js"
-import { fetchTemplates, fetchTemplatesStatus, buildTemplates } from "./templates.js"
+import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./templates.js"
+import { fetchRangeWithLog, deleteRangeVMs, deployVM } from "./range.js"
 
 const LUDUS_SERVER_URL = process.env.LUDUS_SERVER_URL + "/api/v2"
 const LUDUS_API_KEY = process.env.LUDUS_API_KEY
@@ -39,11 +40,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, X-API-KEY",
 }
 
-addFetcher("templatesList", fetchTemplates)
+addFetcher("templatesList", fetchTemplatesWithLog)
 addOperation("templatesList", fetchTemplates)
-addFetcher("templatesStatus", fetchTemplatesStatus)
 addOperation("buildTemplates", buildTemplates)
 addOperation("healthCheck", healthCheck)
+addFetcher("rangeStatus", fetchRangeWithLog)
+addOperation("deleteRangeVMs", deleteRangeVMs)
+addOperation("deployVM", deployVM)
 
 const server = Bun.serve({
   port: BUN_SERVER_PORT,

@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import * as backendWs from "@/lib/backend-ws"
 
-const P = "[hc]"
-
 export type HealthCheckStatus =
   | { type: "idle" }
   | { type: "connecting" }
@@ -23,7 +21,6 @@ export function useHealthCheck() {
   const unsubscribeRef = useRef<(() => void) | null>(null)
 
   const connect = useCallback(() => {
-    console.log(P, `connect() called — current status=${status.type}`)
     clearTimeout(delayedRef.current)
     clearTimeout(timeoutRef.current)
 
@@ -37,7 +34,6 @@ export function useHealthCheck() {
     const scheduleTransition = (toStatus: HealthCheckStatus) => {
       const doTransition = () => {
         if (resolvedRef.current) return
-        console.log(P, `transition: connecting -> ${toStatus.type}`)
         setStatus((prev) => (prev.type === "connecting" ? toStatus : prev))
       }
       const elapsed = Date.now() - connectStartRef.current
@@ -50,14 +46,12 @@ export function useHealthCheck() {
 
     timeoutRef.current = setTimeout(() => {
       if (resolvedRef.current) return
-      console.log(P, `timeout reached (${TIMEOUT_MS}ms) — closing ws`)
       backendWs.close()
       scheduleTransition({ type: "connection-error" })
     }, TIMEOUT_MS)
 
     backendWs.connect(WS_URL, () => {
       if (resolvedRef.current) return
-      console.log(P, `ws onClose callback — scheduling connection-error`)
       clearTimeout(timeoutRef.current)
       clearTimeout(delayedRef.current)
       scheduleTransition({ type: "connection-error" })
@@ -69,14 +63,11 @@ export function useHealthCheck() {
       clearTimeout(timeoutRef.current)
 
       const result = data.result as Record<string, unknown> | undefined
-      console.log(P, `healthCheck response received`, result)
       if (result?.status === "ok") {
         resolvedRef.current = true
         clearTimeout(delayedRef.current)
-        console.log(P, `healthCheck OK — transitioning to "ok"`)
         setStatus({ type: "ok" })
       } else {
-        console.log(P, `healthCheck NOT ok — status=${result?.status}`)
         scheduleTransition({
           type: "health-error",
           rawStatus: (result?.status as string) || "unknown",
@@ -89,7 +80,6 @@ export function useHealthCheck() {
 
   useEffect(() => {
     return () => {
-      console.log(P, `cleanup — unmounting, clearing timers and closing ws`)
       clearTimeout(timeoutRef.current)
       clearTimeout(delayedRef.current)
       unsubscribeRef.current?.()

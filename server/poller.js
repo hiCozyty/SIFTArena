@@ -4,9 +4,9 @@ let polling = false
 let client = null
 const subscriptions = new Set()
 
-function broadcast(type, data, error) {
+function broadcast(type, data, error, extra = {}) {
   if (client && subscriptions.has(type)) {
-    client.send(JSON.stringify(error ? { type, error } : { type, data }))
+    client.send(JSON.stringify(error ? { type, error } : { type, result: data, ...extra }))
   }
 }
 
@@ -25,8 +25,9 @@ export function createWsHandler(ludusUrl, apiKey) {
       for (const { type, fetchFn } of fetchers) {
         if (!client || !subscriptions.has(type)) continue
         try {
-          const data = await fetchFn(ludusUrl, apiKey)
-          broadcast(type, data)
+          const result = await fetchFn(ludusUrl, apiKey)
+          const [data, extra] = Array.isArray(result) ? result : [result, {}]
+          broadcast(type, data, null, extra)
         } catch (err) {
           broadcast(type, null, err.message)
         }

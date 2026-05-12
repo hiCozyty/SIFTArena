@@ -1,6 +1,7 @@
 async function apiGet(ludusUrl, apiKey, path) {
   const response = await fetch(`${ludusUrl}${path}`, {
     headers: { "X-API-KEY": apiKey },
+    tls: { rejectUnauthorized: false },
   })
   if (!response.ok) throw new Error(`Ludus API error: ${response.status}`)
   return await response.json()
@@ -10,8 +11,33 @@ export async function fetchTemplates(ludusUrl, apiKey) {
   return apiGet(ludusUrl, apiKey, "/templates")
 }
 
-export async function fetchTemplatesStatus(ludusUrl, apiKey) {
-  return apiGet(ludusUrl, apiKey, "/templates/status")
+export async function fetchTemplatesWithLog(ludusUrl, apiKey) {
+  const templates = await apiGet(ludusUrl, apiKey, "/templates")
+  let latestLog = ""
+  let logEmpty = true
+  try {
+    const history = await apiGet(ludusUrl, apiKey, "/templates/logs/history")
+    const running = history.find((e) => e.status === "running")
+    if (running) {
+      const detail = await apiGet(ludusUrl, apiKey, `/templates/logs/history/${running.id}`)
+      const allLines = (detail.result ?? "").split("\n")
+      const nonEmpty = allLines.filter(l => l.trim())
+      logEmpty = nonEmpty.length === 0
+
+      const arrowLines = nonEmpty.filter(l => l.includes("==>"))
+      if (arrowLines.length > 0) {
+        let line = arrowLines[arrowLines.length - 1]
+        line = line.replace(/\u001b\[[0-9;]*m/g, "")
+        const match = line.match(/^\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\s+(.*)/)
+        const message = match ? match[1] : line
+        const idx = message.indexOf("==>")
+        latestLog = message.slice(idx + 3).replace(/^\s+/, "").trim()
+      }
+    }
+  } catch (err) {
+    console.error("fetchTemplatesWithLog — error:", err.message)
+  }
+  return [templates, { latestLog, logEmpty }]
 }
 
 export async function buildTemplates(ludusUrl, apiKey, { templates, parallel }) {

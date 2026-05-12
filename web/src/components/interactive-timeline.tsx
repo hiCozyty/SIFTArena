@@ -1,13 +1,37 @@
 import { motion, useInView, AnimatePresence } from "motion/react"
 import { useRef, useState, useEffect } from "react"
+import { Spinner } from "@/components/ui/spinner"
 
+/**
+ * A single entry in the timeline.
+ *
+ * @field id        — unique key for React and AnimatePresence
+ * @field title     — primary label (e.g. "Building debian-11-x64-server-template...")
+ * @field description — secondary detail text
+ * @field status    — matches the `status` field from the WS templatesList response
+ *                    (e.g. "not_built", "built"). When present, the timeline may
+ *                    render an inline spinner or other indicator next to the title.
+ * @field date      — optional date/timestamp label
+ */
 type TimelineItem = {
   id: string
   title: string
   description: string
+  status?: string
   date?: string
 }
 
+/**
+ * Rolling-window animated timeline.
+ *
+ * @prop items     — ordered list of TimelineItem entries (oldest → newest)
+ * @prop maxItems  — when set, only the last N items are rendered (rolling window).
+ *                   Older items animate out via AnimatePresence `popLayout`.
+ *
+ * Each item slides in with a spring transition and scales its dot indicator.
+ * When an item has `status: "not_built"`, a circle Spinner (size-3) is rendered
+ * inline next to the title text.
+ */
 type InteractiveTimelineProps = {
   items?: TimelineItem[]
   maxItems?: number
@@ -48,9 +72,15 @@ function TimelineItemComponent({
           stiffness: 300,
           damping: 25,
         }}
+        className=""
       >
         <h3 className="text-sm font-semibold leading-tight">{item.title}</h3>
-        <p className="text-xs text-muted-foreground leading-tight">{item.description}</p>
+        {item.description && (
+          <p className="flex items-center gap-2 text-xs text-muted-foreground leading-tight font-mono break-all">
+            {(item.status === "not_built" || item.status === "building") && <Spinner variant="circle" className="size-3 shrink-0" />}
+            <span>{item.description}</span>
+          </p>
+        )}
       </motion.div>
     </div>
   )
@@ -80,7 +110,7 @@ export function InteractiveTimeline({
   }, [isInView, displayItems.length])
 
   return (
-    <div ref={ref} className="relative w-full max-w-2xl">
+    <div ref={ref} className="relative w-full">
       <motion.div
         animate={{ height: lineHeight }}
         transition={{ duration: 0.5, ease: "easeOut" }}
