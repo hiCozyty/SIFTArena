@@ -143,6 +143,7 @@ function LabRangeContent({
   const [timelineItems, setTimelineItems] = useState<Array<{ id: string; title: string; description: string; status?: string }>>([])
   const [vmsCheckActive, setVmsCheckActive] = useState(false)
   const builtSentRef = useRef<Set<string>>(new Set())
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
   useEffect(() => {
     if (status.type === "idle") {
@@ -316,18 +317,27 @@ setTemplatesResult(result)
         ).filter(Boolean) as Array<{ name: string }>
 
         if (found.length === 3) {
-          setTimelineItems((prev) => {
-            const updated = prev.map((item) =>
+          setTimelineItems((prev) =>
+            prev.map((item) =>
               item.id === "check-vms"
                 ? { ...item, title: `${found[0].name} is deployed`, description: "", status: "built" }
                 : item
             )
-            return [
-              ...updated,
+          )
+
+          timersRef.current.push(setTimeout(() => {
+            setTimelineItems((prev) => [
+              ...prev,
               { id: "vm-2", title: `${found[1].name} is deployed`, description: "", status: "built" },
+            ])
+          }, 200))
+
+          timersRef.current.push(setTimeout(() => {
+            setTimelineItems((prev) => [
+              ...prev,
               { id: "vm-3", title: `${found[2].name} is deployed`, description: "", status: "built" },
-            ]
-          })
+            ])
+          }, 400))
         } else {
           console.log("early returning")
         }
@@ -339,6 +349,8 @@ setTemplatesResult(result)
     backendWs.send({ type: "rangeStatus" })
 
     return () => {
+      for (const t of timersRef.current) clearTimeout(t)
+      timersRef.current = []
       unsub()
     }
   }, [status.type, vmsCheckActive])

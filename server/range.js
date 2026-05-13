@@ -116,6 +116,32 @@ export async function deleteRangeVMs(ludusUrl, apiKey, data) {
   return { deleted: deleted.length, names: deleted }
 }
 
+export async function deleteVM(ludusUrl, apiKey, data) {
+  const range = await apiCall(ludusUrl, apiKey, "/range")
+  const vms = range.VMs ?? []
+
+  let target
+  if (data.isRouter) {
+    target = vms.find((vm) => vm.isRouter)
+  } else if (data.vm) {
+    target = vms.find((vm) => vm.name === data.vm || vm.name?.includes(data.vm))
+  }
+  if (!target) throw new Error(`VM not found (isRouter:${!!data.isRouter}, vm:${data.vm})`)
+
+  if (target.poweredOn) {
+    await apiCall(ludusUrl, apiKey, "/range/poweroff", "PUT", { machines: [target.name] })
+    for (let i = 0; i < 30; i++) {
+      await sleep(2000)
+      const cur = await apiCall(ludusUrl, apiKey, "/range")
+      const vm = cur.VMs?.find((v) => v.name === target.name)
+      if (!vm?.poweredOn) break
+    }
+  }
+
+  await apiCall(ludusUrl, apiKey, `/vm/${target.proxmoxID}`, "DELETE")
+  return { deleted: target.name }
+}
+
 function lastOctet(ip) {
   if (typeof ip !== "string") return undefined
   const n = parseInt(ip.split(".").pop(), 10)
@@ -148,4 +174,9 @@ export async function deployVM(ludusUrl, apiKey, data) {
   await setRangeConfig(ludusUrl, userKey, yaml)
   await apiCall(ludusUrl, apiKey, "/range/deploy", "POST", { force: true })
   return { deployed: vmName }
+}
+
+export async function deployRouter(ludusUrl, apiKey) {
+  await apiCall(ludusUrl, apiKey, "/range/deploy", "POST", { force: true })
+  return { deployed: "router" }
 }
