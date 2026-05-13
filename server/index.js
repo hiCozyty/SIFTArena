@@ -45,6 +45,7 @@ addOperation("templatesList", fetchTemplates)
 addOperation("buildTemplates", buildTemplates)
 addOperation("healthCheck", healthCheck)
 addFetcher("rangeStatus", fetchRangeWithLog)
+addOperation("rangeStatus", fetchRangeWithLog)
 addOperation("deleteRangeVMs", deleteRangeVMs)
 addOperation("deployVM", deployVM)
 

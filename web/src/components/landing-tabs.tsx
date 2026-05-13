@@ -141,9 +141,8 @@ function LabRangeContent({
   const [buildActive, setBuildActive] = useState(false)
   const [templatesResult, setTemplatesResult] = useState<Array<{ name: string; built: boolean; status: string; os: string }>>([])
   const [timelineItems, setTimelineItems] = useState<Array<{ id: string; title: string; description: string; status?: string }>>([])
-  const [rangeActive, setRangeActive] = useState(false)
+  const [vmsCheckActive, setVmsCheckActive] = useState(false)
   const builtSentRef = useRef<Set<string>>(new Set())
-  const deleteSentRef = useRef(false)
 
   useEffect(() => {
     if (status.type === "idle") {
@@ -184,18 +183,17 @@ setTemplatesResult(result)
         const visible = firstUnbuiltIdx === -1 ? allItems : allItems.slice(0, firstUnbuiltIdx + 1)
         const allBuilt = allItems.every((item) => item.status === "built")
         if (allBuilt) {
-          setRangeActive(true)
           setTimelineItems([...visible, {
-            id: "delete-vms",
-            title: "Deleting any existing VMs",
-            description: "Checking which VMs to delete, if any...",
+            id: "check-vms",
+            title: "Checking current VMs deployed",
+            description: "checking...",
             status: "building",
           }])
+          setVmsCheckActive(true)
         } else {
           setTimelineItems(visible)
         }
-        const nextPhase = allBuilt ? "show-content" : "templates-incomplete"
-        setGatePhase(nextPhase)
+        setGatePhase(allBuilt ? "show-content" : "templates-incomplete")
         unsub()
       }
     })
@@ -262,12 +260,12 @@ setTemplatesResult(result)
             return t ? isReallyBuilt(t) : false
           })) {
             setBuildActive(false)
-            if (!prev.some((item) => item.id === "delete-vms")) {
-              setRangeActive(true)
+            if (!prev.some((item) => item.id === "check-vms")) {
+              setVmsCheckActive(true)
               return [...prev, {
-                id: "delete-vms",
-                title: "Deleting any existing VMs",
-                description: "Checking which VMs to delete, if any...",
+                id: "check-vms",
+                title: "Checking current VMs deployed",
+                description: "checking...",
                 status: "building",
               }]
             }
@@ -304,46 +302,46 @@ setTemplatesResult(result)
 
   useEffect(() => {
     if (status.type !== "ok") return
-    if (!rangeActive) return
-
-    if (!deleteSentRef.current) {
-      backendWs.send({ type: "subscribe", channel: "rangeStatus" })
-      backendWs.send({ type: "deleteRangeVMs" })
-      deleteSentRef.current = true
-    }
+    if (!vmsCheckActive) return
 
     const unsub = backendWs.subscribe((data) => {
       if (data.type === "rangeStatus") {
-        const result = data.result as Array<{ name: string; isRouter: boolean }> | undefined
-        const latestLog = data.latestLog as string | undefined
+        const raw = data.result as [Array<{ name: string }>, unknown] | undefined
+        const result = raw?.[0]
         if (!result) return
 
-        setTimelineItems((prev) =>
-          prev.map((item) => {
-            if (item.id !== "delete-vms") return item
-            const deletable = result.filter((v) => !v.isRouter && !v.name?.includes("attacker-kali"))
-            if (deletable.length === 0) {
-              return { ...item, title: "Finished deleting any existing VMs", description: "", status: "built" }
-            }
-            return { ...item, description: latestLog || item.description }
-          })
-        )
-      }
+        const expected = ["router-debian11-x64", "attacker-kali", "win11-22h2"]
+        const found = expected.map((suffix) =>
+          result.find((vm) => vm.name.endsWith(suffix))
+        ).filter(Boolean) as Array<{ name: string }>
 
-      if (data.type === "deleteRangeVMs" && data.error) {
-        setTimelineItems((prev) =>
-          prev.map((item) =>
-            item.id !== "delete-vms" ? item : { ...item, description: data.error as string, status: "failed" }
-          )
-        )
+        if (found.length === 3) {
+          setTimelineItems((prev) => {
+            const updated = prev.map((item) =>
+              item.id === "check-vms"
+                ? { ...item, title: `${found[0].name} is deployed`, description: "", status: "built" }
+                : item
+            )
+            return [
+              ...updated,
+              { id: "vm-2", title: `${found[1].name} is deployed`, description: "", status: "built" },
+              { id: "vm-3", title: `${found[2].name} is deployed`, description: "", status: "built" },
+            ]
+          })
+        } else {
+          console.log("early returning")
+        }
+
+        unsub()
       }
     })
 
+    backendWs.send({ type: "rangeStatus" })
+
     return () => {
-      backendWs.send({ type: "unsubscribe", channel: "rangeStatus" })
       unsub()
     }
-  }, [status.type, rangeActive])
+  }, [status.type, vmsCheckActive])
 
   if (status.type === "idle" || status.type === "connecting") {
     return (
