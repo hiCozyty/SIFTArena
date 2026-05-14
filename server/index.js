@@ -1,6 +1,6 @@
 import { createWsHandler, addFetcher, addOperation } from "./poller.js"
 import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./templates.js"
-import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployRouter, deleteVM } from "./range.js"
+import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, prepareGoldenImage, preloadInventory } from "./range.js"
 
 const LUDUS_SERVER_URL = process.env.LUDUS_SERVER_URL + "/api/v2"
 const LUDUS_API_KEY = process.env.LUDUS_API_KEY
@@ -49,7 +49,8 @@ addOperation("rangeStatus", fetchRangeWithLog)
 addOperation("deleteRangeVMs", deleteRangeVMs)
 addOperation("deleteVM", deleteVM)
 addOperation("deployVM", deployVM)
-addOperation("deployRouter", deployRouter)
+addOperation("deployAllBaseVMs", deployAllBaseVMs)
+addOperation("prepareGoldenImage", prepareGoldenImage)
 
 const server = Bun.serve({
   port: BUN_SERVER_PORT,
@@ -69,5 +70,7 @@ const server = Bun.serve({
   },
   websocket: createWsHandler(LUDUS_SERVER_URL, LUDUS_API_KEY),
 })
+
+preloadInventory(LUDUS_SERVER_URL, LUDUS_API_KEY).catch(() => {})
 
 console.log(`Bun API server running on ws://localhost:${BUN_SERVER_PORT}`)

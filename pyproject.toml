@@ -1,0 +1,10 @@
+[project]
+name = "shadowprotocol"
+version = "0.1.0"
+description = "asdf"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "ansible>=13.6.0",
+    "pywinrm>=0.5.0",
+]

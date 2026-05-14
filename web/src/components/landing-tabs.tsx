@@ -123,6 +123,21 @@ const REQUIRED_TEMPLATES = [
   "win11-22h2-x64-enterprise-template",
 ]
 
+const GOLDEN_IMAGE_VMS = [
+  { label: "kali", vm: "attacker-kali" },
+  { label: "windows", vm: "win11-22h2" },
+]
+
+interface GoldenImageResult {
+  label: string
+  vm: string
+  ip: string
+  snapshot: string
+  created: boolean
+  overwritten?: boolean
+  error?: string
+}
+
 function isReallyBuilt(t: { built: boolean; status: string }): boolean {
   return t.built && t.status !== "not_built" && t.status !== "building"
 }
@@ -141,7 +156,8 @@ function LabRangeContent({
   const [buildActive, setBuildActive] = useState(false)
   const [templatesResult, setTemplatesResult] = useState<Array<{ name: string; built: boolean; status: string; os: string }>>([])
   const [timelineItems, setTimelineItems] = useState<Array<{ id: string; title: string; description: string; status?: string }>>([])
-  const [vmsCheckActive, setVmsCheckActive] = useState(false)
+  const [deployActive, setDeployActive] = useState(false)
+  const [goldenImageActive, setGoldenImageActive] = useState(false)
   const builtSentRef = useRef<Set<string>>(new Set())
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
@@ -190,7 +206,7 @@ setTemplatesResult(result)
             description: "checking...",
             status: "building",
           }])
-          setVmsCheckActive(true)
+          setDeployActive(true)
         } else {
           setTimelineItems(visible)
         }
@@ -262,16 +278,15 @@ setTemplatesResult(result)
           })) {
             setBuildActive(false)
             if (!prev.some((item) => item.id === "check-vms")) {
-              setVmsCheckActive(true)
+              setDeployActive(true)
               return [...prev, {
                 id: "check-vms",
                 title: "Checking current VMs deployed",
                 description: "checking...",
                 status: "building",
               }]
-            }
+}
           }
-          return prev
         }
 
         const currentName = REQUIRED_TEMPLATES[currentIndex]
@@ -303,57 +318,304 @@ setTemplatesResult(result)
 
   useEffect(() => {
     if (status.type !== "ok") return
-    if (!vmsCheckActive) return
+    if (!deployActive) return
+
+    type Phase = "check" | "deleting" | "deploying"
+    const phaseRef: { current: Phase } = { current: "check" }
+    const seenVMsRef: { current: Set<string> } = { current: new Set() }
+
+    const VM_LABELS: Record<string, string> = {
+      router: "router-debian11-x64",
+      kali: "attacker-kali",
+      windows: "win11-22h2",
+    }
+
+    const VM_NODE_IDS: Record<string, string> = {
+      router: "check-vms",
+      kali: "deploy-kali",
+      windows: "deploy-windows",
+    }
+
+    const VM_ORDER = ["router", "kali", "windows"]
 
     const unsub = backendWs.subscribe((data) => {
-      if (data.type === "rangeStatus") {
-        const raw = data.result as [Array<{ name: string }>, unknown] | undefined
-        const result = raw?.[0]
-        if (!result) return
+      if (data.type === "deleteRangeVMs") {
+        if (phaseRef.current !== "deleting") return
+        phaseRef.current = "deploying"
+        seenVMsRef.current = new Set()
+        setTimelineItems((prev) =>
+          prev.map((item) =>
+            item.id === "check-vms"
+              ? { ...item, title: "Deploying range", description: "starting deployment...", status: "building" }
+              : item
+          )
+        )
+        backendWs.send({ type: "subscribe", channel: "rangeStatus" })
+        backendWs.send({ type: "deployAllBaseVMs" })
+        return
+      }
 
-        const expected = ["router-debian11-x64", "attacker-kali", "win11-22h2"]
-        const found = expected.map((suffix) =>
-          result.find((vm) => vm.name.endsWith(suffix))
-        ).filter(Boolean) as Array<{ name: string }>
+      if (data.type !== "rangeStatus") return
 
-        if (found.length === 3) {
+      const raw = data.result
+      type VmInfo = { name: string; poweredOn?: boolean }
+      let result: VmInfo[] = []
+      if (Array.isArray(raw)) {
+        if (raw.length > 0 && typeof raw[0] === "object" && raw[0] !== null && "name" in raw[0]) {
+          result = raw as VmInfo[]
+        } else if (raw.length === 2 && Array.isArray(raw[0])) {
+          result = raw[0] as VmInfo[]
+        }
+      }
+
+      const routerFound = result.find((vm) => vm.name.endsWith("router-debian11-x64"))
+      const kaliFound = result.find((vm) => vm.name.endsWith("attacker-kali"))
+      const windowsFound = result.find((vm) => vm.name.endsWith("win11-22h2"))
+
+      const latestLog = data.latestLog as string | undefined
+      const playRecap = data.playRecap as string[] | null | undefined
+
+      if (phaseRef.current === "check") {
+        if (routerFound && kaliFound && windowsFound) {
           setTimelineItems((prev) =>
             prev.map((item) =>
               item.id === "check-vms"
-                ? { ...item, title: `${found[0].name} is deployed`, description: "", status: "built" }
+                ? { ...item, title: "router-debian11-x64 is already deployed", description: "", status: "built" }
                 : item
             )
           )
-
-          timersRef.current.push(setTimeout(() => {
+          setTimeout(() => {
             setTimelineItems((prev) => [
               ...prev,
-              { id: "vm-2", title: `${found[1].name} is deployed`, description: "", status: "built" },
+              { id: "deploy-kali", title: "attacker-kali is already deployed", description: "", status: "built" },
             ])
-          }, 200))
-
-          timersRef.current.push(setTimeout(() => {
+          }, 200)
+          setTimeout(() => {
             setTimelineItems((prev) => [
               ...prev,
-              { id: "vm-3", title: `${found[2].name} is deployed`, description: "", status: "built" },
+              { id: "deploy-windows", title: "win11-22h2 is already deployed", description: "", status: "built" },
             ])
-          }, 400))
-        } else {
-          console.log("early returning")
+          }, 400)
+          setTimeout(() => {
+            setTimelineItems((prev) => [
+              ...prev,
+              { id: "golden-image", title: `Preparing golden image for ${GOLDEN_IMAGE_VMS[0].vm}`, description: `Creating snapshot if golden image does not exist for ${GOLDEN_IMAGE_VMS[0].vm}...`, status: "building" },
+            ])
+            setGoldenImageActive(true)
+            backendWs.send({ type: "prepareGoldenImage" })
+          }, 600)
+          setDeployActive(false)
+          unsub()
+          return
         }
+        phaseRef.current = "deleting"
+        setTimelineItems((prev) =>
+          prev.map((item) =>
+            item.id === "check-vms"
+              ? { ...item, title: "Cleaning up existing VMs", description: "deleting before redeploy...", status: "building" }
+              : item
+          )
+        )
+        backendWs.send({ type: "deleteRangeVMs", all: true })
+        return
+      }
 
+      if (phaseRef.current === "deleting") return
+
+      const vmPresence: Record<string, boolean> = {
+        router: !!routerFound,
+        kali: !!kaliFound,
+        windows: !!windowsFound,
+      }
+
+      for (const vm of VM_ORDER) {
+        if (vmPresence[vm] && !seenVMsRef.current.has(vm)) {
+          seenVMsRef.current.add(vm)
+          const prevVMIndex = VM_ORDER.indexOf(vm) - 1
+          const prevVM = prevVMIndex >= 0 ? VM_ORDER[prevVMIndex] : null
+
+          if (prevVM && seenVMsRef.current.has(prevVM)) {
+            const prevNodeId = VM_NODE_IDS[prevVM]
+            const prevLabel = VM_LABELS[prevVM]
+            setTimelineItems((prev) =>
+              prev.map((item) =>
+                item.id === prevNodeId
+                  ? { ...item, title: `Finished deploying ${prevLabel}`, description: "", status: "built" }
+                  : item
+              )
+            )
+          }
+
+          const nodeId = VM_NODE_IDS[vm]
+          const label = VM_LABELS[vm]
+          if (nodeId === "check-vms") {
+            setTimelineItems((prev) =>
+              prev.map((item) =>
+                item.id === "check-vms"
+                  ? { ...item, title: `Deploying ${label}`, description: latestLog || "starting deployment...", status: "building" }
+                  : item
+              )
+            )
+          } else {
+            setTimelineItems((prev) => {
+              if (prev.some(item => item.id === nodeId)) {
+                return prev.map((item) =>
+                  item.id === nodeId
+                    ? { ...item, title: `Deploying ${label}`, description: latestLog || "starting deployment...", status: "building" }
+                    : item
+                )
+              }
+              return [...prev, { id: nodeId, title: `Deploying ${label}`, description: latestLog || "starting deployment...", status: "building" }]
+            })
+          }
+          console.log("[deploy] VM appeared:", vm, "seenVMs:", [...seenVMsRef.current])
+        }
+      }
+
+      const activeVM = VM_ORDER.find((vm) => !seenVMsRef.current.has(vm)) || VM_ORDER[VM_ORDER.length - 1]
+      const activeNodeId = VM_NODE_IDS[activeVM]
+      if (activeNodeId && latestLog) {
+        setTimelineItems((prev) =>
+          prev.map((item) =>
+            item.id === activeNodeId
+              ? { ...item, description: latestLog }
+              : item
+          )
+        )
+      }
+
+      if (routerFound && kaliFound && windowsFound && playRecap) {
+        const expected = ["router-debian11-x64", "attacker-kali", "win11-22h2"]
+        const allOk = expected.every((suffix) => {
+          const line = playRecap.find((l) => l.includes(suffix))
+          if (!line) return false
+          const unreachable = line.match(/unreachable=(\d+)/)?.[1]
+          const failed = line.match(/failed=(\d+)/)?.[1]
+          return unreachable === "0" && failed === "0"
+        })
+        if (!allOk) return
+
+        const nodeLabels: Record<string, string> = {
+          "check-vms": "router-debian11-x64",
+          "deploy-kali": "attacker-kali",
+          "deploy-windows": "win11-22h2",
+        }
+        setTimelineItems((prev) => {
+          let updated = prev.map((item) => {
+            const label = nodeLabels[item.id]
+            if (label) {
+              return { ...item, title: `Finished deploying ${label}`, description: "", status: "built" }
+            }
+            return item
+          })
+          if (!updated.some(item => item.id === "deploy-kali")) {
+            updated = [...updated, { id: "deploy-kali", title: "Finished deploying attacker-kali", description: "", status: "built" }]
+          }
+          if (!updated.some(item => item.id === "deploy-windows")) {
+            updated = [...updated, { id: "deploy-windows", title: "Finished deploying win11-22h2", description: "", status: "built" }]
+          }
+          return [...updated, {
+            id: "golden-image",
+            title: `Preparing golden image for ${GOLDEN_IMAGE_VMS[0].vm}`,
+            description: `Creating snapshot if golden image does not exist for ${GOLDEN_IMAGE_VMS[0].vm}...`,
+            status: "building",
+          }]
+        })
+        setGoldenImageActive(true)
+        backendWs.send({ type: "prepareGoldenImage" })
+        setDeployActive(false)
         unsub()
+        backendWs.send({ type: "unsubscribe", channel: "rangeStatus" })
       }
     })
 
     backendWs.send({ type: "rangeStatus" })
 
     return () => {
+      backendWs.send({ type: "unsubscribe", channel: "rangeStatus" })
       for (const t of timersRef.current) clearTimeout(t)
       timersRef.current = []
       unsub()
     }
-  }, [status.type, vmsCheckActive])
+  }, [status.type, deployActive])
+
+  useEffect(() => {
+    if (status.type !== "ok") return
+    if (!goldenImageActive) return
+
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type !== "prepareGoldenImage") return
+
+      const prepared = (data.result?.prepared ?? []) as GoldenImageResult[]
+
+      if (prepared.length === 0) {
+        setGoldenImageActive(false)
+        unsub()
+        return
+      }
+
+      const allExisted = prepared.every((p) => p.created === false && !p.error)
+
+      if (allExisted) {
+        setTimelineItems((prev) =>
+          prev.map((item) =>
+            item.id === "golden-image"
+              ? {
+                  ...item,
+                  title: "Base Snapshots already exist",
+                  description: prepared.map((p) => `${p.vm} (${p.ip})`).join(", "),
+                  status: "built",
+                }
+              : item,
+          ),
+        )
+        setGoldenImageActive(false)
+        unsub()
+      } else {
+        for (let i = 1; i <= prepared.length; i++) {
+          const timer = setTimeout(() => {
+            if (i < prepared.length) {
+              const vm = prepared[i]
+              setTimelineItems((prev) =>
+                prev.map((item) =>
+                  item.id === "golden-image"
+                    ? {
+                        ...item,
+                        title: `Preparing golden image for ${vm.label}`,
+                        description: `Creating snapshot if golden image does not exist for ${vm.vm}...`,
+                        status: "building",
+                      }
+                    : item,
+                ),
+              )
+            } else {
+              setTimelineItems((prev) =>
+                prev.map((item) =>
+                  item.id === "golden-image"
+                    ? {
+                        ...item,
+                        title: "Snapshots taken for all VMs",
+                        description: prepared.map((p) => `${p.vm} (${p.ip})`).join(", "),
+                        status: "built",
+                      }
+                    : item,
+                ),
+              )
+              setGoldenImageActive(false)
+              unsub()
+            }
+          }, i * 1200)
+          timersRef.current.push(timer)
+        }
+      }
+    })
+
+    return () => {
+      for (const t of timersRef.current) clearTimeout(t)
+      timersRef.current = []
+      unsub()
+    }
+  }, [status.type, goldenImageActive])
 
   if (status.type === "idle" || status.type === "connecting") {
     return (

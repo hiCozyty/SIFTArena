@@ -67,20 +67,26 @@ async function main() {
   const ws = await connect(WS_URL)
   console.log("  ok connected\n")
 
+  // console.log("1. delete all VMs")
+  // const del = await sendAndWait(ws, { type: "deleteRangeVMs", all: true })
+  // console.log("  result:", JSON.stringify(del.result, null, 2))
+
+
   console.log("1. deleteVM (router)")
   const del = await sendAndWait(ws, { type: "deleteVM", isRouter: true })
   console.log("  result:", JSON.stringify(del.result, null, 2))
 
-  console.log("\n2. waiting 5 seconds...")
-  await sleep(5000)
 
-  console.log("\n3. deployRouter")
-  const res = await sendAndWait(ws, { type: "deployRouter" })
-  if (res.error) {
-    console.log("  error:", res.error)
-  } else {
-    console.log("  result:", JSON.stringify(res.result, null, 2))
-  }
+  // console.log("\n2. waiting 5 seconds...")
+  // await sleep(5000)
+
+  // console.log("\n3. deployRouter")
+  // const res = await sendAndWait(ws, { type: "deployRouter" })
+  // if (res.error) {
+  //   console.log("  error:", res.error)
+  // } else {
+  //   console.log("  result:", JSON.stringify(res.result, null, 2))
+  // }
 
   ws.send(JSON.stringify({ type: "subscribe", channel: "rangeStatus" }))
   console.log("\nlistening for range status updates (ctrl-c to stop)...")
