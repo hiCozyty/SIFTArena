@@ -374,6 +374,7 @@ setTemplatesResult(result)
 
       const latestLog = data.latestLog as string | undefined
       const playRecap = data.playRecap as string[] | null | undefined
+      
 
       if (phaseRef.current === "check") {
         if (routerFound && kaliFound && windowsFound) {
@@ -468,20 +469,21 @@ setTemplatesResult(result)
               return [...prev, { id: nodeId, title: `Deploying ${label}`, description: latestLog || "starting deployment...", status: "building" }]
             })
           }
-          console.log("[deploy] VM appeared:", vm, "seenVMs:", [...seenVMsRef.current])
+          
         }
       }
 
-      const activeVM = VM_ORDER.find((vm) => !seenVMsRef.current.has(vm)) || VM_ORDER[VM_ORDER.length - 1]
-      const activeNodeId = VM_NODE_IDS[activeVM]
-      if (activeNodeId && latestLog) {
-        setTimelineItems((prev) =>
-          prev.map((item) =>
-            item.id === activeNodeId
-              ? { ...item, description: latestLog }
-              : item
+      if (latestLog) {
+        setTimelineItems((prev) => {
+          let targetIdx = -1
+          for (let i = prev.length - 1; i >= 0; i--) {
+            if (prev[i].status === "building") { targetIdx = i; break }
+          }
+          if (targetIdx === -1) return prev
+          return prev.map((item, idx) =>
+            idx === targetIdx ? { ...item, description: latestLog } : item
           )
-        )
+        })
       }
 
       if (routerFound && kaliFound && windowsFound && playRecap) {
