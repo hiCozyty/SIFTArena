@@ -1,6 +1,6 @@
 import { createWsHandler, addFetcher, addOperation } from "./poller.js"
 import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./templates.js"
-import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, prepareGoldenImage, preloadInventory } from "./range.js"
+import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, prepareGoldenImage, preloadInventory, fetchRangeConfig, updateRangeConfig, fetchSystemInfo } from "./range.js"
 
 const LUDUS_SERVER_URL = process.env.LUDUS_SERVER_URL + "/api/v2"
 const LUDUS_API_KEY = process.env.LUDUS_API_KEY
@@ -51,6 +51,9 @@ addOperation("deleteVM", deleteVM)
 addOperation("deployVM", deployVM)
 addOperation("deployAllBaseVMs", deployAllBaseVMs)
 addOperation("prepareGoldenImage", prepareGoldenImage)
+addOperation("getRangeConfig", fetchRangeConfig)
+addOperation("setRangeConfig", updateRangeConfig)
+addOperation("systemInfo", fetchSystemInfo)
 
 const server = Bun.serve({
   port: BUN_SERVER_PORT,

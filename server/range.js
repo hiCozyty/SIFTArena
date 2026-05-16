@@ -85,6 +85,27 @@ export function getCachedInventory() {
   return cachedInventory
 }
 
+export async function fetchRangeConfig(ludusUrl, apiKey) {
+  return await apiCall(ludusUrl, apiKey, "/range/config")
+}
+
+export async function fetchSystemInfo(ludusUrl, apiKey) {
+  const host = new URL(ludusUrl).hostname
+  try {
+    const raw = await $`ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 root@${host} "free -g | grep ^Mem: | tr -s ' ' | cut -d' ' -f2 && nproc"`.text()
+    const [totalRam, totalCpu] = raw.trim().split("\n").map(s => Number(s.trim()))
+    return { totalCpu, totalRam }
+  } catch (e) {
+    console.error("systemInfo ssh failed:", e.stderr?.toString() || e.message)
+    throw e
+  }
+}
+
+export async function updateRangeConfig(ludusUrl, apiKey, data) {
+  await setRangeConfig(ludusUrl, apiKey, data.yaml)
+  return { result: "ok" }
+}
+
 export async function preloadInventory(ludusUrl, apiKey) {
   cachedInventory = await fetchAnsibleInventory(ludusUrl, apiKey)
   return cachedInventory

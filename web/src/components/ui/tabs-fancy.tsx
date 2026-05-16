@@ -1,6 +1,18 @@
 import { useState, useCallback } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog"
 
 import { cn } from "@/lib/utils"
 
@@ -14,6 +26,7 @@ interface Item {
   id: string | number
   label: string
   icon?: string
+  subText?: string
 }
 
 interface TabsFancyProps {
@@ -22,7 +35,11 @@ interface TabsFancyProps {
   defaultCategory?: Category["id"]
   activeCategory?: Category["id"]
   onCategoryChange?: (id: Category["id"]) => void
+  onAddItem?: () => void
   className?: string
+  cpuUsage?: string
+  memoryUsage?: string
+  deploymentStatus?: string
 }
 
 function TabsFancy({
@@ -31,8 +48,14 @@ function TabsFancy({
   defaultCategory,
   activeCategory: controlledCategory,
   onCategoryChange,
+  onAddItem,
   className,
+  cpuUsage,
+  memoryUsage,
+  deploymentStatus,
 }: TabsFancyProps) {
+  const [selectedItemId, setSelectedItemId] = useState<Item["id"] | null>(null)
+
   const [internalCategory, setInternalCategory] = useState<Category["id"]>(
     defaultCategory ?? categories[0]?.id
   )
@@ -67,52 +90,126 @@ function TabsFancy({
 
   return (
     <div className={cn("w-full", className)}>
-      <div className="flex flex-row gap-6 rounded-xl overflow-hidden">
-        <div className="w-56 flex flex-col gap-4 rounded-xl bg-muted p-3">
-          <Tabs
-            value={String(activeCategoryId ?? "")}
-            onValueChange={handleCategoryChange}
-            className="w-full"
-          >
-            <TabsList className="w-full">
-              {categories.map((category) => (
-                <TabsTrigger key={category.id} value={String(category.id)}>
-                  {category.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-
-          <div className="flex flex-col gap-0.5">
+      <div className="flex flex-row gap-6 rounded-4xl overflow-hidden h-full min-h-0">
+        <div className="w-56 flex flex-col gap-3 rounded-4xl bg-muted/30 p-3 min-h-0 overflow-hidden">
+          <div className="flex-1 flex flex-col gap-0.5 min-h-[120px] overflow-y-auto" onClick={() => setSelectedItemId(null)}>
             {items.map((item) => (
               <div
                 key={item.id}
                 draggable
                 onDragStart={(e) => handleDragStart(e, item)}
-                className="group flex items-center w-full px-3 py-2 rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-grab active:cursor-grabbing"
+                onClick={(e) => { e.stopPropagation(); setSelectedItemId(selectedItemId === item.id ? null : item.id) }}
+                className={cn(
+                  "group flex items-center w-full px-3 py-2 rounded-4xl transition-colors cursor-grab active:cursor-grabbing shrink-0",
+                  selectedItemId === item.id
+                    ? "bg-primary/10"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
               >
                 <div className="flex items-center gap-3">
                   {item.icon && <span className="text-lg">{item.icon}</span>}
-                  <span className="font-medium text-sm">{item.label}</span>
+                  <div className="flex flex-col">
+                    <span className="font-medium text-sm leading-tight">{item.label}</span>
+                    {item.subText && (
+                      <span className="text-[11px] text-muted-foreground/70 leading-tight">{item.subText}</span>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
           </div>
+
+          <Button variant="outline" size="sm" onClick={onAddItem} className="w-full border-dashed border-muted-foreground/30 text-muted-foreground hover:border-muted-foreground/60 hover:text-foreground">
+            <span className="text-base leading-none">+</span>
+            Add a Template
+          </Button>
         </div>
 
-        <div className="flex-1 rounded-xl bg-card border shadow-sm overflow-hidden">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeCategoryId}
-              initial={{ opacity: 0, x: 10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              transition={{ duration: 0.3 }}
-              className="p-6"
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="shrink-0 flex items-center justify-between gap-3 min-h-[40px] px-1">
+            <div className="flex items-center gap-6 text-xs text-muted-foreground">
+              {cpuUsage && (
+                <div className="flex flex-col leading-tight">
+                  <span className="text-[10px] text-muted-foreground/50">CPU</span>
+                  <span>{cpuUsage} cores</span>
+                </div>
+              )}
+              {memoryUsage && (
+                <div className="flex flex-col leading-tight">
+                  <span className="text-[10px] text-muted-foreground/50">Memory</span>
+                  <span>{memoryUsage} GB</span>
+                </div>
+              )}
+              {deploymentStatus && (
+                <div className="flex flex-col leading-tight">
+                  <span className="text-[10px] text-muted-foreground/50">Status</span>
+                  <span>{deploymentStatus}</span>
+                </div>
+              )}
+            </div>
+            <Tabs
+              value={String(activeCategoryId ?? "")}
+              onValueChange={handleCategoryChange}
             >
-              {activeCategoryData?.content}
-            </motion.div>
-          </AnimatePresence>
+              <TabsList className="h-8">
+                {categories.map((category) => (
+                  <TabsTrigger key={category.id} value={String(category.id)} className="px-2.5 py-0.5 text-xs">
+                    {category.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+            <div className="flex items-center gap-3">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button size="sm" className="min-w-20 active:translate-y-px">Reset</Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Reset Deployment</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to remove all the deployed VMs?
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction variant="destructive">Reset</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button size="sm" className="min-w-20 active:translate-y-px">Deploy</Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Deploy Configuration</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to deploy this configuration?
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction>Deploy</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </div>
+          <div className="flex-1 rounded-4xl bg-card border shadow-sm overflow-hidden">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeCategoryId}
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                transition={{ duration: 0.3 }}
+                className="h-full"
+              >
+                {activeCategoryData?.content}
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </div>
       </div>
     </div>

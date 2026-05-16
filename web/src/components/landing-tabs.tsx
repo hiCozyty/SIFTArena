@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from "react-router-dom"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import * as backendWs from "@/lib/backend-ws"
+import { cn } from "@/lib/utils"
 import { RiTrophyLine, RiVoiceprintLine } from "@remixicon/react"
 import { LudusIcon } from "@/components/icons/ludus-icon"
 import { CalderaIcon } from "@/components/icons/caldera-icon"
@@ -15,6 +16,8 @@ import { useHealthCheck } from "@/hooks/use-health-check"
 import { ConnectionErrorContent, HealthErrorContent } from "@/components/backend-gate"
 import { LudusServerGuide } from "@/components/ludus-server-guide"
 import { InteractiveTimeline } from "@/components/interactive-timeline"
+import { YamlTopologyGui, YamlTopologySkeleton } from "@/components/yaml-topology-gui"
+import { validateRangeYaml } from "@/lib/range-yaml-validator"
 import {
   Tooltip,
   TooltipContent,
@@ -158,8 +161,32 @@ function LabRangeContent({
   const [timelineItems, setTimelineItems] = useState<Array<{ id: string; title: string; description: string; status?: string }>>([])
   const [deployActive, setDeployActive] = useState(false)
   const [goldenImageActive, setGoldenImageActive] = useState(false)
+  const [rangeYaml, setRangeYaml] = useState<string | null>(null)
+  const [yamlErrors, setYamlErrors] = useState<string[]>([])
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success">("idle")
+  const [revertStatus, setRevertStatus] = useState<"idle" | "success">("idle")
+  const [systemInfo, setSystemInfo] = useState<{ totalCpu: number; totalRam: number } | null>(null)
+  const originalRangeYamlRef = useRef<string | null>(null)
   const builtSentRef = useRef<Set<string>>(new Set())
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
+  const timelineBuiltOnceRef = useRef(false)
+
+  useEffect(() => {
+    if (timelineBuiltOnceRef.current) return
+    if (timelineItems.length === 0) return
+    if (timelineItems.every((item) => item.status === "built")) {
+      timelineBuiltOnceRef.current = true
+    }
+  }, [timelineItems])
+
+  const templateItems = useMemo(() =>
+    templatesResult.map((t, i) => ({
+      id: i,
+      label: t.name,
+      subText: t.status === "built" ? "Built" : t.status === "building" ? "Building..." : "Not Built",
+      icon: "🖥️",
+    })),
+  [templatesResult])
 
   useEffect(() => {
     if (status.type === "idle") {
@@ -543,6 +570,78 @@ setTemplatesResult(result)
 
   useEffect(() => {
     if (status.type !== "ok") return
+    if (!deployActive) return
+
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type !== "getRangeConfig") return
+      const result = data.result as { result?: string } | undefined
+      const yaml = result?.result
+      if (yaml) {
+        setRangeYaml(yaml)
+        originalRangeYamlRef.current = yaml
+      }
+      unsub()
+    })
+    backendWs.send({ type: "getRangeConfig" })
+
+    return () => unsub()
+  }, [status.type, deployActive])
+
+  useEffect(() => {
+    if (status.type !== "ok") return
+    if (!deployActive) return
+
+    console.log("[systemInfo] requesting system info...")
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type !== "systemInfo") return
+      const result = data.result as { totalCpu?: number; totalRam?: number } | undefined
+      if (result && result.totalCpu != null && result.totalRam != null) {
+        console.log("[systemInfo] received:", result)
+        setSystemInfo(result as { totalCpu: number; totalRam: number })
+      }
+      unsub()
+    })
+    backendWs.send({ type: "systemInfo" })
+
+    return () => unsub()
+  }, [status.type, deployActive])
+
+  const handleRevert = () => {
+    if (originalRangeYamlRef.current !== null) {
+      setRangeYaml(originalRangeYamlRef.current)
+      setYamlErrors([])
+    }
+    setRevertStatus("success")
+    const t = setTimeout(() => setRevertStatus("idle"), 3000)
+    timersRef.current.push(t)
+  }
+
+  const handleSave = () => {
+    if (!rangeYaml) return
+    const { valid, errors } = validateRangeYaml(rangeYaml)
+    setYamlErrors(errors)
+    if (!valid) return
+    setSaveStatus("saving")
+    backendWs.send({ type: "setRangeConfig", yaml: rangeYaml })
+  }
+
+  useEffect(() => {
+    if (status.type !== "ok") return
+    if (saveStatus !== "saving") return
+
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type !== "setRangeConfig") return
+      setSaveStatus("success")
+      const t = setTimeout(() => setSaveStatus("idle"), 3000)
+      timersRef.current.push(t)
+      unsub()
+    })
+
+    return () => unsub()
+  }, [status.type, saveStatus])
+
+  useEffect(() => {
+    if (status.type !== "ok") return
     if (!goldenImageActive) return
 
     const unsub = backendWs.subscribe((data) => {
@@ -786,6 +885,28 @@ setTemplatesResult(result)
         </div>
         <InteractiveTimeline items={timelineItems} maxItems={3} />
         <div className="mt-4">
+          {timelineBuiltOnceRef.current && rangeYaml !== null ? (
+            <YamlTopologyGui
+              className="h-[420px] w-[780px]"
+              cpuUsage={systemInfo ? String(systemInfo.totalCpu) : undefined}
+              memoryUsage={systemInfo ? String(systemInfo.totalRam) : undefined}
+              deploymentStatus="Deployed"
+              items={templateItems}
+              yamlContent={rangeYaml}
+              onYamlChange={(yaml) => { setRangeYaml(yaml); setYamlErrors([]) }}
+              onSave={handleSave}
+              onRevert={handleRevert}
+              saveDisabled={saveStatus === "saving"}
+              yamlErrors={yamlErrors}
+              yamlLoading={false}
+              saveStatus={saveStatus}
+              revertStatus={revertStatus}
+            />
+          ) : (
+            <YamlTopologySkeleton className="h-[420px] w-[780px]" />
+          )}
+        </div>
+        <div className="mt-4">
           {completed ? (
             <p className="text-sm text-green-600">✓ Lab Range setup completed</p>
           ) : (
@@ -1026,3 +1147,5 @@ export function LandingTabs({
     </div>
   )
 }
+
+
