@@ -170,6 +170,23 @@
     scrollbar-color: var(--border) transparent;
     scrollbar-width: thin;
   }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-button {
+    display: none;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 4px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted-foreground);
+  }
   body {
     @apply bg-background text-foreground;
     letter-spacing: var(--tracking-normal);

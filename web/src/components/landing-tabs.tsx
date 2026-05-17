@@ -11,13 +11,15 @@ import { BrandSpeedtestIcon } from "@/components/icons/tabler-brand-speedtest"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
 import { Loader2, Lock, Info } from "lucide-react"
 import { useHealthCheck } from "@/hooks/use-health-check"
 import { ConnectionErrorContent, HealthErrorContent } from "@/components/backend-gate"
 import { LudusServerGuide } from "@/components/ludus-server-guide"
 import { InteractiveTimeline } from "@/components/interactive-timeline"
 import { YamlTopologyGui, YamlTopologySkeleton } from "@/components/yaml-topology-gui"
-import { validateRangeYaml } from "@/lib/range-yaml-validator"
+import { validateRangeYaml, isYamlContentEqual } from "@/lib/range-yaml-validator"
+import type { DeploymentStatus } from "@/components/ui/tabs-fancy"
 import {
   Tooltip,
   TooltipContent,
@@ -100,10 +102,29 @@ function getPrerequisite(section: string): string | undefined {
   return PREREQUISITES[section]
 }
 
+function TabContentCard({
+  className,
+  children,
+}: {
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-4xl border bg-card text-card-foreground shadow-sm h-[80vh]",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  )
+}
+
 function LeaderboardContent() {
   const Icon = TAB_ICONS["Leaderboard"]
   return (
-    <div className="rounded-lg border bg-card p-6 text-card-foreground shadow-sm">
+    <TabContentCard className="p-6">
       <div className="mb-4 flex items-center gap-3">
         <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
           <Icon className="size-5 text-primary" />
@@ -116,7 +137,7 @@ function LeaderboardContent() {
       <p className="text-muted-foreground text-sm">
         Content for <strong>Leaderboard</strong> goes here.
       </p>
-    </div>
+    </TabContentCard>
   )
 }
 
@@ -146,7 +167,6 @@ function isReallyBuilt(t: { built: boolean; status: string }): boolean {
 }
 
 function LabRangeContent({
-  completed,
   onComplete,
 }: {
   completed: boolean
@@ -163,13 +183,19 @@ function LabRangeContent({
   const [goldenImageActive, setGoldenImageActive] = useState(false)
   const [rangeYaml, setRangeYaml] = useState<string | null>(null)
   const [yamlErrors, setYamlErrors] = useState<string[]>([])
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success">("idle")
+  const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "no-changes">("idle")
   const [revertStatus, setRevertStatus] = useState<"idle" | "success">("idle")
+  const [deploymentStatus, setDeploymentStatus] = useState<DeploymentStatus>("Not Deployed")
+  const [isDeploying, setIsDeploying] = useState(false)
   const [systemInfo, setSystemInfo] = useState<{ totalCpu: number; totalRam: number } | null>(null)
-  const originalRangeYamlRef = useRef<string | null>(null)
+  const lastSavedDraftRef = useRef<string | null>(null)
+  const serverYamlRef = useRef<string | null>(null)
   const builtSentRef = useRef<Set<string>>(new Set())
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
   const timelineBuiltOnceRef = useRef(false)
+  const redeployRef = useRef(false)
+  const onCompleteRef = useRef(onComplete)
+  onCompleteRef.current = onComplete
 
   useEffect(() => {
     if (timelineBuiltOnceRef.current) return
@@ -187,6 +213,19 @@ function LabRangeContent({
       icon: "🖥️",
     })),
   [templatesResult])
+
+  const isStale = useMemo(() => {
+    if (rangeYaml === null || serverYamlRef.current === null) return false
+    return !isYamlContentEqual(rangeYaml, serverYamlRef.current)
+  }, [rangeYaml])
+
+  useEffect(() => {
+    if (deploymentStatus === "Deployed" && isStale) {
+      setDeploymentStatus("Deployed (stale)")
+    } else if (deploymentStatus === "Deployed (stale)" && !isStale) {
+      setDeploymentStatus("Deployed")
+    }
+  }, [isStale, deploymentStatus])
 
   useEffect(() => {
     if (status.type === "idle") {
@@ -347,8 +386,9 @@ setTemplatesResult(result)
     if (status.type !== "ok") return
     if (!deployActive) return
 
-    type Phase = "check" | "deleting" | "deploying"
-    const phaseRef: { current: Phase } = { current: "check" }
+    type Phase = "saving-config" | "check" | "deleting" | "deploying"
+    const isRedeploy = redeployRef.current
+    const phaseRef: { current: Phase } = { current: isRedeploy ? "saving-config" : "check" }
     const seenVMsRef: { current: Set<string> } = { current: new Set() }
 
     const VM_LABELS: Record<string, string> = {
@@ -365,18 +405,48 @@ setTemplatesResult(result)
 
     const VM_ORDER = ["router", "kali", "windows"]
 
+    if (isRedeploy) {
+      redeployRef.current = false
+      setTimelineItems((prev) => {
+        const capped = prev.length >= 10 ? prev.slice(prev.length - 9) : prev
+        return [...capped, { id: "redeploy-save", title: "Saving configuration", description: "sending config...", status: "building" }]
+      })
+      backendWs.send({ type: "setRangeConfig", yaml: rangeYaml! })
+    }
+
     const unsub = backendWs.subscribe((data) => {
+      if (isRedeploy && data.type === "setRangeConfig" && phaseRef.current === "saving-config") {
+        serverYamlRef.current = lastSavedDraftRef.current
+        phaseRef.current = "deleting"
+        setTimelineItems((prev) =>
+          prev.map((item) =>
+            item.id === "redeploy-save"
+              ? { ...item, title: "Configuration saved", description: "", status: "built" }
+              : item
+          )
+        )
+        setTimelineItems((prev) => [
+          ...prev,
+          { id: "redeploy-delete", title: "Removing existing VMs", description: "deleting...", status: "building" },
+        ])
+        backendWs.send({ type: "deleteRangeVMs", all: true })
+        return
+      }
+
       if (data.type === "deleteRangeVMs") {
         if (phaseRef.current !== "deleting") return
         phaseRef.current = "deploying"
         seenVMsRef.current = new Set()
-        setTimelineItems((prev) =>
-          prev.map((item) =>
-            item.id === "check-vms"
-              ? { ...item, title: "Deploying range", description: "starting deployment...", status: "building" }
-              : item
+        setTimelineItems((prev) => {
+          const updated = prev.map((item) =>
+            item.id === "redeploy-delete"
+              ? { ...item, title: "Existing VMs removed", description: "", status: "built" }
+              : item.id === "check-vms"
+                ? { ...item, title: "Deploying range", description: "starting deployment...", status: "building" }
+                : item
           )
-        )
+          return [...updated, { id: "redeploy-deploy", title: "Deploying range", description: "starting deployment...", status: "building" }]
+        })
         backendWs.send({ type: "subscribe", channel: "rangeStatus" })
         backendWs.send({ type: "deployAllBaseVMs" })
         return
@@ -433,6 +503,7 @@ setTemplatesResult(result)
             backendWs.send({ type: "prepareGoldenImage" })
           }, 600)
           setDeployActive(false)
+          setDeploymentStatus("Deployed")
           unsub()
           return
         }
@@ -553,12 +624,16 @@ setTemplatesResult(result)
         setGoldenImageActive(true)
         backendWs.send({ type: "prepareGoldenImage" })
         setDeployActive(false)
+        setDeploymentStatus("Deployed")
+        setIsDeploying(false)
         unsub()
         backendWs.send({ type: "unsubscribe", channel: "rangeStatus" })
       }
     })
 
-    backendWs.send({ type: "rangeStatus" })
+    if (!isRedeploy) {
+      backendWs.send({ type: "rangeStatus" })
+    }
 
     return () => {
       backendWs.send({ type: "unsubscribe", channel: "rangeStatus" })
@@ -578,7 +653,8 @@ setTemplatesResult(result)
       const yaml = result?.result
       if (yaml) {
         setRangeYaml(yaml)
-        originalRangeYamlRef.current = yaml
+        lastSavedDraftRef.current = yaml
+        serverYamlRef.current = yaml
       }
       unsub()
     })
@@ -607,8 +683,9 @@ setTemplatesResult(result)
   }, [status.type, deployActive])
 
   const handleRevert = () => {
-    if (originalRangeYamlRef.current !== null) {
-      setRangeYaml(originalRangeYamlRef.current)
+    if (serverYamlRef.current !== null) {
+      setRangeYaml(serverYamlRef.current)
+      lastSavedDraftRef.current = serverYamlRef.current
       setYamlErrors([])
     }
     setRevertStatus("success")
@@ -618,27 +695,45 @@ setTemplatesResult(result)
 
   const handleSave = () => {
     if (!rangeYaml) return
+    if (lastSavedDraftRef.current !== null && isYamlContentEqual(rangeYaml, lastSavedDraftRef.current)) {
+      setSaveStatus("no-changes")
+      const t = setTimeout(() => setSaveStatus("idle"), 3000)
+      timersRef.current.push(t)
+      return
+    }
     const { valid, errors } = validateRangeYaml(rangeYaml)
     setYamlErrors(errors)
     if (!valid) return
-    setSaveStatus("saving")
-    backendWs.send({ type: "setRangeConfig", yaml: rangeYaml })
+    lastSavedDraftRef.current = rangeYaml
+    setSaveStatus("success")
+    const t = setTimeout(() => setSaveStatus("idle"), 3000)
+    timersRef.current.push(t)
   }
 
-  useEffect(() => {
-    if (status.type !== "ok") return
-    if (saveStatus !== "saving") return
+  const handleDeploy = () => {
+    if (deploymentStatus === "Deployed") return
+    if (deploymentStatus === "Not Deployed" || deploymentStatus === "Deployed (stale)") {
+      if (isStale && rangeYaml) {
+        lastSavedDraftRef.current = rangeYaml
+      }
+      setIsDeploying(true)
+      setDeploymentStatus("Deploying")
+      redeployRef.current = true
+      setDeployActive(true)
+    }
+  }
 
+  const handleReset = () => {
+    setIsDeploying(true)
+    setDeploymentStatus("Resetting")
     const unsub = backendWs.subscribe((data) => {
-      if (data.type !== "setRangeConfig") return
-      setSaveStatus("success")
-      const t = setTimeout(() => setSaveStatus("idle"), 3000)
-      timersRef.current.push(t)
+      if (data.type !== "deleteRangeVMs") return
+      setDeploymentStatus("Not Deployed")
+      setIsDeploying(false)
       unsub()
     })
-
-    return () => unsub()
-  }, [status.type, saveStatus])
+    backendWs.send({ type: "deleteRangeVMs", all: true })
+  }
 
   useEffect(() => {
     if (status.type !== "ok") return
@@ -651,6 +746,8 @@ setTemplatesResult(result)
 
       if (prepared.length === 0) {
         setGoldenImageActive(false)
+        setDeploymentStatus("Deployed")
+        onCompleteRef.current()
         unsub()
         return
       }
@@ -671,6 +768,8 @@ setTemplatesResult(result)
           ),
         )
         setGoldenImageActive(false)
+        setDeploymentStatus("Deployed")
+        onCompleteRef.current()
         unsub()
       } else {
         for (let i = 1; i <= prepared.length; i++) {
@@ -703,6 +802,8 @@ setTemplatesResult(result)
                 ),
               )
               setGoldenImageActive(false)
+              setDeploymentStatus("Deployed")
+              onCompleteRef.current()
               unsub()
             }
           }, i * 1200)
@@ -873,8 +974,8 @@ setTemplatesResult(result)
 
   return (
     <>
-      <div className="rounded-lg border bg-card p-6 text-card-foreground shadow-sm">
-        <div className="mb-4 flex items-center gap-3">
+      <TabContentCard className="p-6 flex flex-col min-h-0">
+        <div className="mb-4 flex shrink-0 items-center gap-3">
           <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
             <LudusIcon className="size-6 text-primary" />
           </div>
@@ -883,37 +984,36 @@ setTemplatesResult(result)
             <p className="text-muted-foreground text-sm">Lab provisioning and management</p>
           </div>
         </div>
-        <InteractiveTimeline items={timelineItems} maxItems={3} />
-        <div className="mt-4">
+        <div className="shrink-0">
+          <InteractiveTimeline items={timelineItems} maxItems={3} />
+        </div>
+        <Separator className="mt-4" />
+        <div className="mt-4 flex-1 min-h-0 overflow-hidden">
           {timelineBuiltOnceRef.current && rangeYaml !== null ? (
             <YamlTopologyGui
-              className="h-[420px] w-[780px]"
+              className="h-full w-full"
               cpuUsage={systemInfo ? String(systemInfo.totalCpu) : undefined}
               memoryUsage={systemInfo ? String(systemInfo.totalRam) : undefined}
-              deploymentStatus="Deployed"
+              deploymentStatus={deploymentStatus}
+              isDeploying={isDeploying}
               items={templateItems}
               yamlContent={rangeYaml}
               onYamlChange={(yaml) => { setRangeYaml(yaml); setYamlErrors([]) }}
               onSave={handleSave}
               onRevert={handleRevert}
-              saveDisabled={saveStatus === "saving"}
+              saveDisabled={saveStatus !== "idle"}
               yamlErrors={yamlErrors}
               yamlLoading={false}
               saveStatus={saveStatus}
               revertStatus={revertStatus}
+              onDeploy={handleDeploy}
+              onReset={handleReset}
             />
           ) : (
-            <YamlTopologySkeleton className="h-[420px] w-[780px]" />
+            <YamlTopologySkeleton className="h-full w-full" />
           )}
         </div>
-        <div className="mt-4">
-          {completed ? (
-            <p className="text-sm text-green-600">✓ Lab Range setup completed</p>
-          ) : (
-            <Button onClick={() => { onComplete(); }}>Complete Lab Range Setup</Button>
-          )}
-        </div>
-      </div>
+      </TabContentCard>
       <LudusServerGuide open={showGuide} onOpenChange={setShowGuide} />
     </>
   )
@@ -928,7 +1028,7 @@ function AttackConfigurationContent({
 }) {
   const Icon = TAB_ICONS["Attack Configuration"]
   return (
-    <div className="rounded-lg border bg-card p-6 text-card-foreground shadow-sm">
+    <TabContentCard className="p-6">
       <div className="mb-4 flex items-center gap-3">
         <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
           <Icon className="size-6 text-primary" />
@@ -948,14 +1048,14 @@ function AttackConfigurationContent({
           <Button onClick={onComplete}>Complete Attack Configuration</Button>
         )}
       </div>
-    </div>
+    </TabContentCard>
   )
 }
 
 function SnrContent() {
   const Icon = TAB_ICONS["SnR"]
   return (
-    <div className="rounded-lg border bg-card p-6 text-card-foreground shadow-sm">
+    <TabContentCard className="p-6">
       <div className="mb-4 flex items-center gap-3">
         <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
           <Icon className="size-5 text-primary" />
@@ -968,7 +1068,7 @@ function SnrContent() {
       <p className="text-muted-foreground text-sm">
         Content for <strong>SnR</strong> goes here.
       </p>
-    </div>
+    </TabContentCard>
   )
 }
 
@@ -981,7 +1081,7 @@ function SiftAgentContent({
 }) {
   const Icon = TAB_ICONS["SIFT Agent"]
   return (
-    <div className="rounded-lg border bg-card p-6 text-card-foreground shadow-sm">
+    <TabContentCard className="p-6">
       <div className="mb-4 flex items-center gap-3">
         <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
           <Icon className="size-[1.375rem] text-primary" />
@@ -1001,14 +1101,14 @@ function SiftAgentContent({
           <Button onClick={onConfigured}>Configure SIFT Agent</Button>
         )}
       </div>
-    </div>
+    </TabContentCard>
   )
 }
 
 function BenchmarkContent() {
   const Icon = TAB_ICONS["Run Benchmark"]
   return (
-    <div className="rounded-lg border bg-card p-6 text-card-foreground shadow-sm">
+    <TabContentCard className="p-6">
       <div className="mb-4 flex items-center gap-3">
         <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
           <Icon className="size-5 text-primary" />
@@ -1021,14 +1121,14 @@ function BenchmarkContent() {
       <p className="text-muted-foreground text-sm">
         Content for <strong>Run Benchmark</strong> goes here.
       </p>
-    </div>
+    </TabContentCard>
   )
 }
 
 function KnowledgeGraphContent() {
   const Icon = TAB_ICONS["Knowledge Graph"]
   return (
-    <div className="rounded-lg border bg-card p-6 text-card-foreground shadow-sm">
+    <TabContentCard className="p-6">
       <div className="mb-4 flex items-center gap-3">
         <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
           <Icon className="size-5 text-primary" />
@@ -1043,7 +1143,7 @@ function KnowledgeGraphContent() {
       <p className="text-muted-foreground text-sm">
         Content for <strong>Knowledge Graph</strong> goes here.
       </p>
-    </div>
+    </TabContentCard>
   )
 }
 
@@ -1058,7 +1158,7 @@ function LockedContent({
   const targetPath = TAB_PATHS[prerequisite]
 
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border bg-card py-16 text-card-foreground shadow-sm">
+    <TabContentCard className="py-16 flex flex-col items-center justify-center">
       <Lock className="mb-4 size-12 text-muted-foreground" />
       <h3 className="mb-2 text-lg font-semibold">{section} is locked</h3>
       <p className="mb-6 text-sm text-muted-foreground">
@@ -1067,7 +1167,7 @@ function LockedContent({
       <Button onClick={() => navigate(targetPath, { replace: true })}>
         Go to {prerequisite}
       </Button>
-    </div>
+    </TabContentCard>
   )
 }
 

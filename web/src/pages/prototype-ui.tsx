@@ -23,6 +23,8 @@ export function PrototypeUI() {
           memoryUsage="6/21"
           deploymentStatus="Deployed"
           onRevert={() => {}}
+          onDeploy={() => {}}
+          onReset={() => {}}
         />
       </section>
 

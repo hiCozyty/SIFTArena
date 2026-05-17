@@ -24,7 +24,7 @@ export interface AppleDockProps {
 const DEFAULT_SIZE = 40
 
 const appleDockVariants =
-  "mx-auto mt-8 flex h-[58px] w-max items-center justify-center gap-2 rounded-2xl border p-2 backdrop-blur-md supports-backdrop-blur:bg-white/10 supports-backdrop-blur:dark:bg-black/10"
+  "mx-auto mt-8 flex h-[58px] w-max items-center justify-center gap-2 rounded-4xl border p-2 backdrop-blur-md supports-backdrop-blur:bg-white/10 supports-backdrop-blur:dark:bg-black/10"
 
 function AppleDockInner({
   children,
