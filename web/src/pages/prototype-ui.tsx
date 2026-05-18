@@ -1,4 +1,4 @@
-import { YamlTopologyGui, YamlTopologySkeleton } from "@/components/yaml-topology-gui"
+import { TreeDemo } from "@/components/tree-demo"
 
 export function PrototypeUI() {
   return (
@@ -13,27 +13,11 @@ export function PrototypeUI() {
       <p className="text-sm text-muted-foreground">Prototyping the real feature</p>
 
       <section>
-        <h2 className="font-heading mb-1 text-xl font-semibold tracking-tight">YAML + Topology GUI</h2>
+        <h2 className="font-heading mb-1 text-xl font-semibold tracking-tight">Tree View</h2>
         <p className="mb-4 text-sm text-muted-foreground">
-          Lab environment editor with YAML config and topology view.
+          Tree component from kibo-ui with custom icons.
         </p>
-        <YamlTopologyGui
-          className="h-[300px] w-[780px]"
-          cpuUsage="4/12"
-          memoryUsage="6/21"
-          deploymentStatus="Deployed"
-          onRevert={() => {}}
-          onDeploy={() => {}}
-          onReset={() => {}}
-        />
-      </section>
-
-      <section>
-        <h2 className="font-heading mb-1 text-xl font-semibold tracking-tight">Skeleton Loader</h2>
-        <p className="mb-4 text-sm text-muted-foreground">
-          Loading state shown while YAML config is being fetched.
-        </p>
-        <YamlTopologySkeleton className="h-[300px] w-[780px]" />
+        <TreeDemo />
       </section>
     </div>
   )

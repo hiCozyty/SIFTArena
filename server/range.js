@@ -62,6 +62,17 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+async function destroyZombieVMs(host) {
+  try {
+    const raw = await $`ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 root@${host} "qm list --output-format=json 2>/dev/null"`.quiet().text()
+    const vms = JSON.parse(raw)
+    for (const vm of vms) {
+      if (vm.name?.endsWith("-template")) continue
+      await $`ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 root@${host} "qm stop ${vm.vmid} 2>/dev/null; qm destroy ${vm.vmid} 2>/dev/null"`.quiet()
+    }
+  } catch {}
+}
+
 async function waitForVMIP(ludusUrl, apiKey, vmName, timeoutSecs = 120) {
   for (let i = 0; i < timeoutSecs / 5; i++) {
     const range = await apiCall(ludusUrl, apiKey, "/range")
@@ -178,6 +189,15 @@ async function removeSnapshot(ludusUrl, apiKey, proxmoxID, rangeId, snapshotName
   }
 }
 
+export async function abortRange(ludusUrl, apiKey, data) {
+  let path = "/range/abort"
+  const params = []
+  if (data?.rangeID) params.push(`rangeID=${data.rangeID}`)
+  if (data?.userID) params.push(`userID=${data.userID}`)
+  if (params.length > 0) path += "?" + params.join("&")
+  return await apiCall(ludusUrl, apiKey, path, "POST")
+}
+
 let prevLogMeta = { entryId: null, log: "", staleStart: 0 }
 
 export async function fetchRangeWithLog(ludusUrl, apiKey) {
@@ -245,6 +265,14 @@ export async function fetchRangeWithLog(ludusUrl, apiKey) {
 }
 
 export async function deleteRangeVMs(ludusUrl, apiKey, data) {
+  if (data?.force) {
+    const range = await apiCall(ludusUrl, apiKey, "/range")
+    await apiCall(ludusUrl, apiKey, `/range/${range.rangeID}/vms`, "DELETE")
+    const host = new URL(ludusUrl).hostname
+    await destroyZombieVMs(host)
+    return { result: "Range VMs destroy in progress" }
+  }
+
   const range = await apiCall(ludusUrl, apiKey, "/range")
   const vms = range.VMs ?? []
 
@@ -273,6 +301,9 @@ export async function deleteRangeVMs(ludusUrl, apiKey, data) {
     deleted.push(vm.name)
   }
 
+  const host = new URL(ludusUrl).hostname
+  await destroyZombieVMs(host)
+
   return { deleted: deleted.length, names: deleted }
 }
 
@@ -299,6 +330,8 @@ export async function deleteVM(ludusUrl, apiKey, data) {
   }
 
   await apiCall(ludusUrl, apiKey, `/vm/${target.proxmoxID}`, "DELETE")
+  const host = new URL(ludusUrl).hostname
+  await destroyZombieVMs(host)
   return { deleted: target.name }
 }
 

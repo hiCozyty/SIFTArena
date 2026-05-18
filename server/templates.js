@@ -1,3 +1,5 @@
+import { $ } from "bun"
+
 async function apiGet(ludusUrl, apiKey, path) {
   const response = await fetch(`${ludusUrl}${path}`, {
     headers: { "X-API-KEY": apiKey },
@@ -40,7 +42,22 @@ export async function fetchTemplatesWithLog(ludusUrl, apiKey) {
   return [templates, { latestLog, logEmpty }]
 }
 
+async function destroyExistingTemplates(host, templateNames) {
+  try {
+    const raw = await $`ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 root@${host} "qm list --output-format=json 2>/dev/null"`.quiet().text()
+    const vms = JSON.parse(raw)
+    for (const name of templateNames) {
+      const vmName = name.endsWith("-template") ? name : `${name}-template`
+      const match = vms.find(v => v.name === vmName)
+      if (!match) continue
+      await $`ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 root@${host} "qm stop ${match.vmid} 2>/dev/null; qm destroy ${match.vmid} 2>/dev/null"`.quiet()
+    }
+  } catch {}
+}
+
 export async function buildTemplates(ludusUrl, apiKey, { templates, parallel }) {
+  const host = new URL(ludusUrl).hostname
+  await destroyExistingTemplates(host, templates)
   const body = { templates }
   if (parallel !== undefined) body.parallel = parallel
 

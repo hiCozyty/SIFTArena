@@ -35,7 +35,7 @@ interface CommandDialogProps extends DialogProps {}
 const CommandDialog = ({ children, ...props }: CommandDialogProps) => {
   return (
     <Dialog {...props}>
-      <DialogContent className="max-w-2xl overflow-hidden rounded-2xl p-0 shadow-2xl">
+      <DialogContent className="max-w-2xl overflow-hidden rounded-4xl sm:rounded-4xl p-0 shadow-2xl">
         <DialogTitle className="sr-only">
           Ludus Server Installation Guide
         </DialogTitle>

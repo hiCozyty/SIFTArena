@@ -14,6 +14,7 @@ export function AppLayout() {
         attackConfigCompleted={attackConfigCompleted}
         siftAgentConfigured={siftAgentConfigured}
         onLabRangeComplete={() => setLabRangeCompleted(true)}
+        onLabRangeReset={() => setLabRangeCompleted(false)}
         onAttackConfigComplete={() => setAttackConfigCompleted(true)}
         onSiftAgentConfigured={() => setSiftAgentConfigured(true)}
       />

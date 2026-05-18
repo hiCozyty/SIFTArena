@@ -11,31 +11,24 @@ import { Card, CardContent } from "@/components/ui/card"
 
 const steps = [
   {
-    title: "Step 1: Fresh Install Debian",
+    title: "Step 1: Install Proxmox VE 9.1",
     content: (
       <>
         <p className="mb-3">
-          Get the debian-13.x.x-amd64-netinst.iso from{" "}
+          Download the Proxmox VE 9.1 ISO Installer from{" "}
           <a
-            href="https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/"
+            href="https://www.proxmox.com/en/downloads/"
             target="_blank"
             rel="noopener noreferrer"
             className="text-primary hover:underline"
           >
-            https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/
+            https://www.proxmox.com/en/downloads/
           </a>
         </p>
         <p className="text-sm text-muted-foreground">
-          During installation, select <strong>SSH server</strong> and uncheck{" "}
-          <strong>Debian desktop environment</strong>.
-        </p>
-        <img
-          src="https://docs.ludus.cloud/assets/images/debian-12-install-3eb931bef478e615752b971d74a8e0ce.png"
-          alt="Debian installation screen"
-          className="mt-3 max-w-full rounded-lg border"
-        />
-        <p className="mt-2 text-xs text-muted-foreground italic">
-          Source: docs.ludus.cloud
+          <strong>IMPORTANT:</strong> During installation, select{" "}
+          <strong>ext4</strong> first, then convert to{" "}
+          <strong>ZFS (RAID0)</strong> when prompted.
         </p>
       </>
     ),
@@ -45,18 +38,14 @@ const steps = [
     content: (
       <>
         <p className="mb-3">
-          SSH into your Debian machine and run the following commands:
+          SSH into your Proxmox machine and run the following commands as root:
         </p>
         <div className="mb-3 overflow-x-auto rounded-lg bg-muted p-3 text-sm">
           <pre className="whitespace-pre-wrap">
-            {`ssh user@debian
-su - # Enter root password to elevate to root
-
-# Install prerequisites
-apt update && apt install curl sudo ca-certificates
-
-# All-in-one command
-curl --proto '=https' --tlsv1.2 -sSf https://ludus.cloud/install | bash
+            {`root@proxmox:~# echo "# disabled enterprise repo" > /etc/apt/sources.list.d/pve-enterprise.sources
+root@proxmox:~# echo "# disabled enterprise repo" > /etc/apt/sources.list.d/ceph.sources
+root@proxmox:~# apt update && apt install curl sudo ca-certificates
+root@proxmox:~# curl --proto '=https' --tlsv1.2 -sSf https://ludus.cloud/install | bash
 `}
           </pre>
         </div>
@@ -199,7 +188,7 @@ export function LudusServerGuide({
               {steps.map((step) => (
                 <Card
                   key={step.title}
-                  className="rounded-xl border py-3 !shadow-none !ring-0"
+                  className="rounded-4xl border py-3 !shadow-none !ring-0"
                 >
                   <CardContent className="px-3 py-0">
                     <h3 className="mt-0 mb-0 text-center text-lg font-semibold">

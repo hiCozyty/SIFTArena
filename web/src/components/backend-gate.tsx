@@ -37,7 +37,7 @@ export function ConnectionErrorContent({
       <p className="text-sm text-muted-foreground">
         Could not connect to the backend server. Make sure it is running:
       </p>
-      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm font-mono">
+      <div className="flex items-center gap-2 rounded-4xl bg-muted px-3 py-2 text-sm font-mono">
         <span className="min-w-0 grow truncate">{SERVER_CMD}</span>
         <CopyButton text={SERVER_CMD} />
       </div>
@@ -79,16 +79,16 @@ export function HealthErrorContent({
               ? "LUDUS_API_KEY is not configured"
               : "Health check failed"}
         </AlertTitle>
-        <AlertDescription>
-          {isMissingUrl
-            ? "Set the Ludus server URL in the server configuration file."
-            : isMissingKey
-              ? "Set the Ludus API key in the server configuration file."
-              : detail || "An unknown error occurred."}
-        </AlertDescription>
+        {isMissingUrl || isMissingKey ? (
+          <AlertDescription>
+            {isMissingUrl
+              ? "Set the Ludus server URL in the server configuration file."
+              : "Set the Ludus API key in the server configuration file."}
+          </AlertDescription>
+        ) : null}
       </Alert>
 
-      <div className="rounded-lg bg-muted p-3">
+      <div className="rounded-4xl bg-muted p-3">
         <div className="flex items-center gap-2 text-xs">
           <FileText className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="font-mono text-muted-foreground">/.env</span>
@@ -113,7 +113,7 @@ export function HealthErrorContent({
         <p className="mb-2 text-sm text-muted-foreground">
           Get your API key from the Ludus Server:
         </p>
-        <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm font-mono">
+        <div className="flex items-center gap-2 rounded-4xl bg-muted px-3 py-2 text-sm font-mono">
           <span className="min-w-0 grow truncate">ludus-install-status</span>
           <CopyButton text="ludus-install-status" />
         </div>
