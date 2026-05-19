@@ -74,6 +74,7 @@ async function destroyZombieVMs(host) {
 }
 
 async function waitForVMIP(ludusUrl, apiKey, vmName, timeoutSecs = 120) {
+  console.log(`[waitForVMIP] polling ${vmName} for IP (timeout=${timeoutSecs}s)`)
   for (let i = 0; i < timeoutSecs / 5; i++) {
     const range = await apiCall(ludusUrl, apiKey, "/range")
     const vm = range.VMs?.find(v => v.name === vmName)
@@ -126,6 +127,7 @@ async function waitForConnectivity(ludusUrl, apiKey, vmName, ip, isWindows) {
   const ports = isWindows ? [5985, 5986] : [22]
   let readyPort = null
 
+  console.log(`[waitForConnectivity] waiting for ports ${ports} on ${ip} (${vmName})`)
   for (let i = 0; i < 60; i++) {
     for (const port of ports) {
       try {
@@ -139,6 +141,7 @@ async function waitForConnectivity(ludusUrl, apiKey, vmName, ip, isWindows) {
   }
   if (!readyPort) throw new Error(`Timeout: ports ${ports.join(",")} not reachable on ${ip} (${vmName})`)
 
+  console.log(`[waitForConnectivity] running ansible ping on ${vmName}...`)
   const inventoryText = cachedInventory || await fetchAnsibleInventory(ludusUrl, apiKey)
   const escaped = inventoryText.replace(/'/g, "'\\''")
   if (isWindows) {
@@ -146,6 +149,7 @@ async function waitForConnectivity(ludusUrl, apiKey, vmName, ip, isWindows) {
   } else {
     await $`bash -c "uv run ansible ${vmName} -i <(echo '${escaped}') -m ping"`
   }
+  console.log(`[waitForConnectivity] ansible ping ok`)
 }
 
 async function snapshotExists(ludusUrl, apiKey, proxmoxID, rangeId, snapshotName) {
@@ -491,4 +495,138 @@ export async function prepareGoldenImage(ludusUrl, apiKey, data) {
 
   log(`done ${JSON.stringify(prepared.map(p => ({ label: p.label, ip: p.ip, created: p.created })))}`)
   return { prepared }
+}
+function findVM(vms, label) {
+  const vm = vms.find(v => v.name === label || v.name?.includes(label))
+  if (!vm) throw new Error(`VM matching "${label}" not found`)
+  return vm
+}
+
+export async function restoreToBaseClean(ludusUrl, apiKey, data) {
+  const { label } = data
+  const timings = {}
+  const tStart = performance.now()
+
+  const t0 = performance.now()
+  const range = await apiCall(ludusUrl, apiKey, "/range")
+  timings.fetchRange_ms = performance.now() - t0
+
+  const vm = findVM(range.VMs ?? [], label)
+  const rangeId = process.env.LUDUS_RANGE_ID || "ty"
+  const isWindows = vm.name?.includes("win") || vm.name?.includes("WIN")
+
+  const tRollback = performance.now()
+  const rbResult = await apiCall(ludusUrl, apiKey, `/snapshots/rollback?rangeID=${rangeId}`, "POST", {
+    vmids: [vm.proxmoxID],
+    name: "base-clean",
+  })
+  if (rbResult?.errors?.length) throw new Error(`Rollback failed: ${rbResult.errors[0].error}`)
+  timings.rollback_ms = performance.now() - tRollback
+
+  const tIp = performance.now()
+  let ip = null
+  for (let i = 0; i < 24; i++) {
+    const cur = await apiCall(ludusUrl, apiKey, "/range")
+    const curVm = cur.VMs?.find(v => v.name === vm.name)
+    if (curVm?.ip && curVm.ip !== "null") {
+      ip = curVm.ip
+      break
+    }
+    await sleep(5000)
+  }
+  if (!ip) throw new Error(`Timeout waiting for IP on ${vm.name}`)
+  timings.ipWait_ms = performance.now() - tIp
+
+  const tTcp = performance.now()
+  const ports = isWindows ? [5985, 5986] : [22]
+  let readyPort = null
+  for (let i = 0; i < 60; i++) {
+    for (const port of ports) {
+      try {
+        await $`bash -c "timeout 1 bash -c '</dev/tcp/${ip}/${port}' 2>/dev/null"`.quiet()
+        readyPort = port
+        break
+      } catch {}
+    }
+    if (readyPort) break
+    await sleep(2000)
+  }
+  if (!readyPort) throw new Error(`Timeout: ports ${ports.join(",")} not reachable on ${ip} (${vm.name})`)
+  timings.tcpPortWait_ms = performance.now() - tTcp
+
+  const tInventory = performance.now()
+  const inventoryText = getCachedInventory() || await fetchAnsibleInventory(ludusUrl, apiKey)
+  timings.fetchInventory_ms = performance.now() - tInventory
+
+  const tPing = performance.now()
+  const escaped = inventoryText.replace(/'/g, "'\\''")
+  const ansibleCmd = isWindows
+    ? `uv run ansible ${vm.name} -i <(echo '${escaped}') -m win_ping -e 'ansible_winrm_read_timeout_sec=10 ansible_winrm_operation_timeout_sec=5'`
+    : `uv run ansible ${vm.name} -i <(echo '${escaped}') -m ping`
+  await $`bash -c "${ansibleCmd}"`.quiet()
+  timings.ansiblePing_ms = performance.now() - tPing
+
+  timings.connectivityWait_ms = timings.tcpPortWait_ms + timings.fetchInventory_ms + timings.ansiblePing_ms
+  timings.totalDowntime_ms = performance.now() - tStart
+
+  return { vm: vm.name, ip, timings }
+}
+
+export async function listSnapshots(ludusUrl, apiKey, data) {
+  const { label } = data
+  const range = await apiCall(ludusUrl, apiKey, "/range")
+  const vm = findVM(range.VMs ?? [], label)
+  const rangeId = process.env.LUDUS_RANGE_ID || "ty"
+  const qs = `rangeID=${rangeId}&vmids=${vm.proxmoxID}`
+  const result = await apiCall(ludusUrl, apiKey, `/snapshots/list?${qs}`)
+  return { vm: vm.name, snapshots: result?.snapshots || [] }
+}
+
+export async function saveBaseClean(ludusUrl, apiKey, data) {
+  const { label } = data
+  const timings = {}
+  const tStart = performance.now()
+  console.log(`[saveBaseClean] start label="${label}"`)
+
+  const t0 = performance.now()
+  const range = await apiCall(ludusUrl, apiKey, "/range")
+  timings.fetchRange_ms = performance.now() - t0
+  console.log(`[saveBaseClean] range fetched in ${Math.round(timings.fetchRange_ms)}ms`)
+
+  const vm = findVM(range.VMs ?? [], label)
+  const rangeId = process.env.LUDUS_RANGE_ID || "ty"
+  const isWindows = vm.name?.includes("win") || vm.name?.includes("WIN")
+  console.log(`[saveBaseClean] found vm="${vm.name}" ip="${vm.ip}" isWindows=${isWindows}`)
+
+  const tIp = performance.now()
+  const ip = vm.ip && vm.ip !== "null" ? vm.ip : await waitForVMIP(ludusUrl, apiKey, vm.name)
+  timings.ipWait_ms = performance.now() - tIp
+  console.log(`[saveBaseClean] ip="${ip}" (waited ${Math.round(timings.ipWait_ms)}ms)`)
+
+  const tConn = performance.now()
+  console.log(`[saveBaseClean] waiting for connectivity on ${ip}...`)
+  await waitForConnectivity(ludusUrl, apiKey, vm.name, ip, isWindows)
+  timings.connectivityWait_ms = performance.now() - tConn
+  console.log(`[saveBaseClean] connectivity ok (${Math.round(timings.connectivityWait_ms)}ms)`)
+
+  const tRemove = performance.now()
+  const exists = await snapshotExists(ludusUrl, apiKey, vm.proxmoxID, rangeId, "base-clean")
+  console.log(`[saveBaseClean] base-clean snapshot exists=${exists}`)
+  if (exists) {
+    const removed = await removeSnapshot(ludusUrl, apiKey, vm.proxmoxID, rangeId, "base-clean")
+    if (!removed) throw new Error(`Failed to remove existing base-clean snapshot on ${vm.name}`)
+    console.log(`[saveBaseClean] removed old base-clean snapshot`)
+  }
+  timings.removeOld_ms = performance.now() - tRemove
+
+  const tCreate = performance.now()
+  console.log(`[saveBaseClean] creating snapshot...`)
+  await createSnapshot(ludusUrl, apiKey, vm.proxmoxID, rangeId, "base-clean")
+  timings.createSnapshot_ms = performance.now() - tCreate
+  console.log(`[saveBaseClean] snapshot created`)
+
+  timings.total_ms = performance.now() - tStart
+  console.log(`[saveBaseClean] done in ${Math.round(timings.total_ms)}ms`)
+
+  return { vm: vm.name, snapshot: "base-clean", ip, created: true, timings }
 }
