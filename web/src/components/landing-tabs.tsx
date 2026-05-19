@@ -155,7 +155,7 @@ const GOLDEN_IMAGE_VMS = [
 interface GoldenImageResult {
   label: string
   vm: string
-  ip: string
+  ip: string | null
   snapshot: string
   created: boolean
   overwritten?: boolean
@@ -761,7 +761,7 @@ setTemplatesResult(result)
               ? {
                   ...item,
                   title: "Base Snapshots already exist",
-                  description: prepared.map((p) => `${p.vm} (${p.ip})`).join(", "),
+                  description: prepared.map((p) => p.ip ? `${p.vm} (${p.ip})` : p.vm).join(", "),
                   status: "built",
                 }
               : item,
@@ -795,7 +795,7 @@ setTemplatesResult(result)
                     ? {
                         ...item,
                         title: "Snapshots taken for all VMs",
-                        description: prepared.map((p) => `${p.vm} (${p.ip})`).join(", "),
+                        description: prepared.map((p) => p.ip ? `${p.vm} (${p.ip})` : p.vm).join(", "),
                         status: "built",
                       }
                     : item,

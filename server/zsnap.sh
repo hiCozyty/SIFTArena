@@ -13,10 +13,18 @@ set -euo pipefail
 # CONFIG
 # =========================
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="${SCRIPT_DIR}/../.env"
+if [[ -f "$ENV_FILE" ]]; then
+  source "$ENV_FILE"
+fi
+
 DATASETS=(
   "rpool/ROOT/pve-1"
   "rpool/data"
 )
+
+LUDUS_API_URL="${LUDUS_SERVER_URL:-https://localhost:8080}/api/v2"
 
 RED='\033[0;31m'
 GRN='\033[0;32m'
@@ -64,6 +72,89 @@ sort_deepest_first() {
   awk -F/ '{ print NF "|" $0 }' |
     sort -rn |
     cut -d'|' -f2-
+}
+
+poweron_range_vms() {
+  if ! command -v jq &>/dev/null; then
+    echo -e "${YLW}[!] Warning: jq not installed, skipping VM power-on${RST}"
+    return 0
+  fi
+  if ! command -v curl &>/dev/null; then
+    echo -e "${YLW}[!] Warning: curl not installed, skipping VM power-on${RST}"
+    return 0
+  fi
+  if [[ -z "${LUDUS_API_KEY:-}" ]]; then
+    echo -e "${YLW}[!] Warning: LUDUS_API_KEY not set, skipping VM power-on${RST}"
+    return 0
+  fi
+
+  echo -e "${YLW}[*] Waiting for Ludus API to be ready...${RST}"
+  sleep 5
+
+  local api_url="${LUDUS_SERVER_URL:-https://localhost:8080}/api/v2"
+  local max_wait=10
+  local powered_on_attempted=false
+
+  for i in $(seq 0 "$max_wait"); do
+    local range
+    range=$(curl -sk -H "X-API-KEY: ${LUDUS_API_KEY}" "${api_url}/range" 2>/dev/null || true)
+    if [[ -z "$range" ]]; then
+      if [[ $i -ge "$max_wait" ]]; then
+        echo -e "${YLW}[*] API unreachable after ${max_wait}s, skipping${RST}"
+        return 0
+      fi
+      sleep 1
+      continue
+    fi
+
+    local router_name kali_name windows_name
+    router_name=$(echo "$range" | jq -r '.VMs[]? | select(.isRouter == true) | .name // empty' 2>/dev/null || true)
+    kali_name=$(echo "$range" | jq -r '.VMs[]? | select(.name | test("attacker-kali")) | .name // empty' 2>/dev/null || true)
+    windows_name=$(echo "$range" | jq -r '.VMs[]? | select(.name | test("win"; "i")) | .name // empty' 2>/dev/null || true)
+
+    if [[ -z "$router_name" && -z "$kali_name" && -z "$windows_name" ]]; then
+      if [[ $i -ge "$max_wait" ]]; then
+        echo -e "${DIM}[*] No target VMs found after ${max_wait}s, range is empty${RST}"
+        return 0
+      fi
+      sleep 1
+      continue
+    fi
+
+    local offline_ids=()
+    for name in "$router_name" "$kali_name" "$windows_name"; do
+      if [[ -n "$name" ]]; then
+        local powered vm_id
+        powered=$(echo "$range" | jq -r --arg name "$name" '.VMs[]? | select(.name == $name) | .poweredOn // false' 2>/dev/null || true)
+        if [[ "$powered" != "true" ]]; then
+          vm_id=$(echo "$range" | jq -r --arg name "$name" '.VMs[]? | select(.name == $name) | .proxmoxID // empty' 2>/dev/null || true)
+          offline_ids+=("$vm_id")
+        fi
+      fi
+    done
+
+    if [[ ${#offline_ids[@]} -eq 0 ]]; then
+      echo -e "${GRN}[*] Target VMs all powered on${RST}"
+      return 0
+    fi
+
+    if [[ "$powered_on_attempted" == false ]]; then
+      echo -e "${YLW}[*] VMs powered off: ${offline_ids[*]}${RST}"
+      echo -e "${YLW}[*] Powering on...${RST}"
+      local json_array
+      json_array=$(printf '%s\n' "${offline_ids[@]}" | jq -R . | jq -s .)
+      curl -sk -X PUT \
+        -H "X-API-KEY: ${LUDUS_API_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "{\"machines\": ${json_array}}" \
+        "${api_url}/range/poweron" 2>/dev/null || true
+      powered_on_attempted=true
+    fi
+
+    sleep 1
+  done
+
+  echo -e "${RED}[!] Warning: Timed out waiting for VMs to power on${RST}"
 }
 
 # =========================
@@ -326,6 +417,8 @@ cmd_restore() {
   echo -e "${GRN}[*] ZFS rollback complete.${RST}"
 
   start_services
+
+  poweron_range_vms
 
   echo ""
   echo -e "${GRN}Done.${RST} Restore complete."

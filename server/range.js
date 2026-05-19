@@ -437,6 +437,25 @@ export async function prepareGoldenImage(ludusUrl, apiKey, data) {
 
   const kali = vms.find(v => v.name?.includes("attacker-kali"))
   const windows = vms.find(v => !v.isRouter && !v.name?.includes("attacker-kali"))
+  const router = vms.find(v => v.isRouter)
+
+  const targets = [router, kali, windows].filter(Boolean)
+  const offTargets = targets.filter(v => !v.poweredOn)
+
+  if (offTargets.length > 0) {
+    const names = offTargets.map(v => v.name)
+    log(`VMs powered off: ${names.join(", ")}. Powering on...`)
+    await apiCall(ludusUrl, apiKey, "/range/poweron", "PUT", { machines: names })
+    const pending = new Set(names)
+    for (let i = 0; i < 30 && pending.size > 0; i++) {
+      await sleep(2000)
+      const cur = await apiCall(ludusUrl, apiKey, "/range")
+      for (const vm of cur.VMs ?? []) {
+        if (vm.poweredOn) pending.delete(vm.name)
+      }
+    }
+    log("All VMs powered on")
+  }
 
   const prepared = []
 
@@ -465,7 +484,7 @@ export async function prepareGoldenImage(ludusUrl, apiKey, data) {
 
     try {
       log(`waitForVMIP start: ${label}`)
-      const ip = vm.ip || await waitForVMIP(ludusUrl, apiKey, vm.name)
+      const ip = vm.ip && vm.ip !== "null" ? vm.ip : await waitForVMIP(ludusUrl, apiKey, vm.name)
       log(`waitForVMIP done: ${label} ip=${ip}`)
 
       if (!data?.overwrite) {
