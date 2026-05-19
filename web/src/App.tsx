@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom"
-import { ThemeProvider } from "@/components/theme-provider"
-import { AuthenticatedApp } from "@/components/authenticated-app"
+import { ThemeProvider } from "@/components/shared-ui-primitives/theme-provider"
+import { AuthenticatedApp } from "@/components/app/authenticated-app"
 import { PrototypeUI } from "@/pages/prototype-ui"
 
 function App() {

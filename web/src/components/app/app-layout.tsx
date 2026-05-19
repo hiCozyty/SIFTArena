@@ -1,6 +1,6 @@
 import { useState } from "react"
-import { LandingTabs } from "@/components/landing-tabs"
-import BottomDock from "@/components/dock"
+import { LandingTabs } from "@/components/app/landing-tabs"
+import BottomDock from "@/components/app/dock"
 
 export function AppLayout() {
   const [labRangeCompleted, setLabRangeCompleted] = useState(false)

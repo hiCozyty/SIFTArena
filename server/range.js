@@ -649,3 +649,108 @@ export async function saveBaseClean(ludusUrl, apiKey, data) {
 
   return { vm: vm.name, snapshot: "base-clean", ip, created: true, timings }
 }
+
+export async function runAnsibleScript(ludusUrl, apiKey, data, ws) {
+  const { label, playbook } = data
+  if (!label || !playbook) throw new Error("label and playbook are required")
+
+  const timings = {}
+  const tStart = performance.now()
+
+  const t0 = performance.now()
+  const range = await apiCall(ludusUrl, apiKey, "/range")
+  timings.fetchRange_ms = performance.now() - t0
+
+  const vm = findVM(range.VMs ?? [], label)
+  const rangeId = process.env.LUDUS_RANGE_ID || "ty"
+  const isWindows = vm.name?.includes("win") || vm.name?.includes("WIN")
+
+  if (!vm.poweredOn) {
+    const tPower = performance.now()
+    ws?.send(JSON.stringify({ type: "ansibleLog", state: "powerOn" }))
+    await apiCall(ludusUrl, apiKey, "/range/poweron", "PUT", { machines: [vm.name] })
+    for (let i = 0; i < 30; i++) {
+      await sleep(2000)
+      const cur = await apiCall(ludusUrl, apiKey, "/range")
+      if (cur.VMs?.find(v => v.name === vm.name)?.poweredOn) break
+    }
+    timings.powerOn_ms = performance.now() - tPower
+  }
+
+  const tIp = performance.now()
+  ws?.send(JSON.stringify({ type: "ansibleLog", state: "waitingForIP" }))
+  const ip = vm.ip && vm.ip !== "null" ? vm.ip : await waitForVMIP(ludusUrl, apiKey, vm.name)
+  timings.ipWait_ms = performance.now() - tIp
+
+  const tConn = performance.now()
+  ws?.send(JSON.stringify({ type: "ansibleLog", state: "waitingForConnectivity" }))
+  await waitForConnectivity(ludusUrl, apiKey, vm.name, ip, isWindows)
+  timings.connectivityWait_ms = performance.now() - tConn
+
+  const tInventory = performance.now()
+  ws?.send(JSON.stringify({ type: "ansibleLog", state: "fetchingInventory" }))
+  const inventoryText = await fetchAnsibleInventory(ludusUrl, apiKey)
+  const inventoryPath = `/tmp/ludus-inventory-${rangeId}`
+  await Bun.write(inventoryPath, inventoryText)
+  timings.fetchInventory_ms = performance.now() - tInventory
+
+  const tPlaybook = performance.now()
+  ws?.send(JSON.stringify({ type: "ansibleLog", state: "playbookStarted" }))
+
+  const proc = Bun.spawn(["uv", "run", "ansible-playbook", "-i", inventoryPath, "--limit", vm.name, playbook], {
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const reader = proc.stdout.getReader()
+  const decoder = new TextDecoder()
+  let fullOutput = ""
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    const chunk = decoder.decode(value, { stream: true })
+    fullOutput += chunk
+    const lines = chunk.split("\n")
+    for (const line of lines) {
+      if (line) ws?.send(JSON.stringify({ type: "ansibleLog", line }))
+    }
+  }
+  await proc.exited
+
+  const stderrText = (await new Response(proc.stderr).text()).trim()
+  if (stderrText) console.error(`[ansible stderr] ${stderrText}`)
+
+  const lines = fullOutput.split("\n")
+  const recapIdx = lines.findIndex(l => l.includes("PLAY RECAP"))
+  const playRecap = recapIdx !== -1 ? lines.slice(recapIdx).filter(l => l.trim()) : []
+  timings.playbook_ms = performance.now() - tPlaybook
+  timings.total_ms = performance.now() - tStart
+
+  return {
+    vm: vm.name,
+    ip,
+    isWindows,
+    playbook,
+    ansible: {
+      success: proc.exitCode === 0,
+      exitCode: proc.exitCode,
+      playRecap,
+    },
+    timings,
+  }
+}
+
+export async function checkCaldera(ludusUrl, apiKey, data, ws) {
+  const { label } = data
+  if (!label) throw new Error("label is required")
+
+  const range = await apiCall(ludusUrl, apiKey, "/range")
+  const vm = findVM(range.VMs ?? [], label)
+  const ip = vm.ip && vm.ip !== "null" ? vm.ip : await waitForVMIP(ludusUrl, apiKey, vm.name)
+
+  try {
+  const result = await $`sshpass -p 'kali' ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 kali@${ip} "systemctl is-active caldera"`.quiet().text()
+    return { calderaInstalled: result.trim() === "active" }
+  } catch {
+    return { calderaInstalled: false }
+  }
+}

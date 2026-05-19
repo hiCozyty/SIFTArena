@@ -5,7 +5,7 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb"
-import { useTheme } from "@/components/theme-provider"
+import { useTheme } from "@/components/shared-ui-primitives/theme-provider"
 
 export function SettingsPage() {
   const { theme, setTheme } = useTheme()

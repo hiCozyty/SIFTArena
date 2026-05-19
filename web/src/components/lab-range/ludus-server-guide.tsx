@@ -111,7 +111,30 @@ export LUDUS_API_KEY=JD._7Gx2T5kTUSD%uTWZ*lFi=Os6MpFR^OrG+yT94Xt`}
     ),
   },
   {
-    title: "Step 5: WireGuard Setup",
+    title: "Step 5: Copy SSH Key to Ludus Server",
+    content: (
+      <>
+        <p className="mb-3">
+          Copy your SSH public key to the Ludus server so you can connect without a password:
+        </p>
+        <div className="mb-3 overflow-x-auto rounded-lg bg-muted p-3 text-sm">
+          <pre className="whitespace-pre-wrap">
+{`ssh-copy-id root@<LUDUS_SERVER_IP>`}
+          </pre>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          If you don't have an SSH key yet, generate one first:
+        </p>
+        <div className="overflow-x-auto rounded-lg bg-muted p-3 text-sm">
+          <pre className="whitespace-pre-wrap">
+{`ssh-keygen -t ed25519`}
+          </pre>
+        </div>
+      </>
+    ),
+  },
+  {
+    title: "Step 6: WireGuard Setup",
     content: (
       <>
         <p className="mb-3">Generate WireGuard configuration:</p>

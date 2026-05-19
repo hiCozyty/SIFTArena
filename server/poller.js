@@ -49,7 +49,7 @@ export function createWsHandler(ludusUrl, apiKey) {
 
         const handler = operations.get(data.type)
         if (handler) {
-          handler(ludusUrl, apiKey, data)
+          handler(ludusUrl, apiKey, data, ws)
             .then(result => ws.send(JSON.stringify({ type: data.type, result })))
             .catch(err => ws.send(JSON.stringify({ type: data.type, error: err.message })))
         }

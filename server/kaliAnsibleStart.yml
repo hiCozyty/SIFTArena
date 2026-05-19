@@ -1,0 +1,245 @@
+---
+- name: Kali setup - install MITRE Caldera
+  hosts: all
+  gather_facts: no
+  vars:
+    caldera_user: kali
+    caldera_home: /home/kali
+    caldera_dir: /home/kali/caldera
+    uv_bin: /home/kali/.local/bin/uv
+    bun_bin: /home/kali/.bun/bin/bun
+    caldera_env:
+      HOME: /home/kali
+      PATH: /home/kali/.local/bin:/home/kali/.bun/bin:/usr/local/bin:/usr/bin:/bin
+
+  tasks:
+
+    # ── system deps ────────────────────────────────────────────────────────────
+    - name: Check which system packages are missing
+      shell: >
+        for pkg in git golang-go; do
+          dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null \
+            | grep -q "install ok installed" || echo "$pkg";
+        done
+      register: missing_pkgs
+      changed_when: false
+
+    - name: Install missing system packages
+      apt:
+        name: "{{ missing_pkgs.stdout_lines }}"
+        state: present
+        update_cache: yes
+        cache_valid_time: 3600
+      become: yes
+      when: missing_pkgs.stdout_lines | length > 0
+
+    # ── uv ─────────────────────────────────────────────────────────────────────
+    - name: Check for uv
+      shell: command -v uv
+      register: uv_which
+      failed_when: false
+      changed_when: false
+      become: yes
+      become_user: "{{ caldera_user }}"
+      environment: "{{ caldera_env }}"
+
+    - name: Install uv
+      shell: curl -LsSf https://astral.sh/uv/install.sh | sh
+      become: yes
+      become_user: "{{ caldera_user }}"
+      environment: "{{ caldera_env }}"
+      when: uv_which.rc != 0
+
+    # ── bun ────────────────────────────────────────────────────────────────────
+    - name: Check for bun
+      shell: command -v bun
+      register: bun_which
+      failed_when: false
+      changed_when: false
+      become: yes
+      become_user: "{{ caldera_user }}"
+      environment: "{{ caldera_env }}"
+
+    - name: Install bun
+      shell: curl -fsSL https://bun.sh/install | bash
+      become: yes
+      become_user: "{{ caldera_user }}"
+      environment: "{{ caldera_env }}"
+      when: bun_which.rc != 0
+
+    # ── bun symlinks ───────────────────────────────────────────────────────────
+    - name: Check npm and node symlink targets
+      shell: |
+        echo "npm:$(readlink /usr/local/bin/npm 2>/dev/null || echo '')"
+        echo "node:$(readlink /usr/local/bin/node 2>/dev/null || echo '')"
+      register: symlink_targets
+      changed_when: false
+      failed_when: false
+
+    - name: Symlink bun as npm
+      file:
+        src: "{{ bun_bin }}"
+        dest: /usr/local/bin/npm
+        state: link
+        force: yes
+      become: yes
+      when: >
+        symlink_targets.stdout_lines
+        | select('match', '^npm:' ~ bun_bin ~ '$')
+        | list | length == 0
+
+    - name: Symlink bun as node
+      file:
+        src: "{{ bun_bin }}"
+        dest: /usr/local/bin/node
+        state: link
+        force: yes
+      become: yes
+      when: >
+        symlink_targets.stdout_lines
+        | select('match', '^node:' ~ bun_bin ~ '$')
+        | list | length == 0
+
+    # ── clone ──────────────────────────────────────────────────────────────────
+    - name: Check if Caldera repo exists
+      stat:
+        path: "{{ caldera_dir }}/.git"
+      register: caldera_git
+
+    - name: Clone Caldera repository
+      git:
+        repo: https://github.com/mitre/caldera.git
+        dest: "{{ caldera_dir }}"
+        recursive: yes
+        update: no
+      become: yes
+      become_user: "{{ caldera_user }}"
+      when: not caldera_git.stat.exists
+
+    # ── uv project init ────────────────────────────────────────────────────────
+    - name: Check uv project and venv state
+      stat:
+        path: "{{ item }}"
+      register: uv_state
+      loop:
+        - "{{ caldera_dir }}/pyproject.toml"
+        - "{{ caldera_dir }}/.venv"
+
+    - name: Initialize uv project
+      shell: "{{ uv_bin }} init --no-workspace"
+      args:
+        chdir: "{{ caldera_dir }}"
+      become: yes
+      become_user: "{{ caldera_user }}"
+      environment: "{{ caldera_env }}"
+      when: not uv_state.results[0].stat.exists
+
+    - name: Remove main.py created by uv init
+      file:
+        path: "{{ caldera_dir }}/main.py"
+        state: absent
+      when: not uv_state.results[0].stat.exists
+
+    - name: Add requirements via uv
+      shell: "{{ uv_bin }} add -r requirements.txt"
+      args:
+        chdir: "{{ caldera_dir }}"
+      become: yes
+      become_user: "{{ caldera_user }}"
+      environment: "{{ caldera_env }}"
+      when: not uv_state.results[1].stat.exists
+
+    - name: Sync uv environment
+      shell: "{{ uv_bin }} sync"
+      args:
+        chdir: "{{ caldera_dir }}"
+      become: yes
+      become_user: "{{ caldera_user }}"
+      environment: "{{ caldera_env }}"
+      when: not uv_state.results[1].stat.exists
+
+    # ── first boot / ui build ──────────────────────────────────────────────────
+    - name: Check if UI has already been built
+      stat:
+        path: "{{ caldera_dir }}/.ui_built"
+      register: ui_built_stat
+
+    - name: Build Vue UI (background, wait for completion)
+      shell: |
+        {{ uv_bin }} run python3 server.py --insecure --build > /tmp/caldera_build.log 2>&1 &
+        BUILD_PID=$!
+        ELAPSED=0
+        while [ $ELAPSED -lt 300 ]; do
+          if grep -q "All systems ready" /tmp/caldera_build.log 2>/dev/null; then
+            kill $BUILD_PID 2>/dev/null
+            touch {{ caldera_dir }}/.ui_built
+            exit 0
+          fi
+          sleep 1
+          ELAPSED=$((ELAPSED + 1))
+        done
+        kill $BUILD_PID 2>/dev/null
+        exit 1
+      args:
+        chdir: "{{ caldera_dir }}"
+      become: yes
+      become_user: "{{ caldera_user }}"
+      environment: "{{ caldera_env }}"
+      when: not ui_built_stat.stat.exists
+
+    # ── systemd service ────────────────────────────────────────────────────────
+    - name: Check Caldera service and active state
+      shell: |
+        echo "file:$(test -f /etc/systemd/system/caldera.service && echo exists || echo missing)"
+        echo "active:$(systemctl is-active caldera 2>/dev/null || echo inactive)"
+      register: service_state
+      changed_when: false
+      failed_when: false
+      become: yes
+
+    - name: Create Caldera systemd service
+      copy:
+        dest: /etc/systemd/system/caldera.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=MITRE Caldera C2 Framework
+          After=network.target
+
+          [Service]
+          Type=simple
+          User={{ caldera_user }}
+          WorkingDirectory={{ caldera_dir }}
+          Environment="HOME={{ caldera_home }}"
+          Environment="PATH={{ caldera_env.PATH }}"
+          ExecStart={{ uv_bin }} run python3 server.py --insecure
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+      become: yes
+      register: service_file
+      when: >
+        service_state.stdout_lines
+        | select('match', '^file:missing$')
+        | list | length > 0
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+      become: yes
+      when: service_file is changed
+
+    - name: Enable and start Caldera service
+      systemd:
+        name: caldera
+        enabled: yes
+        state: started
+      become: yes
+      when: >
+        service_state.stdout_lines
+        | select('match', '^active:active$')
+        | list | length == 0

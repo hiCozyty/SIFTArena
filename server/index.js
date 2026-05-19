@@ -1,6 +1,6 @@
 import { createWsHandler, addFetcher, addOperation } from "./poller.js"
 import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./templates.js"
-import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, preloadInventory, fetchRangeConfig, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage } from "./range.js"
+import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, preloadInventory, fetchRangeConfig, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera } from "./range.js"
 
 const LUDUS_SERVER_URL = process.env.LUDUS_SERVER_URL + "/api/v2"
 const LUDUS_API_KEY = process.env.LUDUS_API_KEY
@@ -58,6 +58,8 @@ addOperation("abortRange", abortRange)
 addOperation("restoreToBaseClean", restoreToBaseClean)
 addOperation("listSnapshots", listSnapshots)
 addOperation("saveBaseClean", saveBaseClean)
+addOperation("runAnsibleScript", runAnsibleScript)
+addOperation("checkCaldera", checkCaldera)
 
 const server = Bun.serve({
   port: BUN_SERVER_PORT,

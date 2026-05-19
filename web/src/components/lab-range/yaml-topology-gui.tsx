@@ -1,7 +1,7 @@
 import { Undo, Save } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { TabsFancy, type Category, type Item, type DeploymentStatus } from "@/components/ui/tabs-fancy"
-import { VmTopology } from "@/components/vm-topology"
+import { VmTopology } from "@/components/lab-range/vm-topology"
 
 type SaveStatus = "idle" | "success" | "no-changes"
 

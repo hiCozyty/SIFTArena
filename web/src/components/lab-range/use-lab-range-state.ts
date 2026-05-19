@@ -1,147 +1,16 @@
-import { useLocation, useNavigate } from "react-router-dom"
 import { useState, useEffect, useRef, useMemo } from "react"
 import * as backendWs from "@/lib/backend-ws"
-import { cn } from "@/lib/utils"
-import { RiTrophyLine, RiVoiceprintLine } from "@remixicon/react"
-import { LudusIcon } from "@/components/icons/ludus-icon"
-import { CalderaIcon } from "@/components/icons/caldera-icon"
-import { MeshNetworkIcon } from "@/components/icons/game-icons-mesh-network"
-import { SiftAgentIcon } from "@/components/icons/sift-agent-icon"
-import { BrandSpeedtestIcon } from "@/components/icons/tabler-brand-speedtest"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
-import { Loader2, Lock, Info } from "lucide-react"
-import { useHealthCheck } from "@/hooks/use-health-check"
-import { ConnectionErrorContent, HealthErrorContent } from "@/components/backend-gate"
-import { LudusServerGuide } from "@/components/ludus-server-guide"
-import { InteractiveTimeline } from "@/components/interactive-timeline"
-import { YamlTopologyGui, YamlTopologySkeleton } from "@/components/yaml-topology-gui"
+import { useHealthCheck, type HealthCheckStatus } from "@/hooks/use-health-check"
 import { validateRangeYaml, isYamlContentEqual } from "@/lib/range-yaml-validator"
 import type { DeploymentStatus } from "@/components/ui/tabs-fancy"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
 
-interface CompletionState {
-  labRangeCompleted: boolean
-  attackConfigCompleted: boolean
-  siftAgentConfigured: boolean
-}
+export type GatePhase = "checking-templates" | "templates-error" | "templates-incomplete" | "show-content"
+export type SaveStatus = "idle" | "success" | "no-changes"
+export type RevertStatus = "idle" | "success"
+export type TimelineItem = { id: string; title: string; description: string; status?: string }
+export type TemplateItem = { id: number; label: string; subText: string; icon: string }
 
-interface LandingTabsProps extends CompletionState {
-  onLabRangeComplete: () => void
-  onAttackConfigComplete: () => void
-  onSiftAgentConfigured: () => void
-}
-
-const SECTIONS = [
-  "Leaderboard",
-  "Lab Range",
-  "Attack Configuration",
-  "SnR",
-  "SIFT Agent",
-  "Run Benchmark",
-  "Knowledge Graph",
-] as const
-
-const TAB_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  Leaderboard: RiTrophyLine,
-  "Lab Range": LudusIcon,
-  "Attack Configuration": CalderaIcon,
-  SnR: RiVoiceprintLine,
-  "SIFT Agent": SiftAgentIcon,
-  "Run Benchmark": BrandSpeedtestIcon,
-  "Knowledge Graph": MeshNetworkIcon,
-}
-
-const TAB_PATHS: Record<string, string> = {
-  Leaderboard: "/",
-  "Lab Range": "/lab-range",
-  "Attack Configuration": "/attack-configuration",
-  SnR: "/snr",
-  "SIFT Agent": "/sift-agent",
-  "Run Benchmark": "/run-benchmark",
-  "Knowledge Graph": "/knowledge-graph",
-}
-
-const PATH_TO_TAB: Record<string, string> = {
-  "/": "Leaderboard",
-  "/lab-range": "Lab Range",
-  "/attack-configuration": "Attack Configuration",
-  "/snr": "SnR",
-  "/sift-agent": "SIFT Agent",
-  "/run-benchmark": "Run Benchmark",
-  "/knowledge-graph": "Knowledge Graph",
-}
-
-const PREREQUISITES: Record<string, string> = {
-  "Attack Configuration": "Lab Range",
-  SnR: "Attack Configuration",
-  "Run Benchmark": "SIFT Agent",
-}
-
-function isTabAccessible(section: string, state: CompletionState): boolean {
-  switch (section) {
-    case "Attack Configuration":
-      return state.labRangeCompleted
-    case "SnR":
-      return state.attackConfigCompleted
-    case "Run Benchmark":
-      return state.siftAgentConfigured
-    default:
-      return true
-  }
-}
-
-function getPrerequisite(section: string): string | undefined {
-  return PREREQUISITES[section]
-}
-
-function TabContentCard({
-  className,
-  children,
-}: {
-  className?: string
-  children: React.ReactNode
-}) {
-  return (
-    <div
-      className={cn(
-        "rounded-4xl border bg-card text-card-foreground shadow-sm h-[80vh]",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  )
-}
-
-function LeaderboardContent() {
-  const Icon = TAB_ICONS["Leaderboard"]
-  return (
-    <TabContentCard className="p-6">
-      <div className="mb-4 flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-          <Icon className="size-5 text-primary" />
-        </div>
-        <div>
-          <h3 className="font-semibold text-lg">Leaderboard</h3>
-          <p className="text-muted-foreground text-sm">Ranked player/team scores</p>
-        </div>
-      </div>
-      <p className="text-muted-foreground text-sm">
-        Content for <strong>Leaderboard</strong> goes here.
-      </p>
-    </TabContentCard>
-  )
-}
-
-const REQUIRED_TEMPLATES = [
+export const REQUIRED_TEMPLATES = [
   "debian-11-x64-server-template",
   "kali-x64-desktop-template",
   "win11-22h2-x64-enterprise-template",
@@ -166,25 +35,21 @@ function isReallyBuilt(t: { built: boolean; status: string }): boolean {
   return t.built && t.status !== "not_built" && t.status !== "building"
 }
 
-function LabRangeContent({
-  onComplete,
-}: {
-  completed: boolean
-  onComplete: () => void
-}) {
+export function useLabRangeState(onComplete: () => void) {
   const { status, connect } = useHealthCheck()
   const [showGuide, setShowGuide] = useState(false)
-  const [gatePhase, setGatePhase] = useState<"checking-templates" | "templates-error" | "templates-incomplete" | "show-content">("checking-templates")
+  const [gatePhase, setGatePhase] = useState<GatePhase>("checking-templates")
   const [templatesError, setTemplatesError] = useState("")
   const [buildActive, setBuildActive] = useState(false)
   const [templatesResult, setTemplatesResult] = useState<Array<{ name: string; built: boolean; status: string; os: string }>>([])
-  const [timelineItems, setTimelineItems] = useState<Array<{ id: string; title: string; description: string; status?: string }>>([])
+  const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([])
   const [deployActive, setDeployActive] = useState(false)
+  const [calderaActive, setCalderaActive] = useState(false)
   const [goldenImageActive, setGoldenImageActive] = useState(false)
   const [rangeYaml, setRangeYaml] = useState<string | null>(null)
   const [yamlErrors, setYamlErrors] = useState<string[]>([])
-  const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "no-changes">("idle")
-  const [revertStatus, setRevertStatus] = useState<"idle" | "success">("idle")
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
+  const [revertStatus, setRevertStatus] = useState<RevertStatus>("idle")
   const [deploymentStatus, setDeploymentStatus] = useState<DeploymentStatus>("Not Deployed")
   const [isDeploying, setIsDeploying] = useState(false)
   const [systemInfo, setSystemInfo] = useState<{ totalCpu: number; totalRam: number } | null>(null)
@@ -192,6 +57,7 @@ function LabRangeContent({
   const serverYamlRef = useRef<string | null>(null)
   const builtSentRef = useRef<Set<string>>(new Set())
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
+  const calderaLogRef = useRef<string>("")
   const timelineBuiltOnceRef = useRef(false)
   const redeployRef = useRef(false)
   const onCompleteRef = useRef(onComplete)
@@ -233,7 +99,7 @@ function LabRangeContent({
     }
   }, [connect, status.type])
 
-useEffect(() => {
+  useEffect(() => {
     if (status.type !== "ok") return
     if (gatePhase !== "checking-templates") return
 
@@ -253,7 +119,7 @@ useEffect(() => {
           unsub()
           return
         }
-setTemplatesResult(result)
+        setTemplatesResult(result)
         const allItems = REQUIRED_TEMPLATES.map((name, i) => {
           const t = result.find((t) => t.name === name)
           if (!t) return null
@@ -351,7 +217,7 @@ setTemplatesResult(result)
                 description: "checking...",
                 status: "building",
               }]
-}
+            }
           }
         }
 
@@ -390,6 +256,7 @@ setTemplatesResult(result)
     const isRedeploy = redeployRef.current
     const phaseRef: { current: Phase } = { current: isRedeploy ? "saving-config" : "check" }
     const seenVMsRef: { current: Set<string> } = { current: new Set() }
+    const playRecapRef: { current: string[] | null } = { current: null }
 
     const VM_LABELS: Record<string, string> = {
       router: "router-debian11-x64",
@@ -437,16 +304,28 @@ setTemplatesResult(result)
         if (phaseRef.current !== "deleting") return
         phaseRef.current = "deploying"
         seenVMsRef.current = new Set()
-        setTimelineItems((prev) => {
-          const updated = prev.map((item) =>
-            item.id === "redeploy-delete"
-              ? { ...item, title: "Existing VMs removed", description: "", status: "built" }
-              : item.id === "check-vms"
+        if (isRedeploy) {
+          setTimelineItems((prev) => [
+            ...prev.map((item) =>
+              item.id === "redeploy-delete"
+                ? { ...item, title: "Existing VMs removed", description: "", status: "built" }
+                : item
+            ),
+            { id: "redeploy-rebuilding", title: "Rebuilding range", description: "deploying VMs...", status: "building" },
+          ])
+        } else {
+          setTimelineItems((prev) => {
+            const updated = prev.map((item) =>
+              item.id === "check-vms"
                 ? { ...item, title: "Deploying range", description: "starting deployment...", status: "building" }
                 : item
-          )
-          return [...updated, { id: "redeploy-deploy", title: "Deploying range", description: "starting deployment...", status: "building" }]
-        })
+            )
+            if (!updated.some((item) => item.id === "check-vms")) {
+              return [...updated, { id: "check-vms", title: "Deploying range", description: "starting deployment...", status: "building" }]
+            }
+            return updated
+          })
+        }
         backendWs.send({ type: "subscribe", channel: "rangeStatus" })
         backendWs.send({ type: "deployAllBaseVMs" })
         return
@@ -471,7 +350,7 @@ setTemplatesResult(result)
 
       const latestLog = data.latestLog as string | undefined
       const playRecap = data.playRecap as string[] | null | undefined
-      
+      if (playRecap) playRecapRef.current = playRecap
 
       if (phaseRef.current === "check") {
         if (routerFound && kaliFound && windowsFound) {
@@ -497,10 +376,10 @@ setTemplatesResult(result)
           setTimeout(() => {
             setTimelineItems((prev) => [
               ...prev,
-              { id: "golden-image", title: `Preparing golden image for ${GOLDEN_IMAGE_VMS[0].vm}`, description: `Creating snapshot if golden image does not exist for ${GOLDEN_IMAGE_VMS[0].vm}...`, status: "building" },
+              { id: "caldera-setup", title: "Installing ansible script on attacker-kali", description: "Checking Caldera status...", status: "building" },
             ])
-            setGoldenImageActive(true)
-            backendWs.send({ type: "prepareGoldenImage" })
+            setCalderaActive(true)
+            backendWs.send({ type: "checkCaldera", label: "kali" })
           }, 600)
           setDeployActive(false)
           setDeploymentStatus("Deployed")
@@ -520,6 +399,51 @@ setTemplatesResult(result)
       }
 
       if (phaseRef.current === "deleting") return
+
+      if (isRedeploy) {
+        if (latestLog) {
+          setTimelineItems((prev) =>
+            prev.map((item) =>
+              item.id === "redeploy-rebuilding"
+                ? { ...item, description: latestLog }
+                : item
+            )
+          )
+        }
+
+        if (playRecapRef.current) {
+          const expected = ["router-debian11-x64", "attacker-kali", "win11-22h2"]
+          const allOk = expected.every((suffix) => {
+            const line = playRecapRef.current!.find((l) => l.includes(suffix))
+            if (!line) return false
+            const unreachable = line.match(/unreachable=(\d+)/)?.[1]
+            const failed = line.match(/failed=(\d+)/)?.[1]
+            return unreachable === "0" && failed === "0"
+          })
+
+          setTimelineItems((prev) => [
+            ...prev.map((item) =>
+              item.id === "redeploy-rebuilding"
+                ? { ...item, title: "Range rebuilt", description: allOk ? "" : "completed with errors", status: allOk ? "built" : "error" }
+                : item
+            ),
+            {
+              id: "caldera-setup",
+              title: "Installing ansible script on attacker-kali",
+              description: "Checking Caldera status...",
+              status: "building",
+            },
+          ])
+          setCalderaActive(true)
+          backendWs.send({ type: "checkCaldera", label: "kali" })
+          setDeployActive(false)
+          setDeploymentStatus("Deployed")
+          setIsDeploying(false)
+          unsub()
+          backendWs.send({ type: "unsubscribe", channel: "rangeStatus" })
+        }
+        return
+      }
 
       const vmPresence: Record<string, boolean> = {
         router: !!routerFound,
@@ -584,16 +508,15 @@ setTemplatesResult(result)
         })
       }
 
-      if (routerFound && kaliFound && windowsFound && playRecap) {
+      if (playRecapRef.current) {
         const expected = ["router-debian11-x64", "attacker-kali", "win11-22h2"]
         const allOk = expected.every((suffix) => {
-          const line = playRecap.find((l) => l.includes(suffix))
+          const line = playRecapRef.current!.find((l) => l.includes(suffix))
           if (!line) return false
           const unreachable = line.match(/unreachable=(\d+)/)?.[1]
           const failed = line.match(/failed=(\d+)/)?.[1]
           return unreachable === "0" && failed === "0"
         })
-        if (!allOk) return
 
         const nodeLabels: Record<string, string> = {
           "check-vms": "router-debian11-x64",
@@ -604,25 +527,25 @@ setTemplatesResult(result)
           let updated = prev.map((item) => {
             const label = nodeLabels[item.id]
             if (label) {
-              return { ...item, title: `Finished deploying ${label}`, description: "", status: "built" }
+              return { ...item, title: `Finished deploying ${label}`, description: allOk ? "" : "completed with errors", status: allOk ? "built" : "error" }
             }
             return item
           })
           if (!updated.some(item => item.id === "deploy-kali")) {
-            updated = [...updated, { id: "deploy-kali", title: "Finished deploying attacker-kali", description: "", status: "built" }]
+            updated = [...updated, { id: "deploy-kali", title: "Finished deploying attacker-kali", description: allOk ? "" : "completed with errors", status: allOk ? "built" : "error" }]
           }
           if (!updated.some(item => item.id === "deploy-windows")) {
-            updated = [...updated, { id: "deploy-windows", title: "Finished deploying win11-22h2", description: "", status: "built" }]
+            updated = [...updated, { id: "deploy-windows", title: "Finished deploying win11-22h2", description: allOk ? "" : "completed with errors", status: allOk ? "built" : "error" }]
           }
           return [...updated, {
-            id: "golden-image",
-            title: `Preparing golden image for ${GOLDEN_IMAGE_VMS[0].vm}`,
-            description: `Creating snapshot if golden image does not exist for ${GOLDEN_IMAGE_VMS[0].vm}...`,
+            id: "caldera-setup",
+            title: "Installing ansible script on attacker-kali",
+            description: "Checking Caldera status...",
             status: "building",
           }]
         })
-        setGoldenImageActive(true)
-        backendWs.send({ type: "prepareGoldenImage" })
+        setCalderaActive(true)
+        backendWs.send({ type: "checkCaldera", label: "kali" })
         setDeployActive(false)
         setDeploymentStatus("Deployed")
         setIsDeploying(false)
@@ -726,14 +649,130 @@ setTemplatesResult(result)
   const handleReset = () => {
     setIsDeploying(true)
     setDeploymentStatus("Resetting")
+    setTimelineItems((prev) => [
+      ...prev,
+      { id: "reset-range", title: "Resetting range", description: "removing all VMs...", status: "building" },
+    ])
     const unsub = backendWs.subscribe((data) => {
       if (data.type !== "deleteRangeVMs") return
+      setTimelineItems((prev) =>
+        prev.map((item) =>
+          item.id === "reset-range"
+            ? { ...item, title: "Range reset", description: "", status: "built" }
+            : item
+        )
+      )
       setDeploymentStatus("Not Deployed")
       setIsDeploying(false)
       unsub()
     })
     backendWs.send({ type: "deleteRangeVMs", all: true })
   }
+
+  const handleYamlChange = (yaml: string) => {
+    setRangeYaml(yaml)
+    setYamlErrors([])
+  }
+
+  useEffect(() => {
+    if (status.type !== "ok") return
+    if (!calderaActive) return
+
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type === "checkCaldera") {
+        const error = data.error as string | undefined
+        const result = data.result as { calderaInstalled?: boolean } | undefined
+        if (!error && result?.calderaInstalled) {
+          setTimelineItems((prev) => [
+            ...prev.map((item) =>
+              item.id === "caldera-setup"
+                ? { ...item, description: "Caldera already installed", status: "built" }
+                : item
+            ),
+            { id: "golden-image", title: `Preparing golden image for ${GOLDEN_IMAGE_VMS[0].vm}`, description: `Creating snapshot if golden image does not exist for ${GOLDEN_IMAGE_VMS[0].vm}...`, status: "building" },
+          ])
+          setCalderaActive(false)
+          setGoldenImageActive(true)
+          backendWs.send({ type: "prepareGoldenImage" })
+          unsub()
+        } else {
+          setTimelineItems((prev) =>
+            prev.map((item) =>
+              item.id === "caldera-setup"
+                ? { ...item, description: "Running ansible playbook..." }
+                : item
+            )
+          )
+          backendWs.send({ type: "runAnsibleScript", label: "kali", playbook: "./server/kaliAnsibleStart.yml" })
+        }
+        return
+      }
+
+      if (data.type === "ansibleLog" && data.line) {
+        calderaLogRef.current = data.line as string
+        setTimelineItems((prev) =>
+          prev.map((item) =>
+            item.id === "caldera-setup"
+              ? { ...item, description: data.line as string }
+              : item
+          )
+        )
+        return
+      }
+
+      if (data.type === "runAnsibleScript") {
+        const error = data.error as string | undefined
+        if (error) {
+          setTimelineItems((prev) =>
+            prev.map((item) =>
+              item.id === "caldera-setup"
+                ? { ...item, description: error, status: "error" }
+                : item
+            )
+          )
+          setCalderaActive(false)
+          setDeployActive(false)
+          setDeploymentStatus("Error")
+          setIsDeploying(false)
+          unsub()
+          return
+        }
+        const result = data.result as { ansible?: { success?: boolean; playRecap?: string[] } } | undefined
+        const ansible = result?.ansible
+        if (ansible?.success) {
+          setTimelineItems((prev) => [
+            ...prev.map((item) =>
+              item.id === "caldera-setup"
+                ? { ...item, description: "Caldera installed successfully", status: "built" }
+                : item
+            ),
+            { id: "golden-image", title: `Preparing golden image for ${GOLDEN_IMAGE_VMS[0].vm}`, description: `Creating snapshot if golden image does not exist for ${GOLDEN_IMAGE_VMS[0].vm}...`, status: "building" },
+          ])
+          setCalderaActive(false)
+          setGoldenImageActive(true)
+          backendWs.send({ type: "prepareGoldenImage" })
+          unsub()
+        } else {
+          const recapLines = ansible?.playRecap ?? []
+          const description = recapLines.length > 0 ? recapLines.join(" ") : "Ansible playbook failed"
+          setTimelineItems((prev) =>
+            prev.map((item) =>
+              item.id === "caldera-setup"
+                ? { ...item, description, status: "error" }
+                : item
+            )
+          )
+          setCalderaActive(false)
+          setDeployActive(false)
+          setDeploymentStatus("Error")
+          setIsDeploying(false)
+          unsub()
+        }
+      }
+    })
+
+    return () => { unsub() }
+  }, [status.type, calderaActive])
 
   useEffect(() => {
     if (status.type !== "ok") return
@@ -819,433 +858,34 @@ setTemplatesResult(result)
     }
   }, [status.type, goldenImageActive])
 
-  if (status.type === "idle" || status.type === "connecting") {
-    return (
-      <div className="flex min-h-[80vh] items-center justify-center">
-        <Card className="w-full max-w-sm gap-2 py-4">
-          <CardHeader>
-            <CardTitle>Connecting to Backend</CardTitle>
-            <CardDescription>
-              Attempting to establish a connection to the backend server...
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex justify-center py-4">
-              <Loader2 className="size-8 animate-spin text-muted-foreground" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
+  const yamlReady = timelineBuiltOnceRef.current && rangeYaml !== null
+  const saveDisabled = saveStatus !== "idle"
+
+  return {
+    status,
+    connect,
+    showGuide,
+    setShowGuide,
+    gatePhase,
+    setGatePhase,
+    templatesError,
+    setTemplatesError,
+    setBuildActive,
+    timelineItems,
+    yamlReady,
+    templateItems,
+    deploymentStatus,
+    isDeploying,
+    systemInfo,
+    rangeYaml,
+    yamlErrors,
+    saveStatus,
+    revertStatus,
+    saveDisabled,
+    handleYamlChange,
+    handleSave,
+    handleRevert,
+    handleDeploy,
+    handleReset,
   }
-
-  if (status.type === "connection-error") {
-    return (
-      <>
-        <div className="flex min-h-[80vh] items-center justify-center">
-          <Card className="w-full max-w-sm gap-2 py-4">
-            <CardHeader>
-              <CardTitle>Connection Failed</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ConnectionErrorContent
-                onRetry={connect}
-                onShowGuide={() => setShowGuide(true)}
-              />
-            </CardContent>
-          </Card>
-        </div>
-        <LudusServerGuide open={showGuide} onOpenChange={setShowGuide} />
-      </>
-    )
-  }
-
-  if (status.type === "health-error") {
-    return (
-      <>
-        <div className="flex min-h-[80vh] items-center justify-center">
-          <Card className="w-full max-w-sm gap-2 py-4">
-            <CardHeader>
-              <CardTitle>Configuration Error</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <HealthErrorContent
-                status={status.rawStatus}
-                detail={status.detail}
-                config={status.config}
-                onRetry={connect}
-                onShowGuide={() => setShowGuide(true)}
-              />
-            </CardContent>
-          </Card>
-        </div>
-        <LudusServerGuide open={showGuide} onOpenChange={setShowGuide} />
-      </>
-    )
-  }
-
-  if (status.type === "ok" && gatePhase === "checking-templates") {
-    return (
-      <>
-        <div className="flex min-h-[80vh] items-center justify-center">
-          <Card className="w-full max-w-sm gap-2 py-4">
-            <CardHeader>
-              <CardTitle>Checking Templates</CardTitle>
-              <CardDescription>
-                Checking existing templates...
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex justify-center py-4">
-                <Loader2 className="size-8 animate-spin text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-        <LudusServerGuide open={showGuide} onOpenChange={setShowGuide} />
-      </>
-    )
-  }
-
-  if (status.type === "ok" && gatePhase === "templates-error") {
-    return (
-      <>
-        <div className="flex min-h-[80vh] items-center justify-center">
-          <Card className="w-full max-w-sm gap-2 py-4">
-            <CardHeader>
-              <CardTitle>Template Error</CardTitle>
-              <CardDescription>
-                Backend returned an error
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <p className="text-sm text-destructive">{templatesError}</p>
-              <Button onClick={() => { setTemplatesError(""); setGatePhase("checking-templates"); }} size="sm" className="w-fit self-center">
-                Retry
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-        <LudusServerGuide open={showGuide} onOpenChange={setShowGuide} />
-      </>
-    )
-  }
-
-  if (status.type === "ok" && gatePhase === "templates-incomplete") {
-    return (
-      <>
-        <div className="flex min-h-[80vh] items-center justify-center">
-          <Card className="max-w-xs gap-2 py-4">
-            <CardHeader>
-              <CardTitle>Templates Error</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <div className="flex items-center gap-2">
-                <p className="text-sm text-muted-foreground">
-                  Required templates are not yet built.
-                </p>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button className="rounded-full p-1 hover:bg-accent">
-                        <Info className="size-4 text-muted-foreground" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" className="text-xs">
-                      <ul className="list-inside list-disc">
-                        {REQUIRED_TEMPLATES.map((t) => (
-                          <li key={t}>{t}</li>
-                        ))}
-                      </ul>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <Button onClick={() => { setGatePhase("show-content"); setBuildActive(true); }} size="sm" className="w-fit self-center">
-                Build
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-        <LudusServerGuide open={showGuide} onOpenChange={setShowGuide} />
-      </>
-    )
-  }
-
-  return (
-    <>
-      <TabContentCard className="p-6 flex flex-col min-h-0">
-        <div className="mb-4 flex shrink-0 items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-            <LudusIcon className="size-6 text-primary" />
-          </div>
-          <div>
-            <h3 className="font-semibold text-lg">Ludus Lab Range</h3>
-            <p className="text-muted-foreground text-sm">Lab provisioning and management</p>
-          </div>
-        </div>
-        <div className="shrink-0">
-          <InteractiveTimeline items={timelineItems} maxItems={3} />
-        </div>
-        <Separator className="mt-4" />
-        <div className="mt-4 flex-1 min-h-0 overflow-hidden">
-          {timelineBuiltOnceRef.current && rangeYaml !== null ? (
-            <YamlTopologyGui
-              className="h-full w-full"
-              cpuUsage={systemInfo ? String(systemInfo.totalCpu) : undefined}
-              memoryUsage={systemInfo ? String(systemInfo.totalRam) : undefined}
-              deploymentStatus={deploymentStatus}
-              isDeploying={isDeploying}
-              items={templateItems}
-              yamlContent={rangeYaml}
-              onYamlChange={(yaml) => { setRangeYaml(yaml); setYamlErrors([]) }}
-              onSave={handleSave}
-              onRevert={handleRevert}
-              saveDisabled={saveStatus !== "idle"}
-              yamlErrors={yamlErrors}
-              yamlLoading={false}
-              saveStatus={saveStatus}
-              revertStatus={revertStatus}
-              onDeploy={handleDeploy}
-              onReset={handleReset}
-            />
-          ) : (
-            <YamlTopologySkeleton className="h-full w-full" />
-          )}
-        </div>
-      </TabContentCard>
-      <LudusServerGuide open={showGuide} onOpenChange={setShowGuide} />
-    </>
-  )
 }
-
-function AttackConfigurationContent({
-  completed,
-  onComplete,
-}: {
-  completed: boolean
-  onComplete: () => void
-}) {
-  const Icon = TAB_ICONS["Attack Configuration"]
-  return (
-    <TabContentCard className="p-6">
-      <div className="mb-4 flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-          <Icon className="size-6 text-primary" />
-        </div>
-        <div>
-          <h3 className="font-semibold text-lg">Attack Configuration</h3>
-          <p className="text-muted-foreground text-sm">Configure attack parameters</p>
-        </div>
-      </div>
-      <p className="text-muted-foreground text-sm">
-        Content for <strong>Attack Configuration</strong> goes here.
-      </p>
-      <div className="mt-4">
-        {completed ? (
-          <p className="text-sm text-green-600">✓ Attack Configuration completed</p>
-        ) : (
-          <Button onClick={onComplete}>Complete Attack Configuration</Button>
-        )}
-      </div>
-    </TabContentCard>
-  )
-}
-
-function SnrContent() {
-  const Icon = TAB_ICONS["SnR"]
-  return (
-    <TabContentCard className="p-6">
-      <div className="mb-4 flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-          <Icon className="size-5 text-primary" />
-        </div>
-        <div>
-          <h3 className="font-semibold text-lg">SnR</h3>
-          <p className="text-muted-foreground text-sm">Signal to noise ratio analysis</p>
-        </div>
-      </div>
-      <p className="text-muted-foreground text-sm">
-        Content for <strong>SnR</strong> goes here.
-      </p>
-    </TabContentCard>
-  )
-}
-
-function SiftAgentContent({
-  configured,
-  onConfigured,
-}: {
-  configured: boolean
-  onConfigured: () => void
-}) {
-  const Icon = TAB_ICONS["SIFT Agent"]
-  return (
-    <TabContentCard className="p-6">
-      <div className="mb-4 flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-          <Icon className="size-[1.375rem] text-primary" />
-        </div>
-        <div>
-          <h3 className="font-semibold text-lg">SIFT Agent</h3>
-          <p className="text-muted-foreground text-sm">Select deployed SIFT agents</p>
-        </div>
-      </div>
-      <p className="text-muted-foreground text-sm">
-        Content for <strong>SIFT Agent</strong> goes here.
-      </p>
-      <div className="mt-4">
-        {configured ? (
-          <p className="text-sm text-green-600">✓ SIFT Agent configured</p>
-        ) : (
-          <Button onClick={onConfigured}>Configure SIFT Agent</Button>
-        )}
-      </div>
-    </TabContentCard>
-  )
-}
-
-function BenchmarkContent() {
-  const Icon = TAB_ICONS["Run Benchmark"]
-  return (
-    <TabContentCard className="p-6">
-      <div className="mb-4 flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-          <Icon className="size-5 text-primary" />
-        </div>
-        <div>
-          <h3 className="font-semibold text-lg">Run Benchmark</h3>
-          <p className="text-muted-foreground text-sm">Execute performance benchmarks</p>
-        </div>
-      </div>
-      <p className="text-muted-foreground text-sm">
-        Content for <strong>Run Benchmark</strong> goes here.
-      </p>
-    </TabContentCard>
-  )
-}
-
-function KnowledgeGraphContent() {
-  const Icon = TAB_ICONS["Knowledge Graph"]
-  return (
-    <TabContentCard className="p-6">
-      <div className="mb-4 flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-          <Icon className="size-5 text-primary" />
-        </div>
-        <div>
-          <h3 className="font-semibold text-lg">Knowledge Graph</h3>
-          <p className="text-muted-foreground text-sm">
-            Knowledge graph visualization and exploration
-          </p>
-        </div>
-      </div>
-      <p className="text-muted-foreground text-sm">
-        Content for <strong>Knowledge Graph</strong> goes here.
-      </p>
-    </TabContentCard>
-  )
-}
-
-function LockedContent({
-  section,
-  prerequisite,
-}: {
-  section: string
-  prerequisite: string
-}) {
-  const navigate = useNavigate()
-  const targetPath = TAB_PATHS[prerequisite]
-
-  return (
-    <TabContentCard className="py-16 flex flex-col items-center justify-center">
-      <Lock className="mb-4 size-12 text-muted-foreground" />
-      <h3 className="mb-2 text-lg font-semibold">{section} is locked</h3>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Complete <strong>{prerequisite}</strong> setup first to unlock this section.
-      </p>
-      <Button onClick={() => navigate(targetPath, { replace: true })}>
-        Go to {prerequisite}
-      </Button>
-    </TabContentCard>
-  )
-}
-
-export function LandingTabs({
-  labRangeCompleted,
-  attackConfigCompleted,
-  siftAgentConfigured,
-  onLabRangeComplete,
-  onAttackConfigComplete,
-  onSiftAgentConfigured,
-}: LandingTabsProps) {
-  const location = useLocation()
-  const navigate = useNavigate()
-
-  const completionState: CompletionState = {
-    labRangeCompleted,
-    attackConfigCompleted,
-    siftAgentConfigured,
-  }
-
-  const activeTab = PATH_TO_TAB[location.pathname] ?? SECTIONS[0]
-
-  return (
-    <div className="mx-auto w-fit p-8">
-      <Tabs
-        value={activeTab}
-        onValueChange={(tab) => navigate(TAB_PATHS[tab], { replace: true })}
-        className="w-full"
-      >
-        <TabsList>
-          {SECTIONS.map((s) => {
-            const Icon = TAB_ICONS[s]
-            return (
-              <TabsTrigger key={s} value={s}>
-                <Icon />
-                {s}
-              </TabsTrigger>
-            )
-          })}
-        </TabsList>
-        {SECTIONS.map((s) => {
-          const unlocked = isTabAccessible(s, completionState)
-          const prerequisite = getPrerequisite(s)
-
-          return (
-            <TabsContent key={s} value={s} forceMount>
-              {!unlocked && prerequisite ? (
-                <LockedContent section={s} prerequisite={prerequisite} />
-              ) : s === "Leaderboard" ? (
-                <LeaderboardContent />
-              ) : s === "Lab Range" ? (
-                <LabRangeContent
-                  completed={labRangeCompleted}
-                  onComplete={onLabRangeComplete}
-                />
-              ) : s === "Attack Configuration" ? (
-                <AttackConfigurationContent
-                  completed={attackConfigCompleted}
-                  onComplete={onAttackConfigComplete}
-                />
-              ) : s === "SnR" ? (
-                <SnrContent />
-              ) : s === "SIFT Agent" ? (
-                <SiftAgentContent
-                  configured={siftAgentConfigured}
-                  onConfigured={onSiftAgentConfigured}
-                />
-              ) : s === "Run Benchmark" ? (
-                <BenchmarkContent />
-              ) : s === "Knowledge Graph" ? (
-                <KnowledgeGraphContent />
-              ) : null}
-            </TabsContent>
-          )
-        })}
-      </Tabs>
-    </div>
-  )
-}
-
-

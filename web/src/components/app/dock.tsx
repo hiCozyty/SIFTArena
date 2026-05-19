@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Home, Settings } from "lucide-react"
 import { AppleDock, AppleDockIcon } from "@/components/shadcn-space/apple-dock/apple-dock-01"
-import { useTheme } from "@/components/theme-provider"
+import { useTheme } from "@/components/shared-ui-primitives/theme-provider"
 import { Switch } from "@/components/ui/switch"
 import {
   Breadcrumb,
