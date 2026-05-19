@@ -35,7 +35,6 @@ interface CompletionState {
 
 interface LandingTabsProps extends CompletionState {
   onLabRangeComplete: () => void
-  onLabRangeReset: () => void
   onAttackConfigComplete: () => void
   onSiftAgentConfigured: () => void
 }
@@ -169,11 +168,9 @@ function isReallyBuilt(t: { built: boolean; status: string }): boolean {
 
 function LabRangeContent({
   onComplete,
-  onReset,
 }: {
   completed: boolean
   onComplete: () => void
-  onReset: () => void
 }) {
   const { status, connect } = useHealthCheck()
   const [showGuide, setShowGuide] = useState(false)
@@ -182,7 +179,6 @@ function LabRangeContent({
   const [buildActive, setBuildActive] = useState(false)
   const [templatesResult, setTemplatesResult] = useState<Array<{ name: string; built: boolean; status: string; os: string }>>([])
   const [timelineItems, setTimelineItems] = useState<Array<{ id: string; title: string; description: string; status?: string }>>([])
-  const [manualTimelineItems, setManualTimelineItems] = useState<Array<{ id: string; title: string; description: string; status?: string }>>([])
   const [deployActive, setDeployActive] = useState(false)
   const [goldenImageActive, setGoldenImageActive] = useState(false)
   const [rangeYaml, setRangeYaml] = useState<string | null>(null)
@@ -200,20 +196,11 @@ function LabRangeContent({
   const redeployRef = useRef(false)
   const onCompleteRef = useRef(onComplete)
   onCompleteRef.current = onComplete
-  const onResetRef = useRef(onReset)
-  onResetRef.current = onReset
-
-  useEffect(() => {
-    window.onbeforeunload = isDeploying ? () => true : null
-  }, [isDeploying])
 
   useEffect(() => {
     if (timelineBuiltOnceRef.current) return
     if (timelineItems.length === 0) return
-    if (
-      timelineItems.every((item) => item.status === "built") &&
-      timelineItems.some((item) => item.id === "golden-image")
-    ) {
+    if (timelineItems.every((item) => item.status === "built")) {
       timelineBuiltOnceRef.current = true
     }
   }, [timelineItems])
@@ -458,10 +445,7 @@ setTemplatesResult(result)
                 ? { ...item, title: "Deploying range", description: "starting deployment...", status: "building" }
                 : item
           )
-          if (isRedeploy) {
-            return [...updated, { id: "redeploy-deploy", title: "Deploying range", description: "starting deployment...", status: "building" }]
-          }
-          return updated
+          return [...updated, { id: "redeploy-deploy", title: "Deploying range", description: "starting deployment...", status: "building" }]
         })
         backendWs.send({ type: "subscribe", channel: "rangeStatus" })
         backendWs.send({ type: "deployAllBaseVMs" })
@@ -727,8 +711,6 @@ setTemplatesResult(result)
   }
 
   const handleDeploy = () => {
-    onResetRef.current()
-    setManualTimelineItems([])
     if (deploymentStatus === "Deployed") return
     if (deploymentStatus === "Not Deployed" || deploymentStatus === "Deployed (stale)") {
       if (isStale && rangeYaml) {
@@ -742,40 +724,15 @@ setTemplatesResult(result)
   }
 
   const handleReset = () => {
-    onResetRef.current()
     setIsDeploying(true)
     setDeploymentStatus("Resetting")
-    setManualTimelineItems([
-      { id: "manual-reset-abort", title: "Aborting running deploy", description: "sending abort command...", status: "building" },
-    ])
-    backendWs.send({ type: "abortRange" })
-    setTimeout(() => {
-      setManualTimelineItems((prev) =>
-        prev.map((item) =>
-          item.id === "manual-reset-abort"
-            ? { ...item, title: "Deploy aborted", description: "", status: "built" }
-            : item,
-        ),
-      )
-      setManualTimelineItems((prev) => [
-        ...prev,
-        { id: "manual-reset-delete", title: "Deleting all VMs", description: "removing range VMs...", status: "building" },
-      ])
-      const unsub = backendWs.subscribe((data) => {
-        if (data.type !== "deleteRangeVMs") return
-        setManualTimelineItems((prev) =>
-          prev.map((item) =>
-            item.id === "manual-reset-delete"
-              ? { ...item, title: "All VMs deleted", description: "", status: "built" }
-              : item,
-          ),
-        )
-        setDeploymentStatus("Not Deployed")
-        setIsDeploying(false)
-        unsub()
-      })
-      backendWs.send({ type: "deleteRangeVMs", all: true })
-    }, 100)
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type !== "deleteRangeVMs") return
+      setDeploymentStatus("Not Deployed")
+      setIsDeploying(false)
+      unsub()
+    })
+    backendWs.send({ type: "deleteRangeVMs", all: true })
   }
 
   useEffect(() => {
@@ -810,7 +767,6 @@ setTemplatesResult(result)
               : item,
           ),
         )
-        timelineBuiltOnceRef.current = true
         setGoldenImageActive(false)
         setDeploymentStatus("Deployed")
         onCompleteRef.current()
@@ -845,7 +801,6 @@ setTemplatesResult(result)
                     : item,
                 ),
               )
-              timelineBuiltOnceRef.current = true
               setGoldenImageActive(false)
               setDeploymentStatus("Deployed")
               onCompleteRef.current()
@@ -867,7 +822,7 @@ setTemplatesResult(result)
   if (status.type === "idle" || status.type === "connecting") {
     return (
       <div className="flex min-h-[80vh] items-center justify-center">
-        <Card className="w-full max-w-sm gap-2">
+        <Card className="w-full max-w-sm gap-2 py-4">
           <CardHeader>
             <CardTitle>Connecting to Backend</CardTitle>
             <CardDescription>
@@ -888,7 +843,7 @@ setTemplatesResult(result)
     return (
       <>
         <div className="flex min-h-[80vh] items-center justify-center">
-          <Card className="w-full max-w-sm gap-2">
+          <Card className="w-full max-w-sm gap-2 py-4">
             <CardHeader>
               <CardTitle>Connection Failed</CardTitle>
             </CardHeader>
@@ -909,9 +864,9 @@ setTemplatesResult(result)
     return (
       <>
         <div className="flex min-h-[80vh] items-center justify-center">
-<Card className="w-full max-w-sm gap-2">
-          <CardHeader>
-            <CardTitle>Configuration Error</CardTitle>
+          <Card className="w-full max-w-sm gap-2 py-4">
+            <CardHeader>
+              <CardTitle>Configuration Error</CardTitle>
             </CardHeader>
             <CardContent>
               <HealthErrorContent
@@ -956,7 +911,7 @@ setTemplatesResult(result)
     return (
       <>
         <div className="flex min-h-[80vh] items-center justify-center">
-          <Card className="w-full max-w-sm gap-2">
+          <Card className="w-full max-w-sm gap-2 py-4">
             <CardHeader>
               <CardTitle>Template Error</CardTitle>
               <CardDescription>
@@ -980,7 +935,7 @@ setTemplatesResult(result)
     return (
       <>
         <div className="flex min-h-[80vh] items-center justify-center">
-          <Card className="max-w-xs gap-2">
+          <Card className="max-w-xs gap-2 py-4">
             <CardHeader>
               <CardTitle>Templates Error</CardTitle>
             </CardHeader>
@@ -1030,7 +985,7 @@ setTemplatesResult(result)
           </div>
         </div>
         <div className="shrink-0">
-          <InteractiveTimeline items={[...timelineItems, ...manualTimelineItems]} maxItems={3} />
+          <InteractiveTimeline items={timelineItems} maxItems={3} />
         </div>
         <Separator className="mt-4" />
         <div className="mt-4 flex-1 min-h-0 overflow-hidden">
@@ -1221,7 +1176,6 @@ export function LandingTabs({
   attackConfigCompleted,
   siftAgentConfigured,
   onLabRangeComplete,
-  onLabRangeReset,
   onAttackConfigComplete,
   onSiftAgentConfigured,
 }: LandingTabsProps) {
@@ -1268,7 +1222,6 @@ export function LandingTabs({
                 <LabRangeContent
                   completed={labRangeCompleted}
                   onComplete={onLabRangeComplete}
-                  onReset={onLabRangeReset}
                 />
               ) : s === "Attack Configuration" ? (
                 <AttackConfigurationContent

@@ -1,7 +1,6 @@
 import { motion, useInView, AnimatePresence } from "motion/react"
 import { useRef, useState, useEffect } from "react"
 import { Spinner } from "@/components/ui/spinner"
-import { cn } from "@/lib/utils"
 
 /**
  * A single entry in the timeline.
@@ -51,9 +50,6 @@ function TimelineItemComponent({
     margin: "-100px",
   })
 
-  const isActive = item.status === "building" || item.status === "not_built"
-  const isBuilt = item.status === "built"
-
   return (
     <div ref={itemRef} className="flex gap-3 items-center">
       <div className="flex size-10 shrink-0 items-center justify-center">
@@ -63,12 +59,7 @@ function TimelineItemComponent({
             itemInView ? { scale: 1, opacity: 1 } : { scale: 0, opacity: 0 }
           }
           transition={{ delay: index * 0.2, duration: 0.3 }}
-          className={cn(
-            "z-10 size-4 rounded-full border-2",
-            isBuilt && "border-primary bg-primary",
-            isActive && "border-primary bg-primary animate-pulse",
-            !isBuilt && !isActive && "border-muted-foreground/50 bg-transparent",
-          )}
+          className="z-10 size-4 rounded-full border-2 border-primary bg-primary"
         />
       </div>
 
@@ -116,7 +107,12 @@ export function InteractiveTimeline({
   useEffect(() => {
     if (!ref.current || !isInView) return
     setLineHeight(ref.current.offsetHeight)
-  }, [isInView, displayItems.length])
+    const observer = new ResizeObserver(() => {
+      if (ref.current) setLineHeight(ref.current.offsetHeight)
+    })
+    observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [isInView])
 
   return (
     <div ref={ref} className="relative w-full">
