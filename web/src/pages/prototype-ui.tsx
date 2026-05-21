@@ -1,4 +1,4 @@
-import { TreeDemo } from "@/components/tree-demo"
+import { AttackerConfigUIDemo } from "@/components/attacker-config-ui-demo"
 
 export function PrototypeUI() {
   return (
@@ -13,11 +13,11 @@ export function PrototypeUI() {
       <p className="text-sm text-muted-foreground">Prototyping the real feature</p>
 
       <section>
-        <h2 className="font-heading mb-1 text-xl font-semibold tracking-tight">Tree View</h2>
+        <h2 className="font-heading mb-1 text-xl font-semibold tracking-tight">Attacker Config UI</h2>
         <p className="mb-4 text-sm text-muted-foreground">
-          Tree component from kibo-ui with custom icons.
+          Reusable components for the attacker configuration UI.
         </p>
-        <TreeDemo />
+        <AttackerConfigUIDemo />
       </section>
     </div>
   )

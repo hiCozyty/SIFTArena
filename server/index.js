@@ -1,6 +1,9 @@
 import { createWsHandler, addFetcher, addOperation } from "./poller.js"
-import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./templates.js"
-import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, preloadInventory, fetchRangeConfig, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera } from "./range.js"
+import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./ludus/templates.js"
+import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, preloadInventory, fetchRangeConfig, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera } from "./ludus/range.js"
+import { fetchCalderaCategories } from "./caldera/categories.js"
+import { fetchAtomicAbilities } from "./caldera/atomic.js"
+import { createAbility, getCustomAbilities, getCustomAbility } from "./caldera/custom.js"
 
 const LUDUS_SERVER_URL = process.env.LUDUS_SERVER_URL + "/api/v2"
 const LUDUS_API_KEY = process.env.LUDUS_API_KEY
@@ -60,6 +63,11 @@ addOperation("listSnapshots", listSnapshots)
 addOperation("saveBaseClean", saveBaseClean)
 addOperation("runAnsibleScript", runAnsibleScript)
 addOperation("checkCaldera", checkCaldera)
+addOperation("getCalderaCategories", fetchCalderaCategories)
+addOperation("getAtomicAbilities", fetchAtomicAbilities)
+addOperation("createAbility", createAbility)
+addOperation("getCustomAbilities", getCustomAbilities)
+addOperation("getCustomAbility", getCustomAbility)
 
 const server = Bun.serve({
   port: BUN_SERVER_PORT,
