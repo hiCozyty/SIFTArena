@@ -703,7 +703,7 @@ export function useLabRangeState(onComplete: () => void) {
                 : item
             )
           )
-          backendWs.send({ type: "runAnsibleScript", label: "kali", playbook: "./server/ludus/kaliAnsibleStart.yml" })
+          backendWs.send({ type: "runAnsibleScript", label: "kali", playbook: "./server/kaliAnsibleStart.yml" })
         }
         return
       }

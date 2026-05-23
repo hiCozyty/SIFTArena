@@ -75,7 +75,8 @@ async function main() {
             console.log(`${tid} - ${t.technique_name} (${cat})`)
             console.log(`  ${t.abilities.length} abilities:`)
             for (const a of t.abilities) {
-              console.log(`    ${a.ability_id} | ${a.executor} | ${a.name}`)
+              const executors = a.executors.map(e => `${e.name}(${e.platform})`).join(", ")
+              console.log(`    ${a.ability_id} | ${a.name} | [${executors}]`)
             }
             break
           }

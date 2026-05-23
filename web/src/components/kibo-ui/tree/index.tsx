@@ -16,9 +16,9 @@ import { cn } from "@/lib/utils";
 
 type TreeContextType = {
   expandedIds: Set<string>;
+  setExpandedIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   selectedIds: string[];
   toggleExpanded: (nodeId: string) => void;
-  setExpandedIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   handleSelection: (nodeId: string, ctrlKey: boolean) => void;
   showLines?: boolean;
   showIcons?: boolean;
@@ -142,9 +142,9 @@ export const TreeProvider = ({
     <TreeContext.Provider
       value={{
         expandedIds,
+        setExpandedIds,
         selectedIds: currentSelectedIds,
         toggleExpanded,
-        setExpandedIds,
         handleSelection,
         showLines,
         showIcons,
@@ -156,7 +156,7 @@ export const TreeProvider = ({
     >
       <motion.div
         animate={{ opacity: 1, y: 0 }}
-        className={cn("w-full min-w-0", className)}
+        className={cn("w-full", className)}
         initial={{ opacity: 0, y: 10 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
       >
@@ -169,7 +169,7 @@ export const TreeProvider = ({
 export type TreeViewProps = HTMLAttributes<HTMLDivElement>;
 
 export const TreeView = ({ className, children, ...props }: TreeViewProps) => (
-  <div className={cn("p-2 min-w-0", className)} {...props}>
+  <div className={cn("p-2", className)} {...props}>
     {children}
   </div>
 );
@@ -216,7 +216,7 @@ export const TreeNode = ({
         parentPath: currentPath,
       }}
     >
-      <div className={cn("select-none min-w-0", className)} {...props}>
+      <div className={cn("select-none", className)} {...props}>
         {children}
       </div>
     </TreeNodeContext.Provider>
@@ -238,7 +238,7 @@ export const TreeNodeTrigger = ({
   return (
     <motion.div
       className={cn(
-        "group relative mx-1 flex cursor-pointer items-center rounded-md px-3 py-2 transition-all duration-200 min-w-0",
+        "group relative mx-1 flex cursor-pointer items-center rounded-md px-3 py-2 transition-all duration-200",
         "hover:bg-accent/50",
         isSelected && "bg-accent/80",
         className
@@ -330,7 +330,7 @@ export const TreeNodeContent = ({
       {hasChildren && isExpanded && (
         <motion.div
           animate={{ height: "auto", opacity: 1 }}
-          className="overflow-hidden min-w-0"
+          className="overflow-hidden"
           exit={{ height: 0, opacity: 0 }}
           initial={{ height: 0, opacity: 0 }}
           transition={{
@@ -340,7 +340,7 @@ export const TreeNodeContent = ({
         >
           <motion.div
             animate={{ y: 0 }}
-            className={cn("min-w-0", className)}
+            className={className}
             exit={{ y: -10 }}
             initial={{ y: -10 }}
             transition={{
@@ -443,5 +443,5 @@ export const TreeIcon = ({
 export type TreeLabelProps = HTMLAttributes<HTMLSpanElement>;
 
 export const TreeLabel = ({ className, ...props }: TreeLabelProps) => (
-  <span className={cn("flex-1 whitespace-normal break-words text-sm", className)} {...props} />
+  <span className={cn("font flex-1 truncate text-sm", className)} {...props} />
 );
