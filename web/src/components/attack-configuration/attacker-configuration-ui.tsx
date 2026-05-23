@@ -28,45 +28,14 @@ import {
   MessageCircle,
   Monitor,
   Terminal,
+  FileType2,
   Braces,
 } from "lucide-react"
+import { useFocusedData } from "@/hooks/use-focused-data"
+import { useEffect } from "react"
 
-const PLACEHOLDER_TREE = {
-  categories: ["Database Attacks", "API Attacks", "Credential Access"],
-  techniques: {
-    "Database Attacks": {
-      T1003: {
-        technique_name: "OS Credential Dumping",
-        abilities: [
-          { ability_id: "a1b2c3", name: "Dump SAM Database", executor: "psh" },
-          { ability_id: "d4e5f6", name: "LSASS Memory Dump", executor: "cmd" },
-        ],
-      },
-      T1110: {
-        technique_name: "Brute Force",
-        abilities: [
-          { ability_id: "g7h8i9", name: "Password Spraying", executor: "psh" },
-        ],
-      },
-    },
-    "API Attacks": {
-      T1190: {
-        technique_name: "Exploit Public-Facing Application",
-        abilities: [
-          { ability_id: "j0k1l2", name: "SQL Injection", executor: "sh" },
-          { ability_id: "m3n4o5", name: "API Endpoint Discovery", executor: "sh" },
-        ],
-      },
-    },
-    "Credential Access": {
-      T1055: {
-        technique_name: "Process Injection",
-        abilities: [
-          { ability_id: "p6q7r8", name: "DLL Injection", executor: "psh" },
-        ],
-      },
-    },
-  },
+function capitalize(str: string) {
+  return str.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 function TreeControls({ allIds }: { allIds: string[] }) {
@@ -98,13 +67,31 @@ function TreeControls({ allIds }: { allIds: string[] }) {
   )
 }
 
-function PlaceholderTree() {
-  const { categories, techniques } = PLACEHOLDER_TREE
+function TechniqueTree() {
+  const { status, fetch } = useFocusedData()
+
+  useEffect(() => {
+    fetch()
+  }, [fetch])
+
+  if (status.type === "loading") {
+    return <div className="p-4 text-sm text-muted-foreground">Loading...</div>
+  }
+
+  if (status.type === "error") {
+    return <div className="p-4 text-sm text-destructive">Error: {status.message}</div>
+  }
+
+  if (status.type !== "success") {
+    return null
+  }
+
+  const { categories, techniques } = status.data
   const allIds: string[] = []
 
   for (const cat of categories) {
     allIds.push(cat)
-    const catTechs = techniques[cat as keyof typeof techniques] || {}
+    const catTechs = techniques[cat] || {}
     for (const [tid, tech] of Object.entries(catTechs)) {
       allIds.push(tid)
       for (const ability of tech.abilities) {
@@ -126,7 +113,7 @@ function PlaceholderTree() {
         <div className="min-h-0 min-w-0 flex-1 overflow-auto max-w-full">
           <TreeView>
             {categories.map((cat, catIdx) => {
-              const catTechs = techniques[cat as keyof typeof techniques] || {}
+              const catTechs = techniques[cat] || {}
               const techEntries = Object.entries(catTechs)
               const isLastCat = catIdx === categories.length - 1
 
@@ -135,7 +122,7 @@ function PlaceholderTree() {
                   <TreeNodeTrigger>
                     <TreeExpander hasChildren />
                     <TreeIcon hasChildren />
-                    <TreeLabel>{cat}</TreeLabel>
+                    <TreeLabel>{capitalize(cat)}</TreeLabel>
                   </TreeNodeTrigger>
                   <TreeNodeContent hasChildren>
                     {techEntries.map(([tid, tech], techIdx) => {
@@ -199,75 +186,43 @@ function PlaceholderTree() {
   )
 }
 
-export function PrototypeUI() {
+export function AttackerConfigurationUi() {
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-10 p-8">
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-        <strong>Prototype.</strong> This page is for prototyping real feature usage. Components shown here import
-        directly from <code>@/components/ui/</code>. To use a component
-        elsewhere, import it from its source file — not from here.
+    <div className="h-full rounded-lg flex">
+      <div className="w-[280px] shrink-0 border-r overflow-auto">
+        <TechniqueTree />
       </div>
-
-      <h1 className="font-heading text-2xl font-semibold tracking-tight">Prototype UI</h1>
-      <p className="text-sm text-muted-foreground">Prototyping the attack configuration tree layout</p>
-
-      <div className="h-[80vh] rounded-4xl border bg-card text-card-foreground shadow-sm p-6 flex flex-col min-h-0 border-2 border-red-500">
-        <div className="mb-4 flex items-center gap-3 shrink-0">
-          <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-            <Braces className="size-6 text-primary" />
+      <div className="flex-1 min-w-0">
+        <Tabs defaultValue="code" className="flex h-full flex-col gap-3 px-3 pb-3">
+          <div className="flex shrink-0 items-center justify-center pt-3">
+            <TabsList>
+              <TabsTrigger value="code">
+                <FileText className="size-4" />
+              </TabsTrigger>
+              <TabsTrigger value="chat">
+                <MessageCircle className="size-4" />
+              </TabsTrigger>
+              <TabsTrigger value="rdp">
+                <Monitor className="size-4" />
+              </TabsTrigger>
+              <TabsTrigger value="cli">
+                <Terminal className="size-4" />
+              </TabsTrigger>
+            </TabsList>
           </div>
-          <div>
-            <h3 className="font-semibold text-lg">Attack Configuration</h3>
-            <p className="text-muted-foreground text-sm">Select preconfigured attack or create your custom configuration</p>
-          </div>
-        </div>
-        <p className="text-muted-foreground text-sm shrink-0">
-          Please select an attack..
-        </p>
-        <div className="mt-4 flex-1 min-h-0">
-          <div className="h-full rounded-lg border-2 border-yellow-500 flex">
-            <div className="w-[280px] shrink-0 border-r overflow-auto">
-              <PlaceholderTree />
-            </div>
-            <div className="flex-1 min-w-0">
-              <Tabs defaultValue="code" className="flex h-full flex-col gap-3 px-3 pb-3">
-                <div className="flex shrink-0 items-center justify-center pt-3">
-                  <TabsList>
-                    <TabsTrigger value="code">
-                      <FileText className="size-4" />
-                    </TabsTrigger>
-                    <TabsTrigger value="chat">
-                      <MessageCircle className="size-4" />
-                    </TabsTrigger>
-                    <TabsTrigger value="rdp">
-                      <Monitor className="size-4" />
-                    </TabsTrigger>
-                    <TabsTrigger value="cli">
-                      <Terminal className="size-4" />
-                    </TabsTrigger>
-                  </TabsList>
-                </div>
-                <TabsContent value="code" className="flex-1 rounded-4xl bg-muted p-4 shadow-sm">
-                  Code panel content
-                </TabsContent>
-                <TabsContent value="chat" className="flex-1 rounded-4xl bg-muted p-4 shadow-sm">
-                  Chat panel content
-                </TabsContent>
-                <TabsContent value="rdp" className="flex-1 rounded-4xl bg-muted p-4 shadow-sm">
-                  RDP panel content
-                </TabsContent>
-                <TabsContent value="cli" className="flex-1 rounded-4xl bg-muted p-4 shadow-sm">
-                  CLI panel content
-                </TabsContent>
-              </Tabs>
-            </div>
-          </div>
-        </div>
-        <div className="mt-4 shrink-0">
-          <button className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 bg-primary text-primary-foreground shadow hover:bg-primary/90">
-            Complete Attack Configuration
-          </button>
-        </div>
+          <TabsContent value="code" className="flex-1 rounded-4xl bg-muted p-4 shadow-sm">
+            Code panel content
+          </TabsContent>
+          <TabsContent value="chat" className="flex-1 rounded-4xl bg-muted p-4 shadow-sm">
+            Chat panel content
+          </TabsContent>
+          <TabsContent value="rdp" className="flex-1 rounded-4xl bg-muted p-4 shadow-sm">
+            RDP panel content
+          </TabsContent>
+          <TabsContent value="cli" className="flex-1 rounded-4xl bg-muted p-4 shadow-sm">
+            CLI panel content
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   )

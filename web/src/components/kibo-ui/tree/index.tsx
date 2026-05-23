@@ -18,6 +18,7 @@ type TreeContextType = {
   expandedIds: Set<string>;
   selectedIds: string[];
   toggleExpanded: (nodeId: string) => void;
+  setExpandedIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   handleSelection: (nodeId: string, ctrlKey: boolean) => void;
   showLines?: boolean;
   showIcons?: boolean;
@@ -29,7 +30,7 @@ type TreeContextType = {
 
 const TreeContext = createContext<TreeContextType | undefined>(undefined);
 
-const useTree = () => {
+export const useTree = () => {
   const context = useContext(TreeContext);
   if (!context) {
     throw new Error("Tree components must be used within a TreeProvider");
@@ -143,6 +144,7 @@ export const TreeProvider = ({
         expandedIds,
         selectedIds: currentSelectedIds,
         toggleExpanded,
+        setExpandedIds,
         handleSelection,
         showLines,
         showIcons,
@@ -154,7 +156,7 @@ export const TreeProvider = ({
     >
       <motion.div
         animate={{ opacity: 1, y: 0 }}
-        className={cn("w-full", className)}
+        className={cn("w-full min-w-0", className)}
         initial={{ opacity: 0, y: 10 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
       >
@@ -167,7 +169,7 @@ export const TreeProvider = ({
 export type TreeViewProps = HTMLAttributes<HTMLDivElement>;
 
 export const TreeView = ({ className, children, ...props }: TreeViewProps) => (
-  <div className={cn("p-2", className)} {...props}>
+  <div className={cn("p-2 min-w-0", className)} {...props}>
     {children}
   </div>
 );
@@ -214,7 +216,7 @@ export const TreeNode = ({
         parentPath: currentPath,
       }}
     >
-      <div className={cn("select-none", className)} {...props}>
+      <div className={cn("select-none min-w-0", className)} {...props}>
         {children}
       </div>
     </TreeNodeContext.Provider>
@@ -236,7 +238,7 @@ export const TreeNodeTrigger = ({
   return (
     <motion.div
       className={cn(
-        "group relative mx-1 flex cursor-pointer items-center rounded-md px-3 py-2 transition-all duration-200",
+        "group relative mx-1 flex cursor-pointer items-center rounded-md px-3 py-2 transition-all duration-200 min-w-0",
         "hover:bg-accent/50",
         isSelected && "bg-accent/80",
         className
@@ -328,7 +330,7 @@ export const TreeNodeContent = ({
       {hasChildren && isExpanded && (
         <motion.div
           animate={{ height: "auto", opacity: 1 }}
-          className="overflow-hidden"
+          className="overflow-hidden min-w-0"
           exit={{ height: 0, opacity: 0 }}
           initial={{ height: 0, opacity: 0 }}
           transition={{
@@ -338,7 +340,7 @@ export const TreeNodeContent = ({
         >
           <motion.div
             animate={{ y: 0 }}
-            className={className}
+            className={cn("min-w-0", className)}
             exit={{ y: -10 }}
             initial={{ y: -10 }}
             transition={{
@@ -441,5 +443,5 @@ export const TreeIcon = ({
 export type TreeLabelProps = HTMLAttributes<HTMLSpanElement>;
 
 export const TreeLabel = ({ className, ...props }: TreeLabelProps) => (
-  <span className={cn("font flex-1 truncate text-sm", className)} {...props} />
+  <span className={cn("flex-1 whitespace-normal break-words text-sm", className)} {...props} />
 );
