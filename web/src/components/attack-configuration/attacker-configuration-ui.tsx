@@ -106,12 +106,12 @@ function TechniqueTree() {
 
   return (
     <TreeProvider defaultExpandedIds={allIds}>
-      <div className="flex h-full flex-col gap-2">
-        <div className="shrink-0 px-2 pt-2">
+      <div className="flex h-full flex-col">
+        <div className="shrink-0">
           <TreeControls allIds={allIds} />
         </div>
-        <div className="min-h-0 min-w-0 flex-1 overflow-auto max-w-full">
-          <TreeView>
+        <div className="min-h-0 min-w-0 flex-1 max-w-full">
+          <TreeView className="pl-0 rounded-lg m-2 -ml-[5px] h-[450px] overflow-auto">
             {categories.map((cat, catIdx) => {
               const catTechs = techniques[cat] || {}
               const techEntries = Object.entries(catTechs)
@@ -189,12 +189,12 @@ function TechniqueTree() {
 export function AttackerConfigurationUi() {
   return (
     <div className="h-full rounded-lg flex">
-      <div className="w-[280px] shrink-0 border-r overflow-auto">
+      <div className="w-[280px] shrink-0">
         <TechniqueTree />
       </div>
       <div className="flex-1 min-w-0">
-        <Tabs defaultValue="code" className="flex h-full flex-col gap-3 px-3 pb-3">
-          <div className="flex shrink-0 items-center justify-center pt-3">
+        <Tabs defaultValue="code" className="flex h-full flex-col">
+          <div className="flex shrink-0 items-center justify-center">
             <TabsList>
               <TabsTrigger value="code">
                 <FileText className="size-4" />
@@ -210,16 +210,16 @@ export function AttackerConfigurationUi() {
               </TabsTrigger>
             </TabsList>
           </div>
-          <TabsContent value="code" className="flex-1 rounded-4xl bg-muted p-4 shadow-sm">
+          <TabsContent value="code" className="flex-1 flex items-center justify-center rounded-4xl bg-muted shadow-sm">
             Code panel content
           </TabsContent>
-          <TabsContent value="chat" className="flex-1 rounded-4xl bg-muted p-4 shadow-sm">
+          <TabsContent value="chat" className="flex-1 flex items-center justify-center rounded-4xl bg-muted shadow-sm">
             Chat panel content
           </TabsContent>
-          <TabsContent value="rdp" className="flex-1 rounded-4xl bg-muted p-4 shadow-sm">
+          <TabsContent value="rdp" className="flex-1 flex items-center justify-center rounded-4xl bg-muted shadow-sm">
             RDP panel content
           </TabsContent>
-          <TabsContent value="cli" className="flex-1 rounded-4xl bg-muted p-4 shadow-sm">
+          <TabsContent value="cli" className="flex-1 flex items-center justify-center rounded-4xl bg-muted shadow-sm">
             CLI panel content
           </TabsContent>
         </Tabs>
