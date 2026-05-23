@@ -97,6 +97,28 @@ export function getCachedInventory() {
   return cachedInventory
 }
 
+export async function fetchRdpConfigs(ludusUrl, apiKey, data) {
+  const rangeId = data?.rangeID || process.env.LUDUS_RANGE_ID
+  let path = `/range/rdpconfigs?rangeID=${rangeId}`
+  if (data?.userID) path += `&userID=${data.userID}`
+
+  const response = await fetch(`${ludusUrl}${path}`, {
+    headers: { "X-API-KEY": apiKey },
+    tls: { rejectUnauthorized: false },
+  })
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`RDP configs error (${response.status}): ${text}`)
+  }
+
+  const buffer = await response.arrayBuffer()
+  return {
+    filename: `rdp-range-${rangeId}.zip`,
+    data: Buffer.from(buffer).toString("base64"),
+    size: buffer.byteLength,
+  }
+}
+
 export async function fetchRangeConfig(ludusUrl, apiKey) {
   return await apiCall(ludusUrl, apiKey, "/range/config")
 }

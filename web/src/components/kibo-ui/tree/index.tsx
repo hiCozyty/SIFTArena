@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronRight, File, Folder, FolderOpen } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import {
   type ComponentProps,
   createContext,
@@ -154,14 +154,9 @@ export const TreeProvider = ({
         animateExpand,
       }}
     >
-      <motion.div
-        animate={{ opacity: 1, y: 0 }}
-        className={cn("w-full", className)}
-        initial={{ opacity: 0, y: 10 }}
-        transition={{ duration: 0.3, ease: "easeOut" }}
-      >
+      <div className={cn("w-full", className)}>
         {children}
-      </motion.div>
+      </div>
     </TreeContext.Provider>
   );
 };
@@ -236,10 +231,10 @@ export const TreeNodeTrigger = ({
   const isSelected = selectedIds.includes(nodeId);
 
   return (
-    <motion.div
+    <div
       className={cn(
         "group relative mx-1 flex cursor-pointer items-center rounded-md px-3 py-2 transition-all duration-200",
-        "hover:bg-accent/50",
+        "hover:bg-accent/50 active:scale-[0.98]",
         isSelected && "bg-accent/80",
         className
       )}
@@ -249,12 +244,11 @@ export const TreeNodeTrigger = ({
         onClick?.(e);
       }}
       style={{ paddingLeft: level * (indent ?? 0) + 8 }}
-      whileTap={{ scale: 0.98, transition: { duration: 0.1 } }}
       {...props}
     >
       <TreeLines />
       {children as ReactNode}
-    </motion.div>
+    </div>
   );
 };
 
@@ -325,35 +319,24 @@ export const TreeNodeContent = ({
   const { nodeId } = useTreeNode();
   const isExpanded = expandedIds.has(nodeId);
 
+  if (!hasChildren || !isExpanded) {
+    return null;
+  }
+
   return (
-    <AnimatePresence>
-      {hasChildren && isExpanded && (
-        <motion.div
-          animate={{ height: "auto", opacity: 1 }}
-          className="overflow-hidden"
-          exit={{ height: 0, opacity: 0 }}
-          initial={{ height: 0, opacity: 0 }}
-          transition={{
-            duration: animateExpand ? 0.3 : 0,
-            ease: "easeInOut",
-          }}
-        >
-          <motion.div
-            animate={{ y: 0 }}
-            className={className}
-            exit={{ y: -10 }}
-            initial={{ y: -10 }}
-            transition={{
-              duration: animateExpand ? 0.2 : 0,
-              delay: animateExpand ? 0.1 : 0,
-            }}
-            {...props}
-          >
-            {children}
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <div
+      className={cn("overflow-hidden", className)}
+      style={
+        animateExpand
+          ? {
+              animation: "treeExpand 0.2s ease-out both",
+            }
+          : undefined
+      }
+      {...props}
+    >
+      {children}
+    </div>
   );
 };
 
@@ -426,17 +409,15 @@ export const TreeIcon = ({
     );
 
   return (
-    <motion.div
+    <div
       className={cn(
-        "mr-2 flex h-4 w-4 items-center justify-center text-muted-foreground",
+        "mr-2 flex h-4 w-4 items-center justify-center text-muted-foreground transition-transform duration-150 hover:scale-110",
         className
       )}
-      transition={{ duration: 0.15 }}
-      whileHover={{ scale: 1.1 }}
       {...props}
     >
       {icon || getDefaultIcon()}
-    </motion.div>
+    </div>
   );
 };
 
