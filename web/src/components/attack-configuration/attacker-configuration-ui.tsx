@@ -23,19 +23,43 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  ChevronsUpDown,
-  FileText,
-  ListChecks,
-  MessageCircle,
-} from "lucide-react"
-import { useFocusedData } from "@/hooks/use-focused-data"
-import { useEffect, useState } from "react"
+import { FileText, MessageCircle, ListChecks, Check, Copy, ChevronsUpDown } from "lucide-react"
+import { useFocusedData, type Technique, type AtomicAbility } from "@/hooks/use-focused-data"
+import { useCallback, useEffect, useState } from "react"
+import { ChatPanel } from "@/components/shared/chat-panel"
 
 type SelectedItem =
   | { type: "ability"; tid: string; abilityId: string; name: string; description: string | undefined; command: string; downloadInstructions: string }
   | { type: "negative-control" }
   | { type: "technique"; tid: string; name: string }
+  | { type: "none" }
+
+function CopyCommandBlock({ commands }: { commands: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(commands)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="bg-background/50 rounded-4xl overflow-hidden">
+      <div className="flex justify-end px-3 py-1.5">
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="p-1.5 rounded-md hover:bg-background text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+      <pre className="p-3 pt-0 text-xs overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <code>{commands}</code>
+      </pre>
+    </div>
+  )
+}
 
 function TreeControls({ allIds }: { allIds: string[] }) {
   const { expandedIds, setExpandedIds } = useTree()
@@ -109,53 +133,78 @@ function TechniqueTree({ onSelect }: { onSelect: (item: SelectedItem) => void })
         <div className="shrink-0">
           <TreeControls allIds={allIds} />
         </div>
-        <div className="min-h-0 min-w-0 flex-1 max-w-full">
-          <TreeView className="pl-0 rounded-lg m-2 -ml-[5px] h-[450px] overflow-auto">
-            <TreeNode key="negative-control" isLast={allTechniques.length === 0} nodeId="negative-control">
-              <TreeNodeTrigger onClick={() => onSelect({ type: "negative-control" })}>
-                <TreeIcon icon={<FileText className="h-4 w-4" />} />
-                <TreeLabel className="whitespace-normal break-words">Negative Control</TreeLabel>
-              </TreeNodeTrigger>
-            </TreeNode>
-            {allTechniques.map(({ tid, tech }, techIdx) => {
-              const isLastTech = techIdx === allTechniques.length - 1
-
-              return (
-                <TreeNode key={tid} isLast={isLastTech} nodeId={tid}>
-                  <TreeNodeTrigger onClick={() => onSelect({ type: "technique", tid, name: tech.technique_name })}>
-                    <TreeExpander hasChildren />
-                    <TreeIcon hasChildren />
-                    <TreeLabel className="whitespace-normal break-words">{tid} - {tech.technique_name}</TreeLabel>
-                  </TreeNodeTrigger>
-                  <TreeNodeContent hasChildren>
-                    {tech.abilities.map((ability, abIdx) => {
-                      const isLastAb = abIdx === tech.abilities.length - 1
-                      const abilityId = `${tid}-${ability.ability_id}`
-
-                      return (
-                        <TreeNode key={abilityId} isLast={isLastAb} level={1} nodeId={abilityId}>
-                          <TreeNodeTrigger onClick={() => onSelect({ type: "ability", tid, abilityId: ability.ability_id, name: ability.name, description: ability.description, command: ability.executors[0]?.command ?? "(no command)", downloadInstructions: ability.download_instructions ?? "" })}>
-                            <TreeIcon icon={<FileText className="h-4 w-4" />} />
-                            <TreeLabel className="whitespace-normal break-words">{ability.name}</TreeLabel>
-                          </TreeNodeTrigger>
-                        </TreeNode>
-                      )
-                    })}
-                  </TreeNodeContent>
-                </TreeNode>
-              )
-            })}
-          </TreeView>
-        </div>
+        <TechniqueTreeContent onSelect={onSelect} allTechniques={allTechniques} />
       </div>
     </TreeProvider>
   )
 }
 
+function TechniqueTreeContent({ onSelect, allTechniques }: { onSelect: (item: SelectedItem) => void; allTechniques: { tid: string; tech: Technique }[] }) {
+  const { selectedIds } = useTree()
+
+  useEffect(() => {
+    if (selectedIds.length === 0) {
+      onSelect({ type: "none" })
+    }
+  }, [selectedIds, onSelect])
+
+  const allIds: string[] = []
+  for (const { tid, tech } of allTechniques) {
+    allIds.push(tid)
+    for (const ability of tech.abilities) {
+      allIds.push(`${tid}-${ability.ability_id}`)
+    }
+  }
+
+  return (
+    <div className="min-h-0 min-w-0 flex-1 max-w-full">
+      <TreeView className="pl-0 rounded-lg m-2 -ml-[5px] h-[415px] overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <TreeNode key="negative-control" isLast={allTechniques.length === 0} nodeId="negative-control">
+          <TreeNodeTrigger onClick={() => onSelect({ type: "negative-control" })}>
+            <TreeIcon icon={<FileText className="h-4 w-4" />} />
+            <TreeLabel className="whitespace-normal break-words">Negative Control</TreeLabel>
+          </TreeNodeTrigger>
+        </TreeNode>
+        {allTechniques.map(({ tid, tech }, techIdx) => {
+          const isLastTech = techIdx === allTechniques.length - 1
+
+          return (
+            <TreeNode key={tid} isLast={isLastTech} nodeId={tid}>
+              <TreeNodeTrigger onClick={() => onSelect({ type: "technique", tid, name: tech.technique_name })}>
+                <TreeExpander hasChildren />
+                <TreeIcon hasChildren />
+                <TreeLabel className="whitespace-normal break-words">{tid} - {tech.technique_name}</TreeLabel>
+              </TreeNodeTrigger>
+              <TreeNodeContent hasChildren>
+                {tech.abilities.map((ability: AtomicAbility, abIdx: number) => {
+                  const isLastAb = abIdx === tech.abilities.length - 1
+                  const abilityId = `${tid}-${ability.ability_id}`
+
+                  return (
+                    <TreeNode key={abilityId} isLast={isLastAb} level={1} nodeId={abilityId}>
+                      <TreeNodeTrigger onClick={() => onSelect({ type: "ability", tid, abilityId: ability.ability_id, name: ability.name, description: ability.description, command: ability.executors[0]?.command ?? "(no command)", downloadInstructions: ability.download_instructions ?? "" })}>
+                        <TreeIcon icon={<FileText className="h-4 w-4" />} />
+                        <TreeLabel className="whitespace-normal break-words">{ability.name}</TreeLabel>
+                      </TreeNodeTrigger>
+                    </TreeNode>
+                  )
+                })}
+              </TreeNodeContent>
+            </TreeNode>
+          )
+        })}
+      </TreeView>
+    </div>
+  )
+}
+
 export function AttackerConfigurationUi() {
-  const [selected, setSelected] = useState<SelectedItem>({ type: "negative-control" })
+  const [selected, setSelected] = useState<SelectedItem>({ type: "none" })
 
   const displayContent = (() => {
+    if (selected.type === "none") {
+      return null
+    }
     if (selected.type === "negative-control") {
       return { name: "Negative Control", abilityId: "", description: "An empty ability that does nothing.", command: "(none)", downloadInstructions: "" }
     }
@@ -170,7 +219,7 @@ export function AttackerConfigurationUi() {
       <div className="w-[280px] shrink-0">
         <TechniqueTree onSelect={setSelected} />
       </div>
-      <div className="flex-1 min-w-0">
+      <div className="w-[500px] min-w-0">
         <Tabs defaultValue="code" className="flex h-full flex-col">
           <div className="flex shrink-0 items-center justify-between px-4 py-2">
             <TabsList>
@@ -184,7 +233,7 @@ export function AttackerConfigurationUi() {
                 <ListChecks className="size-4" />
               </TabsTrigger>
             </TabsList>
-            <Button disabled={selected.type === "technique"}>Add to Scenario</Button>
+            <Button disabled={selected.type === "technique" || selected.type === "none"}>Add to Scenario</Button>
           </div>
           <TabsContent value="code" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
             {displayContent === null ? (
@@ -192,7 +241,7 @@ export function AttackerConfigurationUi() {
                 Please select an ability.
               </div>
             ) : (
-              <div className="flex h-full flex-col p-4 font-mono text-sm overflow-auto">
+              <div className="flex h-full flex-col p-4 font-mono text-sm overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <div className="mb-4">
                   <span className="font-bold">Name:</span> {displayContent.name}
                 </div>
@@ -225,9 +274,7 @@ export function AttackerConfigurationUi() {
                           {payloadLine && <p className="mb-2 font-medium">{payloadLine}</p>}
                           {commands && (
                             <div className="relative mt-3">
-                              <pre className="bg-background/50 p-3 rounded text-xs overflow-x-auto">
-                                <code>{commands}</code>
-                              </pre>
+                              <CopyCommandBlock commands={commands} />
                             </div>
                           )}
                         </>
@@ -238,8 +285,8 @@ export function AttackerConfigurationUi() {
               </div>
             )}
           </TabsContent>
-          <TabsContent value="chat" className="flex-1 flex items-center justify-center rounded-4xl bg-muted shadow-sm">
-            Chat panel content
+          <TabsContent value="chat" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
+            <ChatPanel />
           </TabsContent>
           <TabsContent value="scenario" className="flex-1 flex items-center justify-center rounded-4xl bg-muted shadow-sm">
             Scenario panel content

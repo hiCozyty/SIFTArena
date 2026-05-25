@@ -120,10 +120,7 @@ function enrichPayloads(ability) {
     download_instructions: `${PREREQ_HEADER}
 
 Payload: ${info.name}
-${info.steps}
-
-Command (runs on target):
-${cmds}`,
+${info.steps}`,
   }
 }
 

