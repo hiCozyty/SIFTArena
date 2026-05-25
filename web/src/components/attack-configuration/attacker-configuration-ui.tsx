@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button"
 import {
   Tabs,
   TabsContent,
@@ -25,18 +26,16 @@ import {
 import {
   ChevronsUpDown,
   FileText,
+  ListChecks,
   MessageCircle,
-  Monitor,
-  Terminal,
-  FileType2,
-  Braces,
 } from "lucide-react"
 import { useFocusedData } from "@/hooks/use-focused-data"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 
-function capitalize(str: string) {
-  return str.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-}
+type SelectedItem =
+  | { type: "ability"; tid: string; abilityId: string; name: string; description: string | undefined; command: string; downloadInstructions: string }
+  | { type: "negative-control" }
+  | { type: "technique"; tid: string; name: string }
 
 function TreeControls({ allIds }: { allIds: string[] }) {
   const { expandedIds, setExpandedIds } = useTree()
@@ -51,7 +50,7 @@ function TreeControls({ allIds }: { allIds: string[] }) {
         <SelectContent>
           <SelectItem value="all">Display all (default)</SelectItem>
           <SelectItem value="preconfigured">Display preconfigured</SelectItem>
-          <SelectItem value="non-preconfigured">Display non-preconfigured</SelectItem>
+          <SelectItem value="non-preconfigured">Display custom</SelectItem>
         </SelectContent>
       </Select>
       <button
@@ -67,7 +66,7 @@ function TreeControls({ allIds }: { allIds: string[] }) {
   )
 }
 
-function TechniqueTree() {
+function TechniqueTree({ onSelect }: { onSelect: (item: SelectedItem) => void }) {
   const { status, fetch } = useFocusedData()
 
   useEffect(() => {
@@ -87,20 +86,20 @@ function TechniqueTree() {
   }
 
   const { categories, techniques } = status.data
-  const allIds: string[] = []
 
+  const allTechniques: { tid: string; tech: typeof techniques[string][string] }[] = []
   for (const cat of categories) {
-    allIds.push(cat)
     const catTechs = techniques[cat] || {}
     for (const [tid, tech] of Object.entries(catTechs)) {
-      allIds.push(tid)
-      for (const ability of tech.abilities) {
-        allIds.push(`${tid}-${ability.ability_id}`)
-        if (tid === "T1003") {
-          allIds.push(`${tid}-${ability.ability_id}-info`)
-          allIds.push(`${tid}-${ability.ability_id}-ansible`)
-        }
-      }
+      allTechniques.push({ tid, tech })
+    }
+  }
+
+  const allIds: string[] = []
+  for (const { tid, tech } of allTechniques) {
+    allIds.push(tid)
+    for (const ability of tech.abilities) {
+      allIds.push(`${tid}-${ability.ability_id}`)
     }
   }
 
@@ -112,66 +111,33 @@ function TechniqueTree() {
         </div>
         <div className="min-h-0 min-w-0 flex-1 max-w-full">
           <TreeView className="pl-0 rounded-lg m-2 -ml-[5px] h-[450px] overflow-auto">
-            {categories.map((cat, catIdx) => {
-              const catTechs = techniques[cat] || {}
-              const techEntries = Object.entries(catTechs)
-              const isLastCat = catIdx === categories.length - 1
+            <TreeNode key="negative-control" isLast={allTechniques.length === 0} nodeId="negative-control">
+              <TreeNodeTrigger onClick={() => onSelect({ type: "negative-control" })}>
+                <TreeIcon icon={<FileText className="h-4 w-4" />} />
+                <TreeLabel className="whitespace-normal break-words">Negative Control</TreeLabel>
+              </TreeNodeTrigger>
+            </TreeNode>
+            {allTechniques.map(({ tid, tech }, techIdx) => {
+              const isLastTech = techIdx === allTechniques.length - 1
 
               return (
-                <TreeNode key={cat} isLast={isLastCat} nodeId={cat}>
-                  <TreeNodeTrigger>
+                <TreeNode key={tid} isLast={isLastTech} nodeId={tid}>
+                  <TreeNodeTrigger onClick={() => onSelect({ type: "technique", tid, name: tech.technique_name })}>
                     <TreeExpander hasChildren />
                     <TreeIcon hasChildren />
-                    <TreeLabel>{capitalize(cat)}</TreeLabel>
+                    <TreeLabel className="whitespace-normal break-words">{tid} - {tech.technique_name}</TreeLabel>
                   </TreeNodeTrigger>
                   <TreeNodeContent hasChildren>
-                    {techEntries.map(([tid, tech], techIdx) => {
-                      const isLastTech = techIdx === techEntries.length - 1
+                    {tech.abilities.map((ability, abIdx) => {
+                      const isLastAb = abIdx === tech.abilities.length - 1
+                      const abilityId = `${tid}-${ability.ability_id}`
 
                       return (
-                        <TreeNode key={tid} isLast={isLastTech} level={1} nodeId={tid}>
-                          <TreeNodeTrigger>
-                            <TreeExpander hasChildren />
-                            <TreeIcon hasChildren />
-                            <TreeLabel>{tid} - {tech.technique_name}</TreeLabel>
+                        <TreeNode key={abilityId} isLast={isLastAb} level={1} nodeId={abilityId}>
+                          <TreeNodeTrigger onClick={() => onSelect({ type: "ability", tid, abilityId: ability.ability_id, name: ability.name, description: ability.description, command: ability.executors[0]?.command ?? "(no command)", downloadInstructions: ability.download_instructions ?? "" })}>
+                            <TreeIcon icon={<FileText className="h-4 w-4" />} />
+                            <TreeLabel className="whitespace-normal break-words">{ability.name}</TreeLabel>
                           </TreeNodeTrigger>
-                          <TreeNodeContent hasChildren>
-                            {tech.abilities.map((ability, abIdx) => {
-                              const isLastAb = abIdx === tech.abilities.length - 1
-                              const abilityId = `${tid}-${ability.ability_id}`
-                              const isT1003 = tid === "T1003"
-
-                              return (
-                                <TreeNode key={abilityId} isLast={isLastAb} level={2} nodeId={abilityId}>
-                                  <TreeNodeTrigger>
-                                    <TreeExpander hasChildren />
-                                    <TreeIcon hasChildren />
-                                    <TreeLabel>{ability.name}</TreeLabel>
-                                  </TreeNodeTrigger>
-                                  <TreeNodeContent hasChildren>
-                                    {isT1003 && (
-                                      <>
-                                        <TreeNode isLast={false} level={3} nodeId={`${abilityId}-info`}>
-                                          <TreeNodeTrigger>
-                                            <TreeExpander />
-                                            <TreeIcon icon={<FileText className="h-4 w-4" />} />
-                                            <TreeLabel>info.txt</TreeLabel>
-                                          </TreeNodeTrigger>
-                                        </TreeNode>
-                                        <TreeNode isLast level={3} nodeId={`${abilityId}-ansible`}>
-                                          <TreeNodeTrigger>
-                                            <TreeExpander />
-                                            <TreeIcon icon={<Braces className="h-4 w-4" />} />
-                                            <TreeLabel>ansible.yml</TreeLabel>
-                                          </TreeNodeTrigger>
-                                        </TreeNode>
-                                      </>
-                                    )}
-                                  </TreeNodeContent>
-                                </TreeNode>
-                              )
-                            })}
-                          </TreeNodeContent>
                         </TreeNode>
                       )
                     })}
@@ -187,14 +153,26 @@ function TechniqueTree() {
 }
 
 export function AttackerConfigurationUi() {
+  const [selected, setSelected] = useState<SelectedItem>({ type: "negative-control" })
+
+  const displayContent = (() => {
+    if (selected.type === "negative-control") {
+      return { name: "Negative Control", abilityId: "", description: "An empty ability that does nothing.", command: "(none)", downloadInstructions: "" }
+    }
+    if (selected.type === "technique") {
+      return null
+    }
+    return { name: selected.name, abilityId: selected.abilityId, description: selected.description ?? "(no description)", command: selected.command, downloadInstructions: selected.downloadInstructions }
+  })()
+
   return (
     <div className="h-full rounded-lg flex">
       <div className="w-[280px] shrink-0">
-        <TechniqueTree />
+        <TechniqueTree onSelect={setSelected} />
       </div>
       <div className="flex-1 min-w-0">
         <Tabs defaultValue="code" className="flex h-full flex-col">
-          <div className="flex shrink-0 items-center justify-center">
+          <div className="flex shrink-0 items-center justify-between px-4 py-2">
             <TabsList>
               <TabsTrigger value="code">
                 <FileText className="size-4" />
@@ -202,25 +180,69 @@ export function AttackerConfigurationUi() {
               <TabsTrigger value="chat">
                 <MessageCircle className="size-4" />
               </TabsTrigger>
-              <TabsTrigger value="rdp">
-                <Monitor className="size-4" />
-              </TabsTrigger>
-              <TabsTrigger value="cli">
-                <Terminal className="size-4" />
+              <TabsTrigger value="scenario">
+                <ListChecks className="size-4" />
               </TabsTrigger>
             </TabsList>
+            <Button disabled={selected.type === "technique"}>Add to Scenario</Button>
           </div>
-          <TabsContent value="code" className="flex-1 flex items-center justify-center rounded-4xl bg-muted shadow-sm">
-            Code panel content
+          <TabsContent value="code" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
+            {displayContent === null ? (
+              <div className="flex h-full items-center justify-center p-4 font-mono text-sm text-muted-foreground">
+                Please select an ability.
+              </div>
+            ) : (
+              <div className="flex h-full flex-col p-4 font-mono text-sm overflow-auto">
+                <div className="mb-4">
+                  <span className="font-bold">Name:</span> {displayContent.name}
+                </div>
+                {displayContent.abilityId && (
+                  <div className="mb-4">
+                    <span className="font-bold">Ability ID:</span> {displayContent.abilityId}
+                  </div>
+                )}
+                <div className="mb-4">
+                  <span className="font-bold">Description:</span> {displayContent.description}
+                </div>
+                <div className="mb-4">
+                  <span className="font-bold">Command:</span> {displayContent.command}
+                </div>
+                {displayContent.downloadInstructions && (
+                  <div className="mt-6 border-t pt-4">
+                    {(() => {
+                      const lines = displayContent.downloadInstructions.split("\n")
+                      const titleIndex = lines.findIndex(l => l.includes("Prerequisites (Manual Step Required)"))
+                      const payloadIndex = lines.findIndex(l => l.startsWith("Payload:"))
+
+                      const warningLines = lines.slice(titleIndex + 1, payloadIndex >= 0 ? payloadIndex : undefined).join("\n").trim()
+                      const payloadLine = payloadIndex >= 0 ? lines[payloadIndex] : ""
+                      const commands = payloadIndex >= 0 ? lines.slice(payloadIndex + 1).join("\n").trim() : ""
+
+                      return (
+                        <>
+                          <div className="mb-2 font-bold">Prerequisites (Manual Step Required)</div>
+                          <p className="mb-3 text-muted-foreground whitespace-pre-wrap">{warningLines}</p>
+                          {payloadLine && <p className="mb-2 font-medium">{payloadLine}</p>}
+                          {commands && (
+                            <div className="relative mt-3">
+                              <pre className="bg-background/50 p-3 rounded text-xs overflow-x-auto">
+                                <code>{commands}</code>
+                              </pre>
+                            </div>
+                          )}
+                        </>
+                      )
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
           </TabsContent>
           <TabsContent value="chat" className="flex-1 flex items-center justify-center rounded-4xl bg-muted shadow-sm">
             Chat panel content
           </TabsContent>
-          <TabsContent value="rdp" className="flex-1 flex items-center justify-center rounded-4xl bg-muted shadow-sm">
-            RDP panel content
-          </TabsContent>
-          <TabsContent value="cli" className="flex-1 flex items-center justify-center rounded-4xl bg-muted shadow-sm">
-            CLI panel content
+          <TabsContent value="scenario" className="flex-1 flex items-center justify-center rounded-4xl bg-muted shadow-sm">
+            Scenario panel content
           </TabsContent>
         </Tabs>
       </div>

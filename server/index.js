@@ -2,6 +2,8 @@ import { createWsHandler, addFetcher, addOperation } from "./poller.js"
 import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./templates.js"
 import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, preloadInventory, fetchRangeConfig, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, fetchRdpConfigs } from "./range.js"
 import { fetchFocusedCategoriesAndTechniques } from "./caldera/categories.js"
+import { initDatabase, getCustomAbilities, createCustomAbility, updateCustomAbility, deleteCustomAbility } from "./caldera/customAbilities.js"
+import { createRdpProxyHandler } from "./rdp-proxy.js"
 
 const LUDUS_SERVER_URL = process.env.LUDUS_SERVER_URL + "/api/v2"
 const LUDUS_API_KEY = process.env.LUDUS_API_KEY
@@ -65,11 +67,29 @@ addOperation("getRdpConfigs", fetchRdpConfigs)
 addFetcher("getFocusedCategoriesAndTechniques", fetchFocusedCategoriesAndTechniques)
 addOperation("getFocusedCategoriesAndTechniques", fetchFocusedCategoriesAndTechniques)
 
+addOperation("getCustomAbilities", () => getCustomAbilities())
+addOperation("createCustomAbility", (_, __, data) => createCustomAbility(data.data))
+addOperation("updateCustomAbility", (_, __, data) => updateCustomAbility(data.abilityId, data.data))
+addOperation("deleteCustomAbility", (_, __, data) => deleteCustomAbility(data.abilityId))
+
+initDatabase()
+
+const pollerHandler = createWsHandler(LUDUS_SERVER_URL, LUDUS_API_KEY)
+const rdpHandler = createRdpProxyHandler()
+
 const server = Bun.serve({
   port: BUN_SERVER_PORT,
   fetch(request, server) {
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders })
+    }
+
+    const url = new URL(request.url)
+    if (url.pathname.startsWith("/rdp/")) {
+      const vmIp = url.pathname.split("/rdp/")[1]
+      if (vmIp && server.upgrade(request, { data: { vmIp, isRdp: true } })) {
+        return
+      }
     }
 
     if (server.upgrade(request)) {
@@ -81,7 +101,17 @@ const server = Bun.serve({
       headers: { "Content-Type": "application/json", ...corsHeaders },
     })
   },
-  websocket: createWsHandler(LUDUS_SERVER_URL, LUDUS_API_KEY),
+  websocket: {
+    open(ws) {
+      (ws.data?.isRdp ? rdpHandler : pollerHandler).open(ws)
+    },
+    message(ws, message) {
+      (ws.data?.isRdp ? rdpHandler : pollerHandler).message(ws, message)
+    },
+    close(ws, code, reason) {
+      (ws.data?.isRdp ? rdpHandler : pollerHandler).close(ws, code, reason)
+    },
+  },
 })
 
 preloadInventory(LUDUS_SERVER_URL, LUDUS_API_KEY).catch(() => {})

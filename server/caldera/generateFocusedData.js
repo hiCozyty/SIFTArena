@@ -4,15 +4,7 @@ const OUT_FILE = import.meta.dir + "/focusedTechniques.json"
 
 const CATEGORIES = {
   "credential-access": [
-    "T1003", "T1003.001", "T1003.002", "T1003.003", "T1003.004",
-    "T1003.005", "T1003.006", "T1040", "T1055.002", "T1110.001",
-    "T1110.002", "T1110.003", "T1110.004", "T1187", "T1539", "T1552",
-    "T1552.001", "T1552.002", "T1552.004", "T1552.006", "T1555",
-    "T1555.003", "T1555.004", "T1558.001", "T1558.002", "T1558.003",
-    "T1558.004", "T1649",
-  ],
-  "privilege-escalation": [
-    "T1548.002",
+    "T1003.001",
   ],
 }
 
@@ -54,6 +46,84 @@ function build() {
   return {
     categories: Object.keys(CATEGORIES),
     techniques,
+  }
+}
+
+const PAYLOAD_DIR = "~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads"
+
+const PAYLOAD_DOWNLOADS = {
+  "procdump.exe": {
+    name: "ProcDump",
+    steps: `mkdir -p ${PAYLOAD_DIR} && \\\nwget -q "https://download.sysinternals.com/files/Procdump.zip" -O /tmp/Procdump.zip && \\\nunzip -o /tmp/Procdump.zip -d /tmp/Procdump && \\\ncp /tmp/Procdump/procdump64.exe ${PAYLOAD_DIR}/procdump.exe && \\\nrm -rf /tmp/Procdump.zip /tmp/Procdump && \\\nsystemctl restart caldera`,
+  },
+  "Outflank-Dumpert.exe": {
+    name: "Outflank Dumpert",
+    steps: `mkdir -p ${PAYLOAD_DIR} && \\\nwget -q "https://github.com/clr2of8/Dumpert/raw/5838c357224cc9bc69618c80c2b5b2d17a394b10/Dumpert/x64/Release/Outflank-Dumpert.exe" -O ${PAYLOAD_DIR}/Outflank-Dumpert.exe && \\\nsystemctl restart caldera`,
+  },
+  "nanodump.x64.exe": {
+    name: "NanoDump",
+    steps: `mkdir -p ${PAYLOAD_DIR} && \\\nwget -q "https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe" -O ${PAYLOAD_DIR}/nanodump.x64.exe && \\\nsystemctl restart caldera`,
+  },
+  "mimikatz.exe": {
+    name: "Mimikatz",
+    steps: `mkdir -p ${PAYLOAD_DIR}/x64 && \\\nwget -q "https://github.com/gentilkiwi/mimikatz/releases/latest/download/mimikatz_trunk.zip" -O /tmp/mimikatz.zip && \\\nunzip -o /tmp/mimikatz.zip -d /tmp/mimikatz && \\\ncp /tmp/mimikatz/x64/mimikatz.exe ${PAYLOAD_DIR}/x64/mimikatz.exe && \\\nrm -rf /tmp/mimikatz.zip /tmp/mimikatz && \\\nsystemctl restart caldera`,
+  },
+  "pypykatz": {
+    name: "pypykatz (Python venv)",
+    steps: `pip3 install pypykatz && \
+cp -r $(python3 -c "import pypykatz, os; print(os.path.dirname(pypykatz.__file__))") ${PAYLOAD_DIR}/pypykatz && \
+systemctl restart caldera
+
+# Target prerequisite: Python 3 must be installed on the Windows target
+# If not installed, run on target:
+#   invoke-webrequest "https://www.python.org/ftp/python/3.10.4/python-3.10.4-amd64.exe" -outfile "ExternalPayloads\\python_setup.exe"
+#   Start-Process -FilePath "ExternalPayloads\\python_setup.exe" -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0" -Wait`,
+  },
+}
+
+const PREREQ_HEADER = `Prerequisites (Manual Step Required)
+
+This ability requires an external payload that must be manually staged on the Caldera server before execution.`
+
+function extractPayloadFilename(command) {
+  const patterns = [
+    { re: /ExternalPayloads[\\/](?:x64[\\/])?mimikatz\.exe/i, key: "mimikatz.exe" },
+    { re: /venv_t1003_001[\\/]Scripts[\\/]pypykatz/i, key: "pypykatz" },
+    { re: /ExternalPayloads[\\/](?:x64[\\/])?([^\\/\"\s]+\.(?:exe|ps1|dll|bat|cmd))/i, key: null },
+  ]
+  for (const p of patterns) {
+    const m = p.re.exec(command)
+    if (m) return p.key || m[1]
+  }
+  return null
+}
+
+function enrichPayloads(ability) {
+  const desc = ability.description || ""
+  const cmds = ability.executors?.map(e => e.command || "").join("\n") || ""
+
+  if (!desc.includes("PathToAtomicsFolder") && !cmds.includes("PathToAtomicsFolder")) {
+    return ability
+  }
+
+  const hasPayloads = ability.executors?.some(e => (e.payloads || []).length > 0)
+  if (hasPayloads) return ability
+
+  const filename = extractPayloadFilename(cmds) || extractPayloadFilename(desc)
+  if (!filename) return ability
+
+  const info = PAYLOAD_DOWNLOADS[filename] || PAYLOAD_DOWNLOADS[Object.keys(PAYLOAD_DOWNLOADS).find(k => filename.includes(k))]
+  if (!info) return ability
+
+  return {
+    ...ability,
+    download_instructions: `${PREREQ_HEADER}
+
+Payload: ${info.name}
+${info.steps}
+
+Command (runs on target):
+${cmds}`,
   }
 }
 
@@ -113,7 +183,7 @@ async function main() {
 
     const seen = result.techniques[cat][tid].abilities.map(a => a.ability_id)
     if (!seen.includes(ability.ability_id)) {
-      result.techniques[cat][tid].abilities.push(filterExecutors(ability))
+      result.techniques[cat][tid].abilities.push(enrichPayloads(filterExecutors(ability)))
     }
   }
 

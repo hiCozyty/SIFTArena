@@ -29,6 +29,7 @@ export type AtomicAbility = {
   repeatable?: boolean
   buckets?: string[]
   plugin?: string
+  download_instructions?: string
 }
 
 export type Technique = {
