@@ -13,9 +13,76 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { TabContentCard } from "@/components/shared-ui-primitives/tab-content-card"
-import { AttackerConfigurationUi } from "@/components/attack-configuration/attacker-configuration-ui"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
+import { FileText, MessageCircle, ListChecks } from "lucide-react"
+import { useState } from "react"
+import { TechniqueTree, type SelectedItem } from "@/components/attack-configuration/technique-tree"
+import { AbilityInfoTab } from "@/components/attack-configuration/ability-info-tab"
+import { AiChatTab } from "@/components/attack-configuration/ai-chat-tab"
 
-export function AttackConfigurationContent({
+function AttackerConfigurationUi() {
+  const [selected, setSelected] = useState<SelectedItem>({ type: "none" })
+  const [activeTab, setActiveTab] = useState("ability")
+
+  const displayContent = (() => {
+    if (selected.type === "none") {
+      return null
+    }
+    if (selected.type === "negative-control") {
+      return { name: "Negative Control", abilityId: "", description: "An empty ability that does nothing.", command: "(none)", downloadInstructions: "" }
+    }
+    if (selected.type === "technique") {
+      return null
+    }
+    return { name: selected.name, abilityId: selected.abilityId, description: selected.description ?? "(no description)", command: selected.command, downloadInstructions: selected.downloadInstructions }
+  })()
+
+  return (
+    <div className="h-full rounded-lg flex">
+      <div className="w-[280px] shrink-0">
+        <TechniqueTree onSelect={setSelected} />
+      </div>
+      <div className="w-[500px] min-w-0">
+        <Tabs value={activeTab} onValueChange={setActiveTab} defaultValue="ability" className="flex h-full flex-col">
+          <div className="flex shrink-0 items-center justify-between px-4 py-2">
+            <TabsList>
+              <TabsTrigger value="ability">
+                <FileText className="size-4" />
+              </TabsTrigger>
+              <TabsTrigger value="chat">
+                <MessageCircle className="size-4" />
+              </TabsTrigger>
+              <TabsTrigger value="scenario">
+                <ListChecks className="size-4" />
+              </TabsTrigger>
+            </TabsList>
+            {activeTab === "chat" ? (
+              <Button>Clear Chat Session</Button>
+            ) : (
+              <Button disabled={selected.type === "technique" || selected.type === "none"}>Add to Scenario</Button>
+            )}
+          </div>
+          <TabsContent value="ability" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
+            <AbilityInfoTab content={displayContent} />
+          </TabsContent>
+          <TabsContent value="chat" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
+            <AiChatTab />
+          </TabsContent>
+          <TabsContent value="scenario" className="flex-1 flex items-center justify-center rounded-4xl bg-muted shadow-sm">
+            Scenario panel content
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  )
+}
+
+export function AttackConfiguration({
   completed,
   onComplete,
   selectedAttackName,

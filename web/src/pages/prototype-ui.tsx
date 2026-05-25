@@ -1,5 +1,3 @@
-import { TreeDemo } from "@/components/tree-demo"
-
 export function PrototypeUI() {
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-10 p-8">
@@ -11,14 +9,6 @@ export function PrototypeUI() {
 
       <h1 className="font-heading text-2xl font-semibold tracking-tight">Prototype UI</h1>
       <p className="text-sm text-muted-foreground">Prototyping the real feature</p>
-
-      <section>
-        <h2 className="font-heading mb-1 text-xl font-semibold tracking-tight">Tree View</h2>
-        <p className="mb-4 text-sm text-muted-foreground">
-          Tree component from kibo-ui with custom icons.
-        </p>
-        <TreeDemo />
-      </section>
     </div>
   )
 }

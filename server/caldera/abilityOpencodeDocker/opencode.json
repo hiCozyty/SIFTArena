@@ -1,0 +1,13 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md"],
+  "permission": {
+    "edit": "deny",
+    "bash": "deny"
+  },
+  "server": {
+    "port": 3111,
+    "hostname": "0.0.0.0",
+    "cors": ["http://localhost:5173"]
+  }
+}

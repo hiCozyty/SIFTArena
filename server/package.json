@@ -4,6 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "bun index.js"
+    "start": "cd .. && kill $(lsof -ti:8011) 2>/dev/null; bun run ./server/index.js & cd server/caldera/abilityOpencodeDocker && docker compose down && docker compose up -d; cd ../../../web && bun run dev"
+  },
+  "dependencies": {
+    "@opencode-ai/sdk": "^1.15.10"
   }
 }

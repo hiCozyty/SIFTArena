@@ -13,7 +13,7 @@ import { FilePreview } from "@/components/ui/file-preview"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
 
 const chatBubbleVariants = cva(
-  "group/message relative break-words rounded-lg p-3 text-sm sm:max-w-[70%]",
+  "group/message relative break-words rounded-4xl p-3 text-sm sm:max-w-[70%]",
   {
     variants: {
       isUser: {
@@ -287,7 +287,7 @@ const ReasoningBlock = ({ part }: { part: ReasoningPart }) => {
       <Collapsible
         open={isOpen}
         onOpenChange={setIsOpen}
-        className="group w-full overflow-hidden rounded-lg border bg-muted/50"
+        className="group w-full overflow-hidden rounded-4xl border bg-muted/50"
       >
         <div className="flex items-center p-2">
           <CollapsibleTrigger asChild>

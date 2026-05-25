@@ -1,0 +1,10 @@
+services:
+  opencode-sandbox:
+    build: .
+    ports:
+      - "3111:3111"
+    env_file: ../../../.env
+    volumes:
+      - ./opencode.json:/workspace/opencode.json
+      - ./AGENTS.md:/workspace/AGENTS.md
+    restart: unless-stopped

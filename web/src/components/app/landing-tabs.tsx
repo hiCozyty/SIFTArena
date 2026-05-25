@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Lock } from "lucide-react"
 import { LabRangeContent } from "@/components/lab-range/lab-range-content"
 import { LeaderboardContent } from "@/components/leaderboard/leaderboard-content"
-import { AttackConfigurationContent } from "@/components/attack-configuration/attack-configuration-content"
+import { AttackConfiguration } from "@/components/attack-configuration/attack-configuration"
 import { SnrContent } from "@/components/snr/snr-content"
 import { SiftAgentContent } from "@/components/sift-agent/sift-agent-content"
 import { BenchmarkContent } from "@/components/run-benchmark/benchmark-content"
@@ -169,7 +169,7 @@ export function LandingTabs({
                   onComplete={onLabRangeComplete}
                 />
               ) : s === "Attack Configuration" ? (
-                <AttackConfigurationContent
+                <AttackConfiguration
                   completed={attackConfigCompleted}
                   onComplete={onAttackConfigComplete}
                 />

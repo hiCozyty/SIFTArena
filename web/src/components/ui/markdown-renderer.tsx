@@ -1,4 +1,4 @@
-import React, { Suspense } from "react"
+import React, { useEffect, useState } from "react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 
@@ -19,60 +19,61 @@ export function MarkdownRenderer({ children }: MarkdownRendererProps) {
   )
 }
 
-interface HighlightedPre extends React.HTMLAttributes<HTMLPreElement> {
+interface HighlightedPreProps extends React.HTMLAttributes<HTMLPreElement> {
   children: string
   language: string
 }
 
-const HighlightedPre = React.memo(
-  async ({ children, language, ...props }: HighlightedPre) => {
-    const { codeToTokens, bundledLanguages } = await import("shiki")
+function HighlightedPre({ children, language, className, ...props }: HighlightedPreProps) {
+  const [highlighted, setHighlighted] = useState<string | null>(null)
 
-    if (!(language in bundledLanguages)) {
-      return <pre {...props}>{children}</pre>
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { codeToTokens, bundledLanguages } = await import("shiki")
+
+      if (cancelled || !(language in bundledLanguages)) {
+        return
+      }
+
+      const { tokens } = await codeToTokens(children, {
+        lang: language as keyof typeof bundledLanguages,
+        defaultColor: false,
+        themes: {
+          light: "github-light",
+          dark: "github-dark",
+        },
+      })
+
+      if (cancelled) return
+
+      let html = ""
+      for (const line of tokens) {
+        for (const token of line) {
+          const style = typeof token.htmlStyle === "string" ? "" : Object.entries(token.htmlStyle || {}).map(([k, v]) => `${k}:${v}`).join(";")
+          html += `<span class="text-shiki-light bg-shiki-light-bg dark:text-shiki-dark dark:bg-shiki-dark-bg"${style ? ` style="${style}"` : ""}>${token.content}</span>`
+        }
+        html += "\n"
+      }
+
+      setHighlighted(html)
+    })()
+
+    return () => {
+      cancelled = true
     }
+  }, [children, language])
 
-    const { tokens } = await codeToTokens(children, {
-      lang: language as keyof typeof bundledLanguages,
-      defaultColor: false,
-      themes: {
-        light: "github-light",
-        dark: "github-dark",
-      },
-    })
-
-    return (
-      <pre {...props}>
-        <code>
-          {tokens.map((line, lineIndex) => (
-            <>
-              <span key={lineIndex}>
-                {line.map((token, tokenIndex) => {
-                  const style =
-                    typeof token.htmlStyle === "string"
-                      ? undefined
-                      : token.htmlStyle
-
-                  return (
-                    <span
-                      key={tokenIndex}
-                      className="text-shiki-light bg-shiki-light-bg dark:text-shiki-dark dark:bg-shiki-dark-bg"
-                      style={style}
-                    >
-                      {token.content}
-                    </span>
-                  )
-                })}
-              </span>
-              {lineIndex !== tokens.length - 1 && "\n"}
-            </>
-          ))}
-        </code>
-      </pre>
-    )
+  if (!highlighted) {
+    return <pre className={className} {...props}>{children}</pre>
   }
-)
-HighlightedPre.displayName = "HighlightedCode"
+
+  return (
+    <pre className={className} {...props}>
+      <code dangerouslySetInnerHTML={{ __html: highlighted }} />
+    </pre>
+  )
+}
 
 interface CodeBlockProps extends React.HTMLAttributes<HTMLPreElement> {
   children: React.ReactNode
@@ -98,17 +99,9 @@ const CodeBlock = ({
 
   return (
     <div className="group/code relative mb-4">
-      <Suspense
-        fallback={
-          <pre className={preClass} {...restProps}>
-            {children}
-          </pre>
-        }
-      >
-        <HighlightedPre language={language} className={preClass}>
-          {code}
-        </HighlightedPre>
-      </Suspense>
+      <HighlightedPre language={language} className={preClass}>
+        {code}
+      </HighlightedPre>
 
       <div className="invisible absolute right-2 top-2 flex space-x-1 rounded-lg p-1 opacity-0 transition-all duration-200 group-hover/code:visible group-hover/code:opacity-100">
         <CopyButton content={code} copyMessage="Copied code to clipboard" />

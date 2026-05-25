@@ -590,12 +590,10 @@ export function useLabRangeState(onComplete: () => void) {
     if (status.type !== "ok") return
     if (!deployActive) return
 
-    console.log("[systemInfo] requesting system info...")
     const unsub = backendWs.subscribe((data) => {
       if (data.type !== "systemInfo") return
       const result = data.result as { totalCpu?: number; totalRam?: number } | undefined
       if (result && result.totalCpu != null && result.totalRam != null) {
-        console.log("[systemInfo] received:", result)
         setSystemInfo(result as { totalCpu: number; totalRam: number })
       }
       unsub()
