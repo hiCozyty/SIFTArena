@@ -13,12 +13,12 @@ import { FilePreview } from "@/components/ui/file-preview"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
 
 const chatBubbleVariants = cva(
-  "group/message relative break-words rounded-4xl p-3 text-sm sm:max-w-[70%]",
+  "group/message relative break-words rounded-4xl p-3 text-sm",
   {
     variants: {
       isUser: {
-        true: "bg-primary text-primary-foreground",
-        false: "bg-muted text-foreground",
+        true: "bg-primary text-primary-foreground sm:max-w-[70%] ml-auto",
+        false: "bg-muted text-foreground w-full",
       },
       animation: {
         none: "",
@@ -63,16 +63,19 @@ interface Attachment {
 interface PartialToolCall {
   state: "partial-call"
   toolName: string
+  input?: Record<string, unknown>
 }
 
 interface ToolCall {
   state: "call"
   toolName: string
+  input?: Record<string, unknown>
 }
 
 interface ToolResult {
   state: "result"
   toolName: string
+  input?: Record<string, unknown>
   result: {
     __cancelled?: boolean
     [key: string]: any
@@ -80,6 +83,8 @@ interface ToolResult {
 }
 
 type ToolInvocation = PartialToolCall | ToolCall | ToolResult
+
+export type { ToolInvocation }
 
 interface ReasoningPart {
   type: "reasoning"
@@ -181,7 +186,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           <MarkdownRenderer>{content}</MarkdownRenderer>
         </div>
 
-        {showTimeStamp && createdAt ? (
+        {showTimeStamp && createdAt && isUser ? (
           <time
             dateTime={createdAt.toISOString()}
             className={cn(
@@ -216,7 +221,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
               ) : null}
             </div>
 
-            {showTimeStamp && createdAt ? (
+            {showTimeStamp && createdAt && isUser ? (
               <time
                 dateTime={createdAt.toISOString()}
                 className={cn(
@@ -258,7 +263,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         ) : null}
       </div>
 
-      {showTimeStamp && createdAt ? (
+      {showTimeStamp && createdAt && isUser ? (
         <time
           dateTime={createdAt.toISOString()}
           className={cn(
@@ -336,15 +341,13 @@ function ToolCall({
           return (
             <div
               key={index}
-              className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-sm text-muted-foreground"
+              className="flex items-center gap-2 rounded-4xl border bg-muted/50 px-3 py-2 text-sm text-muted-foreground"
             >
               <Ban className="h-4 w-4" />
               <span>
                 Cancelled{" "}
                 <span className="font-mono">
-                  {"`"}
                   {invocation.toolName}
-                  {"`"}
                 </span>
               </span>
             </div>
@@ -357,16 +360,19 @@ function ToolCall({
             return (
               <div
                 key={index}
-                className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-sm text-muted-foreground"
+                className="flex items-center gap-2 rounded-4xl border bg-muted/50 px-3 py-2 text-sm text-muted-foreground"
               >
                 <Terminal className="h-4 w-4" />
                 <span>
                   Calling{" "}
                   <span className="font-mono">
-                    {"`"}
                     {invocation.toolName}
-                    {"`"}
                   </span>
+                  {invocation.input && (
+                    <span className="text-xs opacity-70 ml-1">
+                      ({JSON.stringify(invocation.input)})
+                    </span>
+                  )}
                   ...
                 </span>
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -376,22 +382,20 @@ function ToolCall({
             return (
               <div
                 key={index}
-                className="flex flex-col gap-1.5 rounded-lg border bg-muted/50 px-3 py-2 text-sm"
+                className="flex items-center gap-2 rounded-4xl border bg-muted/50 px-3 py-2 text-sm text-muted-foreground"
               >
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Code2 className="h-4 w-4" />
-                  <span>
-                    Result from{" "}
-                    <span className="font-mono">
-                      {"`"}
-                      {invocation.toolName}
-                      {"`"}
-                    </span>
+                <Code2 className="h-4 w-4" />
+                <span>
+                  Result from{" "}
+                  <span className="font-mono">
+                    {invocation.toolName}
                   </span>
-                </div>
-                <pre className="overflow-x-auto whitespace-pre-wrap text-foreground">
-                  {JSON.stringify(invocation.result, null, 2)}
-                </pre>
+                  {invocation.input && (
+                    <span className="text-xs opacity-70 ml-1">
+                      ({JSON.stringify(invocation.input)})
+                    </span>
+                  )}
+                </span>
               </div>
             )
           default:

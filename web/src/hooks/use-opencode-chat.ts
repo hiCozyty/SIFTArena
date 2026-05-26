@@ -1,6 +1,6 @@
 import { createOpencodeClient } from "@opencode-ai/sdk/client"
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { Message } from "@/components/ui/chat-message"
+import type { Message, ToolInvocation } from "@/components/ui/chat-message"
 
 interface PartInfo {
   type: string
@@ -14,6 +14,20 @@ interface EventProps {
     id: string
     type: string
     usage?: unknown
+    text?: string
+    reason?: string
+    tool?: string
+    callID?: string
+    input?: Record<string, unknown>
+    state?: {
+      status?: "pending" | "running" | "completed" | "error"
+      input?: Record<string, unknown>
+      output?: string
+      error?: string
+      title?: string
+      metadata?: Record<string, unknown>
+      time?: { start: number; end?: number }
+    }
   }
   field?: string
   delta?: string
@@ -28,12 +42,19 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const [isToolExecuting, setIsToolExecuting] = useState(false)
 
   const clientRef = useRef<ReturnType<typeof createOpencodeClient> | null>(null)
   const assistantMessageIdRef = useRef<string | null>(null)
   const partsRef = useRef<Map<string, PartInfo>>(new Map())
+  const toolInvocationsRef = useRef<Map<string, ToolInvocation>>(new Map())
   const streamAbortRef = useRef<AbortController | null>(null)
+  const promptAbortRef = useRef<AbortController | null>(null)
   const activeSessionIdRef = useRef<string | null>(null)
+  const lastUserMessageRef = useRef<string>("")
+  const activeAssistantMessageIdRef = useRef<string | null>(null)
+  const activeGenerationIdRef = useRef<string | null>(null)
+  const partGenerationMapRef = useRef<Map<string, string>>(new Map())
 
   useEffect(() => {
     let mounted = true
@@ -68,22 +89,69 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
               }
               const props = (event.properties || {}) as EventProps
               if (props.sessionID && props.sessionID !== activeSessionIdRef.current) continue
+              if (!activeGenerationIdRef.current || !activeAssistantMessageIdRef.current) continue
 
-              if (event.type === "message.part.updated" && props.part?.id) {
+              if ((event.type as string) === "message.part.updated" && props.part?.id) {
+                const partId = props.part.id
+                const recordedGen = partGenerationMapRef.current.get(partId)
+                if (recordedGen === undefined) {
+                  partGenerationMapRef.current.set(partId, activeGenerationIdRef.current)
+                } else if (recordedGen !== activeGenerationIdRef.current) {
+                  continue
+                }
                 if (!partsRef.current.has(props.part.id)) {
                   partsRef.current.set(props.part.id, {
                     type: props.part.type,
                     content: "",
                   })
                 }
-
                 if (props.part.type === "step-finish") {
-                  finalizeMessage()
+                  if (props.part.reason === "stop") {
+                    finalizeMessage()
+                  }
                   continue
+                }
+                const existing = partsRef.current.get(props.part.id)
+                if (existing && props.part.text !== undefined) {
+                  existing.content = props.part.text
+                  if (props.part.type === "text" || props.part.type === "reasoning") {
+                    updateStreamingMessage()
+                  }
+                }
+                if (props.part.type === "tool" && props.part.tool) {
+                  const toolName = props.part.tool
+                  const state = props.part.state
+                  const callID = props.part.callID || props.part.id
+                  const input = state?.input || props.part.input
+                  let invocation: ToolInvocation
+                  if (state?.status === "completed" || state?.status === "error") {
+                    const existing = toolInvocationsRef.current.get(callID)
+                    const existingInput = existing && "input" in existing ? existing.input : undefined
+                    const resultObj = state.status === "error"
+                      ? { __error: state.error }
+                      : { output: state.output }
+                    invocation = {
+                      state: "result",
+                      toolName,
+                      input: existingInput || input,
+                      result: resultObj,
+                    }
+                  } else {
+                    invocation = { state: "call", toolName, input }
+                  }
+                  toolInvocationsRef.current.set(callID, invocation)
+                  updateStreamingMessage()
                 }
               }
 
-              if (event.type === "message.part.delta" && props.partID) {
+              if ((event.type as string) === "message.part.delta" && props.partID) {
+                const partId = props.partID
+                const recordedGen = partGenerationMapRef.current.get(partId)
+                if (recordedGen === undefined) {
+                  partGenerationMapRef.current.set(partId, activeGenerationIdRef.current)
+                } else if (recordedGen !== activeGenerationIdRef.current) {
+                  continue
+                }
                 let existing = partsRef.current.get(props.partID)
                 if (!existing) {
                   existing = { type: "text", content: "" }
@@ -100,6 +168,9 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
               console.error("[opencode-chat] Stream error:", err)
               setError(err instanceof Error ? err.message : "Stream error")
               setIsGenerating(false)
+              setIsToolExecuting(false)
+              activeGenerationIdRef.current = null
+              activeAssistantMessageIdRef.current = null
             }
           }
         })()
@@ -120,9 +191,32 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
     }
   }, [baseUrl])
 
+  function stripEchoedInput(text: string): string {
+    const echoed = lastUserMessageRef.current.trim()
+    if (!echoed) return text
+    const normalized = text.trim()
+    if (normalized.toLowerCase().startsWith(echoed.toLowerCase())) {
+      return text.slice(echoed.length)
+    }
+    const patterns = [
+      new RegExp(`^${echoed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*`, "i"),
+      new RegExp(`^.*?(?:look up|search for|find|check)\\s+.*?${echoed.split(" ").slice(0, 3).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*?")}\\s*`, "i"),
+    ]
+    for (const pattern of patterns) {
+      const match = normalized.match(pattern)
+      if (match && match[0].length < text.length * 0.5) {
+        return text.slice(match[0].length)
+      }
+    }
+    return text
+  }
+
   function finalizeMessage() {
+    activeGenerationIdRef.current = null
     const parts = Array.from(partsRef.current.values())
-    const textContent = parts.filter((p) => p.type !== "reasoning").map((p) => p.content).join("")
+    const toolInvocations = Array.from(toolInvocationsRef.current.values())
+    const rawTextContent = parts.filter((p) => p.type === "text").map((p) => p.content).join("")
+    const textContent = stripEchoedInput(rawTextContent)
     const reasoningContent = parts.filter((p) => p.type === "reasoning").map((p) => p.content).join("")
 
     setMessages((prev) => {
@@ -134,20 +228,30 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
         content: textContent,
         parts: [
           ...(reasoningContent ? [{ type: "reasoning" as const, reasoning: reasoningContent }] : []),
-          { type: "text" as const, text: textContent },
+          ...toolInvocations.map((inv) => ({ type: "tool-invocation" as const, toolInvocation: inv })),
+          ...(textContent ? [{ type: "text" as const, text: textContent }] : []),
         ],
       }
       return updated
     })
     setIsGenerating(false)
+    setIsToolExecuting(false)
     assistantMessageIdRef.current = null
+    activeAssistantMessageIdRef.current = null
     partsRef.current.clear()
+    toolInvocationsRef.current.clear()
+    lastUserMessageRef.current = ""
   }
 
   function updateStreamingMessage() {
     const parts = Array.from(partsRef.current.values())
-    const textContent = parts.filter((p) => p.type !== "reasoning").map((p) => p.content).join("")
+    const toolInvocations = Array.from(toolInvocationsRef.current.values())
+    const rawTextContent = parts.filter((p) => p.type !== "reasoning").map((p) => p.content).join("")
+    const textContent = stripEchoedInput(rawTextContent)
     const reasoningContent = parts.filter((p) => p.type === "reasoning").map((p) => p.content).join("")
+
+    const hasActiveTool = toolInvocations.some((inv) => inv.state === "call" || inv.state === "partial-call")
+    setIsToolExecuting(hasActiveTool)
 
     setMessages((prev) => {
       const idx = prev.findIndex((m) => m.id === assistantMessageIdRef.current)
@@ -158,7 +262,8 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
         content: textContent,
         parts: [
           ...(reasoningContent ? [{ type: "reasoning" as const, reasoning: reasoningContent }] : []),
-          { type: "text" as const, text: textContent },
+          ...toolInvocations.map((inv) => ({ type: "tool-invocation" as const, toolInvocation: inv })),
+          ...(textContent ? [{ type: "text" as const, text: textContent }] : []),
         ],
       }
       return updated
@@ -181,7 +286,10 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
         createdAt: new Date(),
       }
       const assistantId = crypto.randomUUID()
+      const newGenId = crypto.randomUUID()
+      activeGenerationIdRef.current = newGenId
       assistantMessageIdRef.current = assistantId
+      activeAssistantMessageIdRef.current = assistantId
 
       const assistantMessage: Message = {
         id: assistantId,
@@ -194,24 +302,62 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
       setIsGenerating(true)
       setError(null)
       partsRef.current.clear()
+      toolInvocationsRef.current.clear()
+      lastUserMessageRef.current = content
 
       try {
+        promptAbortRef.current = new AbortController()
         await clientRef.current.session.prompt({
           path: { id: currentSessionId },
           body: {
             model: { providerID: "opencode-go", modelID: "deepseek-v4-flash" },
             parts: [{ type: "text", text: content }],
           },
+          signal: promptAbortRef.current.signal,
         })
       } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          finalizeMessage()
+          return
+        }
         console.error("[opencode-chat] Prompt error:", err)
         setError(err instanceof Error ? err.message : "Prompt failed")
         setIsGenerating(false)
+        setIsToolExecuting(false)
+        activeGenerationIdRef.current = null
         assistantMessageIdRef.current = null
+        activeAssistantMessageIdRef.current = null
       }
     },
     [],
   )
 
-  return { messages, isGenerating, error, sessionId, sendMessage }
+  const stopGenerating = useCallback(async () => {
+    for (const [callID, inv] of toolInvocationsRef.current.entries()) {
+      if (inv.state === "call" || inv.state === "partial-call") {
+        toolInvocationsRef.current.set(callID, {
+          state: "result",
+          toolName: inv.toolName,
+          input: inv.input,
+          result: { __cancelled: true },
+        })
+      }
+    }
+    updateStreamingMessage()
+    activeGenerationIdRef.current = null
+    activeAssistantMessageIdRef.current = null
+    const currentSessionId = activeSessionIdRef.current
+    if (clientRef.current && currentSessionId) {
+      try {
+        await clientRef.current.session.abort({ sessionID: currentSessionId })
+      } catch (err) {
+        console.error("[opencode-chat] Abort error:", err)
+      }
+    }
+    promptAbortRef.current?.abort()
+    promptAbortRef.current = null
+    finalizeMessage()
+  }, [])
+
+  return { messages, isGenerating, isToolExecuting, error, sessionId, sendMessage, stopGenerating }
 }

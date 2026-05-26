@@ -26,47 +26,40 @@ async function testRun(sessionId) {
   const events = await client.event.subscribe()
   let thinking = ""
   let text = ""
-  let toolCount = 0
   let usage = null
   let done = false
-  const partTypes = {} // track part id -> type
+  const seenToolPartIds = new Set() // deduplicate tool parts across multiple updates
 
   const eventPromise = (async () => {
     for await (const event of events.stream) {
       const props = event.properties || {}
       if (props.sessionID && props.sessionID !== sessionId) continue
 
-      // Record part types as they are created/updated
       if (event.type === "message.part.updated" && props.part?.id) {
-        partTypes[props.part.id] = props.part.type
+        const part = props.part
 
-        if (props.part.type === "reasoning") {
-          log("event", "thinking started")
+        // Read content directly from the part object, not from deltas
+        if (part.type === "text" && part.text !== undefined) {
+          text = part.text
         }
 
-        if (props.part.type === "tool") {
-          toolCount++
-          log("tool", `${props.part.tool} (${props.part.state?.status})`)
+        if (part.type === "reasoning" && part.text !== undefined) {
+          thinking = part.text
         }
 
-        if (props.part.type === "step-finish") {
-          if (props.part?.usage) {
-            usage = props.part.usage
+        if (part.type === "tool" && !seenToolPartIds.has(part.id)) {
+          seenToolPartIds.add(part.id)
+          log("tool", `${part.tool} (${part.state?.status})`)
+        }
+
+        // Only finalize on a terminal stop, not on tool-call handoffs
+        if (part.type === "step-finish" && part.reason === "stop") {
+          if (part.tokens) {
+            usage = part.tokens
             log("usage", JSON.stringify(usage))
           }
           done = true
           break
-        }
-      }
-
-      // Look up part type by id when processing deltas
-      if (event.type === "message.part.delta" && props.field === "text") {
-        const partType = partTypes[props.partID] 
-
-        if (partType === "reasoning") {
-          thinking += props.delta || ""
-        } else {
-          text += props.delta || ""
         }
       }
     }
@@ -87,7 +80,7 @@ async function testRun(sessionId) {
 
   console.log(`  thinking: "${thinking.trim()}"`)
   console.log(`  response: "${text.trim()}"`)
-  console.log(`  tools used: ${toolCount}`)
+  console.log(`  tools used: ${seenToolPartIds.size}`)
   if (usage) {
     console.log(`  input tokens: ${usage.inputTokens ?? "?"}`)
     console.log(`  output tokens: ${usage.outputTokens ?? "?"}`)
@@ -107,19 +100,22 @@ async function testRunWithModel(sessionId) {
     for await (const event of events.stream) {
       const props = event.properties || {}
       if (props.sessionID && props.sessionID !== sessionId) continue
-      // console.log("RAW EVENT:", JSON.stringify(event, null, 2))
-      if (event.type === "message.part.delta" && props.field === "text") {
-        text += props.delta || ""
-      }
 
-      if (event.type === "message.part.updated" && props.part?.type === "step-finish") {
-        done = true
-        break
+      if (event.type === "message.part.updated" && props.part?.id) {
+        const part = props.part
+
+        if (part.type === "text" && part.text !== undefined) {
+          text = part.text
+        }
+
+        if (part.type === "step-finish" && part.reason === "stop") {
+          done = true
+          break
+        }
       }
     }
   })()
 
-  // FIX: same here, correct method and param shape
   await Promise.all([
     client.session.prompt({
       path: { id: sessionId },
@@ -140,7 +136,6 @@ async function testRunWithModel(sessionId) {
 
 async function testCloseSession(sessionId) {
   console.log("\n=== Test 4: Close Session ===")
-  // FIX: session.destroy -> session.delete
   await client.session.delete({ path: { id: sessionId } })
   console.log("  PASS")
 }

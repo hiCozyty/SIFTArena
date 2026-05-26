@@ -1,34 +1,40 @@
 import { Button } from "@/components/ui/button"
 import { MessageList } from "@/components/ui/message-list"
 import { InterruptPrompt } from "@/components/ui/interrupt-prompt"
-import { ArrowDown, ArrowUp } from "lucide-react"
+import { ArrowDown, ArrowUp, Square } from "lucide-react"
 import { useCallback, useState } from "react"
 import { useAutoScroll } from "@/hooks/use-auto-scroll"
 import { useOpencodeChat } from "@/hooks/use-opencode-chat"
 
 export function AiChatTab() {
-  const { messages, isGenerating, error, sendMessage } = useOpencodeChat()
+  const { messages, isGenerating, isToolExecuting, error, sendMessage, stopGenerating } = useOpencodeChat()
   const [input, setInput] = useState("")
   const [showInterruptPrompt, setShowInterruptPrompt] = useState(false)
 
-  const { containerRef, scrollToBottom, handleScroll, shouldAutoScroll } = useAutoScroll([messages])
+  const lastMsg = messages[messages.length - 1]
+  const autoScrollDeps = [messages.length, isGenerating, lastMsg?.content]
+  const { containerRef, scrollToBottom, handleScroll, shouldAutoScroll, resetAutoScroll } = useAutoScroll(autoScrollDeps)
 
   const handleSubmit = useCallback((e?: { preventDefault?: () => void }) => {
     e?.preventDefault?.()
-    if (!input.trim()) return
 
     if (isGenerating) {
       if (showInterruptPrompt) {
         setShowInterruptPrompt(false)
+        stopGenerating()
+        scrollToBottom()
       } else {
         setShowInterruptPrompt(true)
         return
       }
     }
 
+    if (!input.trim()) return
+
+    resetAutoScroll()
     sendMessage(input.trim())
     setInput("")
-  }, [input, isGenerating, showInterruptPrompt, sendMessage])
+  }, [input, isGenerating, showInterruptPrompt, sendMessage, resetAutoScroll, stopGenerating, scrollToBottom])
 
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -40,40 +46,40 @@ export function AiChatTab() {
   const isEmpty = messages.length === 0
 
   return (
-    <div className="flex h-full flex-col relative">
+    <div className="flex h-full flex-col">
       {error && (
         <div className="mb-2 rounded-4xl border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive mx-4 mt-4">
           {error}
         </div>
       )}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-4 pb-20" ref={containerRef} onScroll={handleScroll}>
-        {isEmpty ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3">
-            <Button onClick={() => sendMessage("create an existing ability variant")}>
-              Create an existing ability variant
-            </Button>
-            <Button onClick={() => sendMessage("create a new ability")}>
-              Create a new ability
-            </Button>
-          </div>
-        ) : (
-          <>
-            <MessageList messages={messages} isTyping={isGenerating} />
-            {!shouldAutoScroll && (
-              <Button
-                onClick={scrollToBottom}
-                className="sticky bottom-0 ml-auto h-8 w-8 rounded-full"
-                size="icon"
-                variant="ghost"
-              >
-                <ArrowDown className="h-4 w-4" />
+      <div className="flex-1 min-h-0 relative">
+        <div className="h-full overflow-y-auto px-4 pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" ref={containerRef} onScroll={handleScroll}>
+          {isEmpty ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3">
+              <Button onClick={() => sendMessage("create an existing ability variant")}>
+                Create an existing ability variant
               </Button>
-            )}
-          </>
+              <Button onClick={() => sendMessage("create a new ability")}>
+                Create a new ability
+              </Button>
+            </div>
+          ) : (
+            <MessageList messages={messages} isTyping={isGenerating} />
+          )}
+        </div>
+        {!shouldAutoScroll && !isEmpty && (
+          <Button
+            onClick={scrollToBottom}
+            className="absolute bottom-2 right-6 h-8 w-8 rounded-full"
+            size="icon"
+            variant="ghost"
+          >
+            <ArrowDown className="h-4 w-4" />
+          </Button>
         )}
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 p-4 bg-background border-t">
+      <div className="shrink-0 p-4">
         <InterruptPrompt isOpen={showInterruptPrompt} close={() => setShowInterruptPrompt(false)} />
         <div className="relative">
           <textarea
@@ -93,10 +99,10 @@ export function AiChatTab() {
             onClick={handleSubmit}
             size="icon"
             className="absolute right-2 top-2 h-8 w-8"
-            disabled={!input.trim()}
+            disabled={(!input.trim() && !isGenerating) || isToolExecuting}
           >
             {isGenerating ? (
-              <span className="h-3 w-3 animate-pulse rounded-full bg-current" />
+              <Square className="h-4 w-4" />
             ) : (
               <ArrowUp className="h-5 w-5" />
             )}
