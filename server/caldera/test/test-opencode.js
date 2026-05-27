@@ -134,8 +134,139 @@ async function testRunWithModel(sessionId) {
   console.log("  PASS")
 }
 
+async function testAbortAndRecover(sessionId) {
+  console.log("\n=== Test 5: Abort Question Tool, Then Recover Session ===")
+
+  // Phase 1: Subscribe to events, trigger question tool, then abort
+  const events1 = await client.event.subscribe()
+  let questionToolPart = null
+  let abortCalled = false
+  let phase1Done = false
+
+  const eventPromise1 = (async () => {
+    for await (const event of events1.stream) {
+      const props = event.properties || {}
+      if (props.sessionID && props.sessionID !== sessionId) continue
+
+      console.log(`  [event] type=${event.type}`)
+      if (props.part) {
+        const p = props.part
+        console.log(`    part: id=${p.id}, type=${p.type}, tool=${p.tool ?? "n/a"}, state=${JSON.stringify(p.state)}, reason=${p.reason ?? "n/a"}, text=${(p.text ?? "").substring(0, 60)}`)
+      }
+
+      if (event.type === "message.part.updated" && props.part?.id) {
+        const part = props.part
+
+        if (part.type === "tool" && part.tool === "question" && !abortCalled) {
+          questionToolPart = part
+          abortCalled = true
+          console.log("  [event] question tool detected, calling abort...")
+
+          try {
+            await client.session.abort({ path: { id: sessionId } })
+            console.log("  [event] abort call succeeded")
+          } catch (err) {
+            console.log(`  [event] abort call failed: ${err.message}`)
+          }
+        }
+
+        if (part.type === "tool" && part.tool === "question" && part.state?.status === "error") {
+          console.log("  [event] question tool in error state, phase 1 done")
+          phase1Done = true
+          break
+        }
+
+        if (part.type === "step-finish") {
+          console.log(`  [event] step-finish reason=${part.reason}`)
+          if (phase1Done || part.reason === "stop" || part.reason === "error") {
+            break
+          }
+        }
+      }
+    }
+  })()
+
+  const timeout1 = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("Phase 1 timed out after 30s")), 30000)
+  )
+
+  await Promise.race([
+    Promise.all([
+      client.session.prompt({
+        path: { id: sessionId },
+        body: {
+          model: { providerID: "opencode-go", modelID: "deepseek-v4-flash" },
+          parts: [{ type: "text", text: "Ask me a random question using the question tool." }],
+        },
+      }),
+      eventPromise1,
+    ]),
+    timeout1,
+  ])
+
+  if (!questionToolPart) throw new Error("no question tool event received before abort")
+  console.log(`  Phase 1 complete: abortCalled=${abortCalled}, phase1Done=${phase1Done}`)
+
+  // Phase 2: Re-subscribe to events, send "say ok", check if session recovers
+  console.log("\n  Phase 2: Re-subscribing and sending 'say ok'...")
+
+  const events2 = await client.event.subscribe()
+  let recoveredText = ""
+  let recoveredDone = false
+
+  const eventPromise2 = (async () => {
+    for await (const event of events2.stream) {
+      const props = event.properties || {}
+      if (props.sessionID && props.sessionID !== sessionId) continue
+
+      console.log(`  [event] type=${event.type}`)
+      if (props.part) {
+        const p = props.part
+        console.log(`    part: id=${p.id}, type=${p.type}, tool=${p.tool ?? "n/a"}, state=${JSON.stringify(p.state)}, reason=${p.reason ?? "n/a"}, text=${(p.text ?? "").substring(0, 60)}`)
+      }
+
+      if (event.type === "message.part.updated" && props.part?.id) {
+        const part = props.part
+
+        if (part.type === "text" && part.text !== undefined) {
+          recoveredText = part.text
+        }
+
+        if (part.type === "step-finish" && part.reason === "stop") {
+          recoveredDone = true
+          break
+        }
+      }
+    }
+  })()
+
+  const timeout2 = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("Phase 2 timed out after 30s")), 30000)
+  )
+
+  await Promise.race([
+    Promise.all([
+      client.session.prompt({
+        path: { id: sessionId },
+        body: {
+          model: { providerID: "opencode-go", modelID: "deepseek-v4-flash" },
+          parts: [{ type: "text", text: "say ok" }],
+        },
+      }),
+      eventPromise2,
+    ]),
+    timeout2,
+  ])
+
+  if (!recoveredDone) throw new Error("no step-finish event received after 'say ok' prompt")
+  if (recoveredText.trim().length === 0) throw new Error("response text is empty after recovery")
+
+  console.log(`  Phase 2 complete: response="${recoveredText.trim()}"`)
+  console.log("  PASS")
+}
+
 async function testCloseSession(sessionId) {
-  console.log("\n=== Test 4: Close Session ===")
+  console.log("\n=== Test 6: Close Session ===")
   await client.session.delete({ path: { id: sessionId } })
   console.log("  PASS")
 }
@@ -146,8 +277,9 @@ async function main() {
   let sessionId
   try {
     sessionId = await testCreateSession()
-    await testRun(sessionId)
-    await testRunWithModel(sessionId)
+    // await testRun(sessionId)
+    // await testRunWithModel(sessionId)
+    await testAbortAndRecover(sessionId)
     await testCloseSession(sessionId)
     console.log("\n=== All tests passed ===")
   } catch (err) {

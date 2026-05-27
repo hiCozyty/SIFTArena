@@ -11,6 +11,7 @@ interface MessageListProps {
   messages: Message[]
   showTimeStamps?: boolean
   isTyping?: boolean
+  onAnswerQuestion?: (answers: Record<number, string>) => void
   messageOptions?:
     | AdditionalMessageOptions
     | ((message: Message) => AdditionalMessageOptions)
@@ -20,6 +21,7 @@ export function MessageList({
   messages,
   showTimeStamps = true,
   isTyping = false,
+  onAnswerQuestion,
   messageOptions,
 }: MessageListProps) {
   return (
@@ -34,6 +36,7 @@ export function MessageList({
           <ChatMessage
             key={index}
             showTimeStamp={showTimeStamps}
+            onAnswerQuestion={onAnswerQuestion}
             {...message}
             {...additionalOptions}
           />

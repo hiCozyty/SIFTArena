@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/collapsible"
 import { FilePreview } from "@/components/ui/file-preview"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
+import { QuestionToolRenderer } from "@/components/ui/question-tool-renderer"
 
 const chatBubbleVariants = cva(
   "group/message relative break-words rounded-4xl p-3 text-sm",
@@ -64,12 +65,14 @@ interface PartialToolCall {
   state: "partial-call"
   toolName: string
   input?: Record<string, unknown>
+  callID?: string
 }
 
 interface ToolCall {
   state: "call"
   toolName: string
   input?: Record<string, unknown>
+  callID?: string
 }
 
 interface ToolResult {
@@ -80,6 +83,7 @@ interface ToolResult {
     __cancelled?: boolean
     [key: string]: any
   }
+  callID?: string
 }
 
 type ToolInvocation = PartialToolCall | ToolCall | ToolResult
@@ -139,6 +143,7 @@ export interface ChatMessageProps extends Message {
   showTimeStamp?: boolean
   animation?: Animation
   actions?: React.ReactNode
+  onAnswerQuestion?: (answers: Record<number, string>) => void
 }
 
 export const ChatMessage: React.FC<ChatMessageProps> = ({
@@ -151,6 +156,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   experimental_attachments,
   toolInvocations,
   parts,
+  onAnswerQuestion,
 }) => {
   const files = useMemo(() => {
     return experimental_attachments?.map((attachment) => {
@@ -241,6 +247,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           <ToolCall
             key={`tool-${index}`}
             toolInvocations={[part.toolInvocation]}
+            onAnswerQuestion={onAnswerQuestion}
           />
         )
       }
@@ -249,7 +256,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   }
 
   if (toolInvocations && toolInvocations.length > 0) {
-    return <ToolCall toolInvocations={toolInvocations} />
+    return <ToolCall toolInvocations={toolInvocations} onAnswerQuestion={onAnswerQuestion} />
   }
 
   return (
@@ -327,81 +334,103 @@ const ReasoningBlock = ({ part }: { part: ReasoningPart }) => {
 
 function ToolCall({
   toolInvocations,
-}: Pick<ChatMessageProps, "toolInvocations">) {
+  onAnswerQuestion,
+}: Pick<ChatMessageProps, "toolInvocations"> & {
+  onAnswerQuestion?: (answers: Record<number, string>) => void
+}) {
   if (!toolInvocations?.length) return null
+
+  const renderToolInvocation = (
+    invocation: ToolInvocation,
+    index: number
+  ) => {
+    const key = invocation.callID || `tool-${index}`
+    const isCancelled =
+      invocation.state === "result" &&
+      invocation.result.__cancelled === true
+
+    if (isCancelled) {
+      return (
+        <div
+          key={key}
+          className="flex items-center gap-2 rounded-4xl border bg-muted/50 px-3 py-2 text-sm text-muted-foreground"
+        >
+          <Ban className="h-4 w-4" />
+          <span>
+            Cancelled{" "}
+            <span className="font-mono">{invocation.toolName}</span>
+          </span>
+        </div>
+      )
+    }
+
+    const questions = Array.isArray(invocation.input?.questions)
+      ? (invocation.input.questions as Array<{
+          question: string
+          header: string
+          options: Array<{ label: string; description: string }>
+          multiple?: boolean
+        }>)
+      : []
+
+    if (invocation.state === "partial-call" || invocation.state === "call") {
+      if (invocation.toolName === "question" && onAnswerQuestion && questions.length > 0) {
+        return (
+          <QuestionToolRenderer
+            key={key}
+            questions={questions}
+            onAnswer={onAnswerQuestion}
+          />
+        )
+      }
+      return (
+        <div
+          key={key}
+          className="flex items-center gap-2 rounded-4xl border bg-muted/50 px-3 py-2 text-sm text-muted-foreground"
+        >
+          <Terminal className="h-4 w-4" />
+          <span>
+            Calling{" "}
+            <span className="font-mono">{invocation.toolName}</span>
+            ...
+          </span>
+          <Loader2 className="h-3 w-3 animate-spin" />
+        </div>
+      )
+    }
+
+    if (invocation.state === "result") {
+      if (invocation.toolName === "question" && questions.length > 0) {
+        return (
+          <div
+            key={key}
+            className="flex items-center gap-2 rounded-4xl border bg-muted/50 px-3 py-2 text-sm text-muted-foreground"
+          >
+            <Code2 className="h-4 w-4" />
+            <span>Questions answered</span>
+          </div>
+        )
+      }
+      return (
+        <div
+          key={key}
+          className="flex items-center gap-2 rounded-4xl border bg-muted/50 px-3 py-2 text-sm text-muted-foreground"
+        >
+          <Code2 className="h-4 w-4" />
+          <span>
+            Result from{" "}
+            <span className="font-mono">{invocation.toolName}</span>
+          </span>
+        </div>
+      )
+    }
+
+    return null
+  }
 
   return (
     <div className="flex flex-col items-start gap-2">
-      {toolInvocations.map((invocation, index) => {
-        const isCancelled =
-          invocation.state === "result" &&
-          invocation.result.__cancelled === true
-
-        if (isCancelled) {
-          return (
-            <div
-              key={index}
-              className="flex items-center gap-2 rounded-4xl border bg-muted/50 px-3 py-2 text-sm text-muted-foreground"
-            >
-              <Ban className="h-4 w-4" />
-              <span>
-                Cancelled{" "}
-                <span className="font-mono">
-                  {invocation.toolName}
-                </span>
-              </span>
-            </div>
-          )
-        }
-
-        switch (invocation.state) {
-          case "partial-call":
-          case "call":
-            return (
-              <div
-                key={index}
-                className="flex items-center gap-2 rounded-4xl border bg-muted/50 px-3 py-2 text-sm text-muted-foreground"
-              >
-                <Terminal className="h-4 w-4" />
-                <span>
-                  Calling{" "}
-                  <span className="font-mono">
-                    {invocation.toolName}
-                  </span>
-                  {invocation.input && (
-                    <span className="text-xs opacity-70 ml-1">
-                      ({JSON.stringify(invocation.input)})
-                    </span>
-                  )}
-                  ...
-                </span>
-                <Loader2 className="h-3 w-3 animate-spin" />
-              </div>
-            )
-          case "result":
-            return (
-              <div
-                key={index}
-                className="flex items-center gap-2 rounded-4xl border bg-muted/50 px-3 py-2 text-sm text-muted-foreground"
-              >
-                <Code2 className="h-4 w-4" />
-                <span>
-                  Result from{" "}
-                  <span className="font-mono">
-                    {invocation.toolName}
-                  </span>
-                  {invocation.input && (
-                    <span className="text-xs opacity-70 ml-1">
-                      ({JSON.stringify(invocation.input)})
-                    </span>
-                  )}
-                </span>
-              </div>
-            )
-          default:
-            return null
-        }
-      })}
+      {toolInvocations.map(renderToolInvocation)}
     </div>
   )
 }

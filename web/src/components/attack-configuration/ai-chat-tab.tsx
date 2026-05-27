@@ -6,8 +6,9 @@ import { useCallback, useState } from "react"
 import { useAutoScroll } from "@/hooks/use-auto-scroll"
 import { useOpencodeChat } from "@/hooks/use-opencode-chat"
 
-export function AiChatTab() {
-  const { messages, isGenerating, isToolExecuting, error, sendMessage, stopGenerating } = useOpencodeChat()
+type AiChatTabProps = ReturnType<typeof useOpencodeChat>
+
+export function AiChatTab({ messages, isGenerating, isToolExecuting, error, sendMessage, stopGenerating, submitQuestionAnswer }: AiChatTabProps) {
   const [input, setInput] = useState("")
   const [showInterruptPrompt, setShowInterruptPrompt] = useState(false)
 
@@ -43,6 +44,25 @@ export function AiChatTab() {
     [],
   )
 
+  const handleAnswerQuestion = useCallback((answers: Record<number, string>) => {
+    const lastAssistantMsg = [...messages].reverse().find(m => m.role === "assistant")
+    if (!lastAssistantMsg?.id) {
+      console.error("[ai-chat-tab] handleAnswerQuestion: no assistant message found")
+      return
+    }
+    console.log("[ai-chat-tab] handleAnswerQuestion:", { answers, assistantMessageId: lastAssistantMsg.id })
+    submitQuestionAnswer(lastAssistantMsg.id, answers)
+  }, [messages, submitQuestionAnswer])
+
+  const lastAssistantMsg = [...messages].reverse().find(m => m.role === "assistant")
+  const isWaitingForQuestion = lastAssistantMsg?.parts?.some(p =>
+    p.type === "tool-invocation" &&
+    p.toolInvocation.toolName === "question" &&
+    p.toolInvocation.state === "call"
+  ) ?? false
+
+  console.log("[ai-chat-tab] render state:", { isWaitingForQuestion, isGenerating, messageCount: messages.length, lastMsgRole: lastAssistantMsg?.role })
+
   const isEmpty = messages.length === 0
 
   return (
@@ -64,7 +84,11 @@ export function AiChatTab() {
               </Button>
             </div>
           ) : (
-            <MessageList messages={messages} isTyping={isGenerating} />
+            <MessageList
+              messages={messages}
+              isTyping={isGenerating && !isWaitingForQuestion}
+              onAnswerQuestion={handleAnswerQuestion}
+            />
           )}
         </div>
         {!shouldAutoScroll && !isEmpty && (

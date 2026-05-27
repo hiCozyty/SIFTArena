@@ -20,14 +20,20 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs"
 import { FileText, MessageCircle, ListChecks } from "lucide-react"
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import { TechniqueTree, type SelectedItem } from "@/components/attack-configuration/technique-tree"
 import { AbilityInfoTab } from "@/components/attack-configuration/ability-info-tab"
 import { AiChatTab } from "@/components/attack-configuration/ai-chat-tab"
+import { useOpencodeChat } from "@/hooks/use-opencode-chat"
 
 function AttackerConfigurationUi() {
   const [selected, setSelected] = useState<SelectedItem>({ type: "none" })
   const [activeTab, setActiveTab] = useState("ability")
+  const chat = useOpencodeChat()
+
+  const handleClearChat = useCallback(async () => {
+    await chat.resetSession()
+  }, [chat])
 
   const displayContent = (() => {
     if (selected.type === "none") {
@@ -62,7 +68,7 @@ function AttackerConfigurationUi() {
               </TabsTrigger>
             </TabsList>
             {activeTab === "chat" ? (
-              <Button>Clear Chat Session</Button>
+              <Button onClick={handleClearChat}>Clear Chat Session</Button>
             ) : (
               <Button disabled={selected.type === "technique" || selected.type === "none"}>Add to Scenario</Button>
             )}
@@ -71,7 +77,7 @@ function AttackerConfigurationUi() {
             <AbilityInfoTab content={displayContent} />
           </TabsContent>
           <TabsContent value="chat" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
-            <AiChatTab />
+            <AiChatTab {...chat} />
           </TabsContent>
           <TabsContent value="scenario" className="flex-1 flex items-center justify-center rounded-4xl bg-muted shadow-sm">
             Scenario panel content
