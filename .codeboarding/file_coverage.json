@@ -1,0 +1,322 @@
+{
+  "version": 1,
+  "generated_at": "2026-05-29T00:47:00.106193+00:00",
+  "analyzed_files": [
+    "server/ansibleScriptTest.js",
+    "server/caldera/atomic.js",
+    "server/caldera/categories.js",
+    "server/caldera/custom.js",
+    "server/caldera/customAbilities.js",
+    "server/caldera/focus.js",
+    "server/caldera/generateFocusedData.js",
+    "server/index.js",
+    "server/ludus/range.js",
+    "server/ludus/templates.js",
+    "server/poller.js",
+    "server/range.js",
+    "server/rdp-proxy.js",
+    "server/snapshotTest.js",
+    "server/templates.js",
+    "web/src/App.tsx",
+    "web/src/components/app/app-layout.tsx",
+    "web/src/components/app/authenticated-app.tsx",
+    "web/src/components/app/dock.tsx",
+    "web/src/components/app/landing-tabs.tsx",
+    "web/src/components/attack-configuration/ability-info-tab.tsx",
+    "web/src/components/attack-configuration/ai-chat-tab.tsx",
+    "web/src/components/attack-configuration/attack-configuration.tsx",
+    "web/src/components/attack-configuration/technique-tree.tsx",
+    "web/src/components/icons/caldera-icon.tsx",
+    "web/src/components/icons/game-icons-mesh-network.tsx",
+    "web/src/components/icons/ludus-icon.tsx",
+    "web/src/components/icons/sift-agent-icon.tsx",
+    "web/src/components/icons/tabler-brand-speedtest.tsx",
+    "web/src/components/kibo-ui/code-block/index.tsx",
+    "web/src/components/kibo-ui/code-block/server.tsx",
+    "web/src/components/kibo-ui/tree/index.tsx",
+    "web/src/components/knowledge-graph/knowledge-graph-content.tsx",
+    "web/src/components/lab-range/backend-gate.tsx",
+    "web/src/components/lab-range/interactive-timeline.tsx",
+    "web/src/components/lab-range/lab-range-content.tsx",
+    "web/src/components/lab-range/ludus-server-guide.tsx",
+    "web/src/components/lab-range/timeline-content.tsx",
+    "web/src/components/lab-range/use-lab-range-state.ts",
+    "web/src/components/lab-range/vm-topology.tsx",
+    "web/src/components/lab-range/yaml-topology-content.tsx",
+    "web/src/components/lab-range/yaml-topology-gui.tsx",
+    "web/src/components/leaderboard/leaderboard-content.tsx",
+    "web/src/components/run-benchmark/benchmark-content.tsx",
+    "web/src/components/shadcn-space/apple-dock/apple-dock-01.tsx",
+    "web/src/components/shared-ui-primitives/tab-content-card.tsx",
+    "web/src/components/shared-ui-primitives/theme-provider.tsx",
+    "web/src/components/sift-agent/sift-agent-content.tsx",
+    "web/src/components/snr/snr-content.tsx",
+    "web/src/components/ui/alert-dialog.tsx",
+    "web/src/components/ui/alert.tsx",
+    "web/src/components/ui/audio-visualizer.tsx",
+    "web/src/components/ui/avatar.tsx",
+    "web/src/components/ui/badge.tsx",
+    "web/src/components/ui/breadcrumb.tsx",
+    "web/src/components/ui/button-group.tsx",
+    "web/src/components/ui/button.tsx",
+    "web/src/components/ui/card.tsx",
+    "web/src/components/ui/carousel.tsx",
+    "web/src/components/ui/chat-message.tsx",
+    "web/src/components/ui/chat.tsx",
+    "web/src/components/ui/collapsible.tsx",
+    "web/src/components/ui/command.tsx",
+    "web/src/components/ui/copy-button.tsx",
+    "web/src/components/ui/dialog.tsx",
+    "web/src/components/ui/dropdown-menu.tsx",
+    "web/src/components/ui/empty.tsx",
+    "web/src/components/ui/file-preview.tsx",
+    "web/src/components/ui/input.tsx",
+    "web/src/components/ui/interrupt-prompt.tsx",
+    "web/src/components/ui/item.tsx",
+    "web/src/components/ui/label.tsx",
+    "web/src/components/ui/markdown-renderer.tsx",
+    "web/src/components/ui/menubar.tsx",
+    "web/src/components/ui/message-input.tsx",
+    "web/src/components/ui/message-list.tsx",
+    "web/src/components/ui/native-select.tsx",
+    "web/src/components/ui/navigation-menu.tsx",
+    "web/src/components/ui/progress.tsx",
+    "web/src/components/ui/prompt-suggestions.tsx",
+    "web/src/components/ui/question-tool-renderer.tsx",
+    "web/src/components/ui/resizable.tsx",
+    "web/src/components/ui/select.tsx",
+    "web/src/components/ui/separator.tsx",
+    "web/src/components/ui/sheet.tsx",
+    "web/src/components/ui/sonner.tsx",
+    "web/src/components/ui/spinner.tsx",
+    "web/src/components/ui/switch.tsx",
+    "web/src/components/ui/table.tsx",
+    "web/src/components/ui/tabs-fancy.tsx",
+    "web/src/components/ui/tabs.tsx",
+    "web/src/components/ui/tooltip.tsx",
+    "web/src/components/ui/typing-indicator.tsx",
+    "web/src/hooks/use-audio-recording.ts",
+    "web/src/hooks/use-auto-scroll.ts",
+    "web/src/hooks/use-autosize-textarea.ts",
+    "web/src/hooks/use-copy-to-clipboard.ts",
+    "web/src/hooks/use-focused-data.ts",
+    "web/src/hooks/use-health-check.ts",
+    "web/src/hooks/use-opencode-chat.ts",
+    "web/src/lib/audio-utils.ts",
+    "web/src/lib/backend-ws.ts",
+    "web/src/lib/range-yaml-validator.ts",
+    "web/src/lib/utils.ts",
+    "web/src/main.tsx",
+    "web/src/pages/preview-ui.tsx",
+    "web/src/pages/prototype-ui.tsx",
+    "web/src/pages/settings.tsx"
+  ],
+  "not_analyzed_files": [
+    {
+      "path": "README.md",
+      "reason": "other"
+    },
+    {
+      "path": "opencode.json",
+      "reason": "other"
+    },
+    {
+      "path": "pyproject.toml",
+      "reason": "other"
+    },
+    {
+      "path": "server/README.md",
+      "reason": "other"
+    },
+    {
+      "path": "server/caldera/abilityOpencodeDocker/Dockerfile",
+      "reason": "other"
+    },
+    {
+      "path": "server/caldera/abilityOpencodeDocker/docker-compose.yml",
+      "reason": "other"
+    },
+    {
+      "path": "server/caldera/abilityOpencodeDocker/opencode.json",
+      "reason": "other"
+    },
+    {
+      "path": "server/caldera/focusedTechniques.json",
+      "reason": "other"
+    },
+    {
+      "path": "server/caldera/test/calderaAPITest.js",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "server/caldera/test/categoriesTest.js",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "server/caldera/test/customAbilitySqliteTest.js",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "server/caldera/test/focusedDataTest.js",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "server/caldera/test/test-opencode.js",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "server/kaliAnsibleStart.yml",
+      "reason": "other"
+    },
+    {
+      "path": "server/ludus/kaliAnsibleStart.yml",
+      "reason": "other"
+    },
+    {
+      "path": "server/ludus/test/ansibleScriptTest.js",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "server/ludus/test/snapshotTest.js",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "server/ludus/test/zsnap.sh",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "server/ludus/test/zsnap_withreboot.sh",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "server/opencode.json",
+      "reason": "other"
+    },
+    {
+      "path": "server/package.json",
+      "reason": "other"
+    },
+    {
+      "path": "server/zsnap.sh",
+      "reason": "other"
+    },
+    {
+      "path": "server/zsnap_withreboot.sh",
+      "reason": "other"
+    },
+    {
+      "path": "web/AGENTS.md",
+      "reason": "gitignore"
+    },
+    {
+      "path": "web/README.md",
+      "reason": "other"
+    },
+    {
+      "path": "web/components.json",
+      "reason": "other"
+    },
+    {
+      "path": "web/eslint.config.js",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "web/index.html",
+      "reason": "other"
+    },
+    {
+      "path": "web/opencode.json",
+      "reason": "other"
+    },
+    {
+      "path": "web/package-lock.json",
+      "reason": "other"
+    },
+    {
+      "path": "web/package.json",
+      "reason": "other"
+    },
+    {
+      "path": "web/public/vite.svg",
+      "reason": "other"
+    },
+    {
+      "path": "web/skills-lock.json",
+      "reason": "other"
+    },
+    {
+      "path": "web/src/assets/react.svg",
+      "reason": "other"
+    },
+    {
+      "path": "web/src/components/examples/spinner/applications/spinner-in-item.tsx",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "web/src/components/examples/spinner/inline/spinner-after-text.tsx",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "web/src/components/examples/spinner/inline/spinner-before-text.tsx",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "web/src/components/examples/spinner/inline/spinner-inline-with-text.tsx",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "web/src/components/examples/spinner/standard/default-spinner.tsx",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "web/src/components/examples/spinner/standard/large-spinner.tsx",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "web/src/components/examples/spinner/standard/muted-spinner.tsx",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "web/src/components/examples/spinner/standard/primary-color-spinner.tsx",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "web/src/components/examples/spinner/standard/small-spinner.tsx",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "web/src/components/examples/tabs/standard/tabs-with-icons.tsx",
+      "reason": "codeboardingignore"
+    },
+    {
+      "path": "web/src/index.css",
+      "reason": "other"
+    },
+    {
+      "path": "web/tsconfig.app.json",
+      "reason": "other"
+    },
+    {
+      "path": "web/tsconfig.json",
+      "reason": "other"
+    },
+    {
+      "path": "web/tsconfig.node.json",
+      "reason": "other"
+    },
+    {
+      "path": "web/vite.config.ts",
+      "reason": "codeboardingignore"
+    }
+  ],
+  "summary": {
+    "total_files": 157,
+    "analyzed": 108,
+    "not_analyzed": 49,
+    "not_analyzed_by_reason": {
+      "other": 27,
+      "codeboardingignore": 21,
+      "gitignore": 1
+    }
+  }
+}
