@@ -1,0 +1,13 @@
+---
+component_id: 6.6.1.13
+component_name: Deployment Pipeline Hook
+---
+
+# Deployment Pipeline Hook
+
+## Component Description
+
+Central useDeploymentPipeline hook — initializes the subscription, manages debounced state updates, and exposes timelineItems and isVmPresent to consumer components.
+
+---
+

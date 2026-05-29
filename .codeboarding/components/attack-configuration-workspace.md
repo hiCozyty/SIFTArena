@@ -7,7 +7,7 @@ component_name: Attack Configuration Workspace
 
 ## Component Description
 
-Interactive workspace for designing attack scenarios, exploring MITRE ATT&CK technique trees, viewing ability details with copyable commands, and engaging in AI-guided chat for attack planning. Streams real-time responses with reasoning blocks and tool invocation handling.
+Delivers the interactive attack planning environment — browse MITRE ATT&CK technique trees, inspect ability details, and plan attacks via an AI chat assistant powered by the opencode SDK.
 
 ---
 
@@ -92,126 +92,6 @@ export function AttackConfiguration({
         ) : (
           <Button onClick={onComplete}>Complete Attack Configuration</Button>
         )}
-```
-
-### /home/cozyty/Projects/shadowProtocol/web/src/components/attack-configuration/ai-chat-tab.tsx (lines 11-74)
-```
-export function AiChatTab({ messages, isGenerating, isToolExecuting, error, sendMessage, stopGenerating, submitQuestionAnswer }: AiChatTabProps) {
-  const [input, setInput] = useState("")
-  const [showInterruptPrompt, setShowInterruptPrompt] = useState(false)
-
-  const lastMsg = messages[messages.length - 1]
-  const autoScrollDeps = [messages.length, isGenerating, lastMsg?.content]
-  const { containerRef, scrollToBottom, handleScroll, shouldAutoScroll, resetAutoScroll } = useAutoScroll(autoScrollDeps)
-
-  const handleSubmit = useCallback((e?: { preventDefault?: () => void }) => {
-    e?.preventDefault?.()
-
-    if (isGenerating) {
-      if (showInterruptPrompt) {
-        setShowInterruptPrompt(false)
-        stopGenerating()
-        scrollToBottom()
-      } else {
-        setShowInterruptPrompt(true)
-        return
-      }
-    }
-
-    if (!input.trim()) return
-
-    resetAutoScroll()
-    sendMessage(input.trim())
-    setInput("")
-  }, [input, isGenerating, showInterruptPrompt, sendMessage, resetAutoScroll, stopGenerating, scrollToBottom])
-
-  const handleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      setInput(e.target.value)
-    },
-    [],
-  )
-
-  const handleAnswerQuestion = useCallback((answers: Record<number, string>) => {
-    const lastAssistantMsg = [...messages].reverse().find(m => m.role === "assistant")
-    if (!lastAssistantMsg?.id) {
-      console.error("[ai-chat-tab] handleAnswerQuestion: no assistant message found")
-      return
-    }
-    console.log("[ai-chat-tab] handleAnswerQuestion:", { answers, assistantMessageId: lastAssistantMsg.id })
-    submitQuestionAnswer(lastAssistantMsg.id, answers)
-  }, [messages, submitQuestionAnswer])
-
-  const lastAssistantMsg = [...messages].reverse().find(m => m.role === "assistant")
-  const isWaitingForQuestion = lastAssistantMsg?.parts?.some(p =>
-    p.type === "tool-invocation" &&
-    p.toolInvocation.toolName === "question" &&
-    p.toolInvocation.state === "call"
-  ) ?? false
-
-  console.log("[ai-chat-tab] render state:", { isWaitingForQuestion, isGenerating, messageCount: messages.length, lastMsgRole: lastAssistantMsg?.role })
-
-  const isEmpty = messages.length === 0
-
-  return (
-    <div className="flex h-full flex-col">
-      {error && (
-        <div className="mb-2 rounded-4xl border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive mx-4 mt-4">
-          {error}
-        </div>
-      )}
-```
-
-### /home/cozyty/Projects/shadowProtocol/web/src/components/attack-configuration/technique-tree.tsx (lines 117-164)
-```
-export function TechniqueTree({ onSelect }: { onSelect: (item: SelectedItem) => void }) {
-  const { status, fetch } = useFocusedData()
-
-  useEffect(() => {
-    fetch()
-  }, [fetch])
-
-  if (status.type === "loading") {
-    return <div className="p-4 text-sm text-muted-foreground">Loading...</div>
-  }
-
-  if (status.type === "error") {
-    return <div className="p-4 text-sm text-destructive">Error: {status.message}</div>
-  }
-
-  if (status.type !== "success") {
-    return null
-  }
-
-  const { categories, techniques } = status.data
-
-  const allTechniques: { tid: string; tech: typeof techniques[string][string] }[] = []
-  for (const cat of categories) {
-    const catTechs = techniques[cat] || {}
-    for (const [tid, tech] of Object.entries(catTechs)) {
-      allTechniques.push({ tid, tech })
-    }
-  }
-
-  const allIds: string[] = []
-  for (const { tid, tech } of allTechniques) {
-    allIds.push(tid)
-    for (const ability of tech.abilities) {
-      allIds.push(`${tid}-${ability.ability_id}`)
-    }
-  }
-
-  return (
-    <TreeProvider defaultExpandedIds={allIds}>
-      <div className="flex h-full flex-col">
-        <div className="shrink-0">
-          <TreeControls allIds={allIds} />
-        </div>
-        <TechniqueTreeContent onSelect={onSelect} allTechniques={allTechniques} />
-      </div>
-    </TreeProvider>
-  )
-}
 ```
 
 ### /home/cozyty/Projects/shadowProtocol/web/src/hooks/use-opencode-chat.ts (lines 40-545)
@@ -724,6 +604,64 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
 }
 ```
 
+### /home/cozyty/Projects/shadowProtocol/web/src/components/attack-configuration/technique-tree.tsx (lines 58-111)
+```
+function TechniqueTreeContent({ onSelect, allTechniques }: { onSelect: (item: SelectedItem) => void; allTechniques: { tid: string; tech: Technique }[] }) {
+  const { selectedIds } = useTree()
+
+  useEffect(() => {
+    if (selectedIds.length === 0) {
+      onSelect({ type: "none" })
+    }
+  }, [selectedIds, onSelect])
+
+  const allIds: string[] = []
+  for (const { tid, tech } of allTechniques) {
+    allIds.push(tid)
+    for (const ability of tech.abilities) {
+      allIds.push(`${tid}-${ability.ability_id}`)
+    }
+  }
+
+  return (
+    <div className="min-h-0 min-w-0 flex-1 max-w-full">
+      <TreeView className="pl-0 rounded-lg m-2 -ml-[5px] h-[415px] overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <TreeNode key="negative-control" isLast={allTechniques.length === 0} nodeId="negative-control">
+          <TreeNodeTrigger onClick={() => onSelect({ type: "negative-control" })}>
+            <TreeIcon icon={<FileText className="h-4 w-4" />} />
+            <TreeLabel className="whitespace-normal break-words">Negative Control</TreeLabel>
+          </TreeNodeTrigger>
+        </TreeNode>
+        {allTechniques.map(({ tid, tech }, techIdx) => {
+          const isLastTech = techIdx === allTechniques.length - 1
+
+          return (
+            <TreeNode key={tid} isLast={isLastTech} nodeId={tid}>
+              <TreeNodeTrigger onClick={() => onSelect({ type: "technique", tid, name: tech.technique_name })}>
+                <TreeExpander hasChildren />
+                <TreeIcon hasChildren />
+                <TreeLabel className="whitespace-normal break-words">{tid} - {tech.technique_name}</TreeLabel>
+              </TreeNodeTrigger>
+              <TreeNodeContent hasChildren>
+                {tech.abilities.map((ability: AtomicAbility, abIdx: number) => {
+                  const isLastAb = abIdx === tech.abilities.length - 1
+                  const abilityId = `${tid}-${ability.ability_id}`
+
+                  return (
+                    <TreeNode key={abilityId} isLast={isLastAb} level={1} nodeId={abilityId}>
+                      <TreeNodeTrigger onClick={() => onSelect({ type: "ability", tid, abilityId: ability.ability_id, name: ability.name, description: ability.description, command: ability.executors[0]?.command ?? "(no command)", downloadInstructions: ability.download_instructions ?? "" })}>
+                        <TreeIcon icon={<FileText className="h-4 w-4" />} />
+                        <TreeLabel className="whitespace-normal break-words">{ability.name}</TreeLabel>
+                      </TreeNodeTrigger>
+                    </TreeNode>
+                  )
+                })}
+              </TreeNodeContent>
+            </TreeNode>
+          )
+        })}
+```
+
 ### /home/cozyty/Projects/shadowProtocol/web/src/components/attack-configuration/ability-info-tab.tsx (lines 41-89)
 ```
 export function AbilityInfoTab({ content }: AbilityInfoTabProps) {
@@ -780,82 +718,10 @@ export function AbilityInfoTab({ content }: AbilityInfoTabProps) {
 
 ## Source Files:
 
-- `web/src/components/app/dock.tsx`
-- `web/src/components/app/landing-tabs.tsx`
 - `web/src/components/attack-configuration/ability-info-tab.tsx`
 - `web/src/components/attack-configuration/ai-chat-tab.tsx`
-- `web/src/components/attack-configuration/attack-configuration.tsx`
 - `web/src/components/attack-configuration/technique-tree.tsx`
-- `web/src/components/icons/caldera-icon.tsx`
-- `web/src/components/icons/game-icons-mesh-network.tsx`
-- `web/src/components/icons/sift-agent-icon.tsx`
-- `web/src/components/icons/tabler-brand-speedtest.tsx`
-- `web/src/components/kibo-ui/code-block/index.tsx`
 - `web/src/components/kibo-ui/tree/index.tsx`
-- `web/src/components/knowledge-graph/knowledge-graph-content.tsx`
-- `web/src/components/lab-range/backend-gate.tsx`
-- `web/src/components/lab-range/lab-range-content.tsx`
-- `web/src/components/lab-range/ludus-server-guide.tsx`
-- `web/src/components/lab-range/use-lab-range-state.ts`
-- `web/src/components/lab-range/vm-topology.tsx`
-- `web/src/components/lab-range/yaml-topology-gui.tsx`
-- `web/src/components/leaderboard/leaderboard-content.tsx`
-- `web/src/components/run-benchmark/benchmark-content.tsx`
-- `web/src/components/shadcn-space/apple-dock/apple-dock-01.tsx`
-- `web/src/components/shared-ui-primitives/tab-content-card.tsx`
-- `web/src/components/shared-ui-primitives/theme-provider.tsx`
-- `web/src/components/sift-agent/sift-agent-content.tsx`
-- `web/src/components/snr/snr-content.tsx`
-- `web/src/components/ui/alert-dialog.tsx`
-- `web/src/components/ui/alert.tsx`
-- `web/src/components/ui/audio-visualizer.tsx`
-- `web/src/components/ui/avatar.tsx`
-- `web/src/components/ui/badge.tsx`
-- `web/src/components/ui/breadcrumb.tsx`
-- `web/src/components/ui/button-group.tsx`
-- `web/src/components/ui/button.tsx`
-- `web/src/components/ui/card.tsx`
-- `web/src/components/ui/carousel.tsx`
-- `web/src/components/ui/chat-message.tsx`
 - `web/src/components/ui/chat.tsx`
-- `web/src/components/ui/collapsible.tsx`
-- `web/src/components/ui/command.tsx`
-- `web/src/components/ui/copy-button.tsx`
-- `web/src/components/ui/dialog.tsx`
-- `web/src/components/ui/dropdown-menu.tsx`
-- `web/src/components/ui/empty.tsx`
-- `web/src/components/ui/input.tsx`
-- `web/src/components/ui/interrupt-prompt.tsx`
-- `web/src/components/ui/item.tsx`
-- `web/src/components/ui/label.tsx`
-- `web/src/components/ui/markdown-renderer.tsx`
-- `web/src/components/ui/menubar.tsx`
-- `web/src/components/ui/message-input.tsx`
-- `web/src/components/ui/native-select.tsx`
-- `web/src/components/ui/navigation-menu.tsx`
-- `web/src/components/ui/progress.tsx`
-- `web/src/components/ui/question-tool-renderer.tsx`
-- `web/src/components/ui/resizable.tsx`
-- `web/src/components/ui/select.tsx`
-- `web/src/components/ui/separator.tsx`
-- `web/src/components/ui/sheet.tsx`
-- `web/src/components/ui/spinner.tsx`
-- `web/src/components/ui/switch.tsx`
-- `web/src/components/ui/table.tsx`
-- `web/src/components/ui/tabs-fancy.tsx`
-- `web/src/components/ui/tabs.tsx`
-- `web/src/components/ui/tooltip.tsx`
-- `web/src/hooks/use-audio-recording.ts`
-- `web/src/hooks/use-auto-scroll.ts`
-- `web/src/hooks/use-autosize-textarea.ts`
-- `web/src/hooks/use-copy-to-clipboard.ts`
-- `web/src/hooks/use-focused-data.ts`
-- `web/src/hooks/use-health-check.ts`
 - `web/src/hooks/use-opencode-chat.ts`
-- `web/src/lib/audio-utils.ts`
-- `web/src/lib/backend-ws.ts`
-- `web/src/lib/range-yaml-validator.ts`
-- `web/src/lib/utils.ts`
-- `web/src/pages/preview-ui.tsx`
-- `web/src/pages/settings.tsx`
 

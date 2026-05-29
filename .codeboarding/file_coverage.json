@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated_at": "2026-05-29T00:47:00.106193+00:00",
+  "generated_at": "2026-05-29T05:18:04.630798+00:00",
   "analyzed_files": [
     "server/ansibleScriptTest.js",
     "server/caldera/atomic.js",
@@ -40,7 +40,9 @@
     "web/src/components/lab-range/lab-range-content.tsx",
     "web/src/components/lab-range/ludus-server-guide.tsx",
     "web/src/components/lab-range/timeline-content.tsx",
+    "web/src/components/lab-range/use-deployment-pipeline.ts",
     "web/src/components/lab-range/use-lab-range-state.ts",
+    "web/src/components/lab-range/use-template-builder.ts",
     "web/src/components/lab-range/vm-topology.tsx",
     "web/src/components/lab-range/yaml-topology-content.tsx",
     "web/src/components/lab-range/yaml-topology-gui.tsx",
@@ -205,10 +207,6 @@
       "reason": "other"
     },
     {
-      "path": "web/AGENTS.md",
-      "reason": "gitignore"
-    },
-    {
       "path": "web/README.md",
       "reason": "other"
     },
@@ -310,13 +308,12 @@
     }
   ],
   "summary": {
-    "total_files": 157,
-    "analyzed": 108,
-    "not_analyzed": 49,
+    "total_files": 158,
+    "analyzed": 110,
+    "not_analyzed": 48,
     "not_analyzed_by_reason": {
       "other": 27,
-      "codeboardingignore": 21,
-      "gitignore": 1
+      "codeboardingignore": 21
     }
   }
 }
