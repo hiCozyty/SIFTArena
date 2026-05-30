@@ -58,24 +58,34 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
 
   const eventLoopRunningRef = useRef(false)
   const subscribeReadyRef = useRef<Promise<void> | null>(null)
+  const eventLoopExitedRef = useRef<Promise<void> | null>(null)
+  let resolveEventLoopExited: (() => void) | null = null
 
   async function startEventLoop() {
     const client = clientRef.current
     const sessionId = activeSessionIdRef.current
     if (!client || !sessionId) return
-    if (eventLoopRunningRef.current) return
+    if (eventLoopRunningRef.current) {
+      console.log("[opencode-chat] startEventLoop: skipped, already running")
+      return
+    }
     eventLoopRunningRef.current = true
+    console.log("[opencode-chat] startEventLoop: starting new subscription")
 
     let resolveSubscribeReady!: () => void
     subscribeReadyRef.current = new Promise<void>(resolve => {
       resolveSubscribeReady = resolve
     })
 
+    resolveEventLoopExited = null
+    eventLoopExitedRef.current = new Promise<void>(resolve => {
+      resolveEventLoopExited = resolve
+    })
+
     try {
-      const events = await client.event.subscribe()
       const abortController = new AbortController()
       streamAbortRef.current = abortController
-      console.log("[opencode-chat] event stream subscribed")
+      const events = await client.event.subscribe({ signal: abortController.signal })
 
       resolveSubscribeReady()
 
@@ -83,19 +93,20 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
         for await (const event of events.stream) {
           if (abortController.signal.aborted) break
           const props = (event.properties || {}) as EventProps
-          if (props.sessionID && props.sessionID !== activeSessionIdRef.current) continue
+          console.log("[opencode-chat] SSE event:", { type: event.type, sessionID: props.sessionID, activeSession: activeSessionIdRef.current })
+          if (props.sessionID && props.sessionID !== activeSessionIdRef.current) {
+            console.log("[opencode-chat] event filtered: session mismatch")
+            continue
+          }
 
           if ((event.type as string) === "message.part.updated" && props.part?.id) {
             const partId = props.part.id
-            const eventType = `part.updated:${props.part.type}`
             const genCheck = !!(activeGenerationIdRef.current && activeAssistantMessageIdRef.current)
-            console.log("[opencode-chat] event:", { type: eventType, partId, genCheck, genId: activeGenerationIdRef.current, assistantId: activeAssistantMessageIdRef.current })
             if (!genCheck) continue
             const recordedGen = partGenerationMapRef.current.get(partId)
             if (recordedGen === undefined) {
               partGenerationMapRef.current.set(partId, activeGenerationIdRef.current)
             } else if (recordedGen !== activeGenerationIdRef.current) {
-              console.log("[opencode-chat] event skipped: gen mismatch", { recordedGen, activeGen: activeGenerationIdRef.current })
               continue
             }
             if (!partsRef.current.has(props.part.id)) {
@@ -105,9 +116,7 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
               })
             }
             if (props.part.type === "step-finish") {
-              console.log("[opencode-chat] step-finish:", props.part.reason)
               if (props.part.reason === "stop") {
-                console.log("[opencode-chat] finalizeMessage called")
                 finalizeMessage()
               }
               continue
@@ -149,13 +158,11 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
           if ((event.type as string) === "message.part.delta" && props.partID) {
             const partId = props.partID
             const genCheck = !!(activeGenerationIdRef.current && activeAssistantMessageIdRef.current)
-            console.log("[opencode-chat] event:", { type: "part.delta", partId, field: props.field, genCheck })
             if (!genCheck) continue
             const recordedGen = partGenerationMapRef.current.get(partId)
             if (recordedGen === undefined) {
               partGenerationMapRef.current.set(partId, activeGenerationIdRef.current)
             } else if (recordedGen !== activeGenerationIdRef.current) {
-              console.log("[opencode-chat] delta skipped: gen mismatch", { recordedGen, activeGen: activeGenerationIdRef.current })
               continue
             }
             let existing = partsRef.current.get(props.partID)
@@ -169,6 +176,7 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
             }
           }
         }
+        console.log("[opencode-chat] event loop: for-await ended")
       } catch (err) {
         if (!abortController.signal.aborted) {
           console.error("[opencode-chat] stream error:", err)
@@ -183,17 +191,25 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
       resolveSubscribeReady()
       console.error("[opencode-chat] subscribe error:", err)
     } finally {
+      console.log("[opencode-chat] event loop finally: setting eventLoopRunning=false")
       eventLoopRunningRef.current = false
-      console.log("[opencode-chat] event loop ended")
+      resolveEventLoopExited?.()
+      resolveEventLoopExited = null
     }
   }
 
-  function reconnectEventStream() {
-    console.log("[opencode-chat] reconnecting event stream...")
+  async function reconnectEventStream() {
+    const oldLoopExited = eventLoopExitedRef.current
     streamAbortRef.current?.abort()
     streamAbortRef.current = null
-    eventLoopRunningRef.current = false
     subscribeReadyRef.current = null
+
+    if (oldLoopExited) {
+      console.log("[opencode-chat] reconnect: awaiting old event loop exit")
+      await oldLoopExited
+      console.log("[opencode-chat] reconnect: old event loop exited")
+    }
+
     startEventLoop()
   }
 
@@ -256,7 +272,6 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
   }
 
   function finalizeMessage() {
-    console.log("[opencode-chat] finalizeMessage called")
     activeGenerationIdRef.current = null
     const parts = Array.from(partsRef.current.values())
     const toolInvocations = Array.from(toolInvocationsRef.current.values())
@@ -351,8 +366,6 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
       partGenerationMapRef.current.clear()
       lastUserMessageRef.current = content
 
-      console.log("[opencode-chat] sendMessage:", { content, sessionId: currentSessionId, usingPromptAsync: true })
-
       if (subscribeReadyRef.current) {
         await subscribeReadyRef.current
       }
@@ -367,9 +380,7 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
           },
           signal: promptAbortRef.current.signal,
         })
-        console.log("[opencode-chat] promptAsync resolved successfully")
       } catch (err) {
-        console.log("[opencode-chat] promptAsync error:", err)
         if (err instanceof DOMException && err.name === "AbortError") {
           finalizeMessage()
           return
@@ -411,7 +422,7 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
     promptAbortRef.current?.abort()
     promptAbortRef.current = null
     finalizeMessage()
-    reconnectEventStream()
+    await reconnectEventStream()
   }, [])
 
   const submitQuestionAnswer = useCallback(
@@ -423,8 +434,10 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
         return
       }
 
+      console.log("[opencode-chat] Q1: aborting session")
       await clientRef.current.session.abort({ path: { id: currentSessionId } }).catch(() => {})
-      reconnectEventStream()
+      console.log("[opencode-chat] Q2: reconnecting event stream")
+      await reconnectEventStream()
 
       activeGenerationIdRef.current = null
       activeAssistantMessageIdRef.current = null
@@ -444,8 +457,7 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
         }).join("\n\n")
       }).filter(Boolean).join("\n\n") || Object.entries(answers).map(([qi, a]) => `Q${parseInt(qi) + 1}: ${a}`).join("\n\n")
 
-      console.log("[opencode-chat] submitQuestionAnswer start:", { answers, questionContext })
-      console.log("[opencode-chat] submitQuestionAnswer refs before prompt:", { sessionId: currentSessionId, eventLoopRunning: eventLoopRunningRef.current, streamAbort: !!streamAbortRef.current })
+      console.log("[opencode-chat] Q3: questionContext built:", questionContext.slice(0, 80))
 
       const userMessage: Message = {
         id: crypto.randomUUID(),
@@ -474,14 +486,18 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
       partGenerationMapRef.current.clear()
       lastUserMessageRef.current = questionContext
 
-      console.log("[opencode-chat] submitQuestionAnswer refs after set:", { genId: newGenId, assistantId })
-      console.log("[opencode-chat] submitQuestionAnswer: waiting for SSE subscription...")
+      console.log("[opencode-chat] Q4: refs set, genId:", newGenId, "assistantId:", assistantId)
+      console.log("[opencode-chat] Q5: eventLoopRunning:", eventLoopRunningRef.current, "streamAbort:", !!streamAbortRef.current)
 
       if (subscribeReadyRef.current) {
+        console.log("[opencode-chat] Q6: awaiting subscribeReadyRef")
         await subscribeReadyRef.current
+        console.log("[opencode-chat] Q7: subscribeReadyRef resolved")
+      } else {
+        console.log("[opencode-chat] Q6: subscribeReadyRef is null, skipping await")
       }
 
-      console.log("[opencode-chat] submitQuestionAnswer: sending promptAsync")
+      console.log("[opencode-chat] Q8: calling promptAsync")
 
       try {
         promptAbortRef.current = new AbortController()
@@ -493,9 +509,9 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
           },
           signal: promptAbortRef.current.signal,
         })
-        console.log("[opencode-chat] submitQuestionAnswer: promptAsync resolved")
+        console.log("[opencode-chat] Q9: promptAsync resolved")
       } catch (err) {
-        console.log("[opencode-chat] submitQuestionAnswer: promptAsync error:", err)
+        console.log("[opencode-chat] Q9: promptAsync error:", err)
         if (err instanceof DOMException && err.name === "AbortError") {
           finalizeMessage()
           return

@@ -48,6 +48,13 @@ function AttackerConfigurationUi() {
     return { name: selected.name, abilityId: selected.abilityId, description: selected.description ?? "(no description)", command: selected.command, downloadInstructions: selected.downloadInstructions }
   })()
 
+  const variantMessage = (() => {
+    if (selected.type === "ability") {
+      return `create an existing ability variant for "${selected.name}"\nDescription: ${selected.description ?? "(no description)"}\nCommand: ${selected.command}\nDownload instructions: ${selected.downloadInstructions || "(none)"}`
+    }
+    return "create an existing ability variant"
+  })()
+
   return (
     <div className="h-full rounded-lg flex">
       <div className="w-[280px] shrink-0">
@@ -77,7 +84,7 @@ function AttackerConfigurationUi() {
             <AbilityInfoTab content={displayContent} />
           </TabsContent>
           <TabsContent value="chat" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
-            <AiChatTab {...chat} />
+            <AiChatTab variantMessage={variantMessage} variantLabel={selected.type === "ability" ? selected.name : undefined} {...chat} />
           </TabsContent>
           <TabsContent value="scenario" className="flex-1 flex items-center justify-center rounded-4xl bg-muted shadow-sm">
             Scenario panel content

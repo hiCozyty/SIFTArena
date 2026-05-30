@@ -4,3 +4,4 @@ AGENTS.md
 # Bun.js / Node.js
 node_modules/
 *.log
+.codeboarding

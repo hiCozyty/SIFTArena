@@ -121,6 +121,7 @@ export function QuestionToolRenderer({ questions, onAnswer }: QuestionToolRender
               <input
                 type="text"
                 placeholder="Type your own answer..."
+                onFocus={() => setSelections((prev) => ({ ...prev, [qIndex]: new Set() }))}
                 value={customAnswers[qIndex] || ""}
                 onChange={(e) =>
                   setCustomAnswers((prev) => ({

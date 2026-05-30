@@ -6,14 +6,17 @@ import { useCallback, useState } from "react"
 import { useAutoScroll } from "@/hooks/use-auto-scroll"
 import { useOpencodeChat } from "@/hooks/use-opencode-chat"
 
-type AiChatTabProps = ReturnType<typeof useOpencodeChat>
+type AiChatTabProps = ReturnType<typeof useOpencodeChat> & {
+  variantMessage: string
+  variantLabel?: string
+}
 
-export function AiChatTab({ messages, isGenerating, isToolExecuting, error, sendMessage, stopGenerating, submitQuestionAnswer }: AiChatTabProps) {
+export function AiChatTab({ messages, isGenerating, isToolExecuting, error, sendMessage, stopGenerating, submitQuestionAnswer, variantMessage, variantLabel }: AiChatTabProps) {
   const [input, setInput] = useState("")
   const [showInterruptPrompt, setShowInterruptPrompt] = useState(false)
 
   const lastMsg = messages[messages.length - 1]
-  const autoScrollDeps = [messages.length, isGenerating, lastMsg?.content]
+  const autoScrollDeps = [messages.length, isGenerating, lastMsg?.content, lastMsg?.parts]
   const { containerRef, scrollToBottom, handleScroll, shouldAutoScroll, resetAutoScroll } = useAutoScroll(autoScrollDeps)
 
   const handleSubmit = useCallback((e?: { preventDefault?: () => void }) => {
@@ -61,7 +64,7 @@ export function AiChatTab({ messages, isGenerating, isToolExecuting, error, send
     p.toolInvocation.state === "call"
   ) ?? false
 
-  console.log("[ai-chat-tab] render state:", { isWaitingForQuestion, isGenerating, messageCount: messages.length, lastMsgRole: lastAssistantMsg?.role })
+  console.log("[ai-chat] isWaitingForQuestion:", isWaitingForQuestion, "isGenerating:", isGenerating)
 
   const isEmpty = messages.length === 0
 
@@ -76,9 +79,9 @@ export function AiChatTab({ messages, isGenerating, isToolExecuting, error, send
         <div className="h-full overflow-y-auto px-4 pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" ref={containerRef} onScroll={handleScroll}>
           {isEmpty ? (
             <div className="flex h-full flex-col items-center justify-center gap-3">
-              <Button onClick={() => sendMessage("create an existing ability variant")}>
-                Create an existing ability variant
-              </Button>
+            <Button onClick={() => sendMessage(variantMessage)}>
+              {variantLabel ? `Create variant for "${variantLabel}"` : "Create an existing ability variant"}
+            </Button>
               <Button onClick={() => sendMessage("create a new ability")}>
                 Create a new ability
               </Button>
