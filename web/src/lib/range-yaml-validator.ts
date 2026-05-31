@@ -139,15 +139,3 @@ export function validateRangeYaml(input: string): ValidationResult {
 
   return { valid: errors.length === 0, errors }
 }
-
-export function isYamlContentEqual(a: string, b: string): boolean {
-  try {
-    const parsedA = yaml.load(a)
-    const parsedB = yaml.load(b)
-    if (parsedA === null && parsedB === null) return true
-    if (parsedA === null || parsedB === null) return false
-    return JSON.stringify(parsedA) === JSON.stringify(parsedB)
-  } catch {
-    return a.trim() === b.trim()
-  }
-}

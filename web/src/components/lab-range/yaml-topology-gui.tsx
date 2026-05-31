@@ -1,14 +1,12 @@
-import { useState } from "react"
-import { Undo, Save } from "lucide-react"
+import { useState, useMemo } from "react"
 import { cn } from "@/lib/utils"
+import { vmDefsToYaml } from "@/lib/json2yaml"
 import { TabsFancy, type Category, type Item, type DeploymentStatus } from "@/components/ui/tabs-fancy"
 import { VmTopology } from "@/components/lab-range/vm-topology"
 import { TemplateTreeContent } from "@/components/lab-range/template-tree-content"
 import { RangeTreeContent } from "@/components/lab-range/range-tree-content"
 import { SnapshotListContent } from "@/components/lab-range/snapshot-list-content"
 import { LeftPanelTabs } from "@/components/lab-range/left-panel-tabs"
-
-type SaveStatus = "idle" | "success" | "no-changes"
 
 type YamlTopologyGuiProps = {
   items?: Item[]
@@ -17,104 +15,10 @@ type YamlTopologyGuiProps = {
   memoryUsage?: string
   deploymentStatus?: DeploymentStatus
   isDeploying?: boolean
-  yamlContent?: string
-  onYamlChange?: (yaml: string) => void
-  onSave?: () => void
-  onRevert?: () => void
+  vmDefs?: Record<string, Record<string, unknown>> | null
   onReset?: () => void
   onDeploy?: () => void
-  saveDisabled?: boolean
-  yamlErrors?: string[]
-  yamlLoading?: boolean
-  saveStatus?: SaveStatus
-  revertStatus?: "idle" | "success"
   templateItems?: { id: number; label: string; subText: string; icon: string }[]
-}
-
-function YamlCodeEditor({
-  yamlContent,
-  onYamlChange,
-  onSave,
-  onRevert,
-  saveDisabled,
-  yamlErrors,
-  yamlLoading,
-  saveStatus,
-  revertStatus,
-  isDeploying,
-}: {
-  yamlContent?: string
-  onYamlChange?: (yaml: string) => void
-  onSave?: () => void
-  onRevert?: () => void
-  saveDisabled?: boolean
-  yamlErrors?: string[]
-  yamlLoading?: boolean
-  saveStatus?: SaveStatus
-  revertStatus?: "idle" | "success"
-  isDeploying?: boolean
-}) {
-  if (yamlLoading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-muted-foreground">Loading configuration...</p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex h-full flex-col">
-      <div className="relative flex flex-1">
-        <textarea
-          className="flex-1 resize-none bg-muted p-4 font-mono text-sm text-foreground placeholder-muted-foreground focus:outline-none"
-          value={yamlContent ?? ""}
-          onChange={(e) => onYamlChange?.(e.target.value)}
-          placeholder="# Lab range configuration will appear here"
-          spellCheck={false}
-        />
-        <div className="absolute bottom-3 right-3 z-10 flex flex-col items-end gap-1.5">
-          <button
-            onClick={onSave}
-            disabled={!onSave || saveDisabled || isDeploying}
-            className="group flex items-center gap-1.5 rounded-full bg-muted-foreground/10 p-2 text-xs text-muted-foreground backdrop-blur-sm transition-all hover:bg-muted-foreground/20 hover:text-foreground disabled:opacity-40"
-          >
-            <Save className="size-4 shrink-0" />
-            <span className="hidden group-hover:inline">Save</span>
-          </button>
-          <button
-            onClick={onRevert}
-            disabled={isDeploying}
-            className="group flex items-center gap-1.5 rounded-full bg-muted-foreground/10 p-2 text-xs text-muted-foreground backdrop-blur-sm transition-all hover:bg-muted-foreground/20 hover:text-foreground active:translate-y-px disabled:opacity-40"
-          >
-            <Undo className="size-4 shrink-0" />
-            <span className="hidden group-hover:inline">Revert</span>
-          </button>
-        </div>
-      </div>
-      {yamlErrors && yamlErrors.length > 0 && (
-        <div className="border-t border-red-500/30 bg-red-950/30 px-4 py-2">
-          {yamlErrors.map((err, i) => (
-            <p key={i} className="text-xs text-red-400">{err}</p>
-          ))}
-        </div>
-      )}
-      {saveStatus === "success" && (
-        <div className="border-t border-emerald-500/30 bg-emerald-950/30 px-4 py-2">
-          <p className="text-xs text-emerald-400">✓ Draft saved</p>
-        </div>
-      )}
-      {saveStatus === "no-changes" && (
-        <div className="border-t border-emerald-500/30 bg-emerald-950/30 px-4 py-2">
-          <p className="text-xs text-emerald-400">✓ No changes to save</p>
-        </div>
-      )}
-      {revertStatus === "success" && (
-        <div className="border-t border-emerald-500/30 bg-emerald-950/30 px-4 py-2">
-          <p className="text-xs text-emerald-400">✓ Reverted to server version</p>
-        </div>
-      )}
-    </div>
-  )
 }
 
 export function YamlTopologyGui({
@@ -124,20 +28,14 @@ export function YamlTopologyGui({
   memoryUsage,
   deploymentStatus,
   isDeploying,
-  yamlContent,
-  onYamlChange,
-  onSave,
-  onRevert,
+  vmDefs,
   onReset,
   onDeploy,
-  saveDisabled,
-  yamlErrors,
-  yamlLoading,
-  saveStatus,
-  revertStatus,
   templateItems = [],
 }: YamlTopologyGuiProps) {
   const [activeLeftTab, setActiveLeftTab] = useState<"templates" | "range" | "snapshots">("range")
+
+  const yamlText = useMemo(() => (vmDefs ? vmDefsToYaml(vmDefs) : ""), [vmDefs])
 
   const leftPanelTabs: Category[] = [
     {
@@ -162,24 +60,19 @@ export function YamlTopologyGui({
       id: "yaml",
       label: "config.yaml",
       content: (
-        <YamlCodeEditor
-          yamlContent={yamlContent}
-          onYamlChange={onYamlChange}
-          onSave={onSave}
-          onRevert={onRevert}
-          saveDisabled={saveDisabled}
-          yamlErrors={yamlErrors}
-          yamlLoading={yamlLoading}
-          saveStatus={saveStatus}
-          revertStatus={revertStatus}
-          isDeploying={isDeploying}
+        <textarea
+          className="h-full w-full resize-none bg-muted p-4 font-mono text-sm text-foreground placeholder-muted-foreground focus:outline-none"
+          value={yamlText}
+          readOnly
+          placeholder="No VM definitions available"
+          spellCheck={false}
         />
       ),
     },
     {
       id: "topology",
       label: "Topology",
-      content: <VmTopology yamlContent={yamlContent} />,
+      content: <VmTopology />,
     },
   ]
 

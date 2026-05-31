@@ -1,7 +1,6 @@
 import { YamlTopologyGui, YamlTopologySkeleton } from "@/components/lab-range/yaml-topology-gui"
 import type { DeploymentStatus } from "@/components/ui/tabs-fancy"
 import type { TemplateItem } from "@/components/lab-range/use-lab-range-state"
-import type { SaveStatus, RevertStatus } from "@/components/lab-range/use-lab-range-state"
 
 interface YamlTopologyContentProps {
   ready: boolean
@@ -11,15 +10,7 @@ interface YamlTopologyContentProps {
   deploymentStatus?: DeploymentStatus
   isDeploying?: boolean
   items?: TemplateItem[]
-  yamlContent?: string
-  onYamlChange?: (yaml: string) => void
-  onSave?: () => void
-  onRevert?: () => void
-  saveDisabled?: boolean
-  yamlErrors?: string[]
-  yamlLoading?: boolean
-  saveStatus?: SaveStatus
-  revertStatus?: RevertStatus
+  vmDefs?: Record<string, Record<string, unknown>> | null
   onReset?: () => void
   onDeploy?: () => void
   templateItems?: TemplateItem[]

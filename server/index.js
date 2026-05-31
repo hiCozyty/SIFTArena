@@ -1,6 +1,6 @@
 import { createWsHandler, addFetcher, addOperation } from "./poller.js"
 import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./templates.js"
-import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, preloadInventory, fetchRangeConfig, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, fetchRdpConfigs } from "./range.js"
+import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, preloadInventory, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, fetchRdpConfigs, getVmDefs } from "./range.js"
 import { fetchFocusedCategoriesAndTechniques } from "./caldera/categories.js"
 import { initDatabase, getCustomAbilities, createCustomAbility, updateCustomAbility, deleteCustomAbility } from "./caldera/customAbilities.js"
 import { createRdpProxyHandler } from "./rdp-proxy.js"
@@ -54,8 +54,8 @@ addOperation("deleteVM", deleteVM)
 addOperation("deployVM", deployVM)
 addOperation("deployAllBaseVMs", deployAllBaseVMs)
 addOperation("prepareGoldenImage", prepareGoldenImage)
-addOperation("getRangeConfig", fetchRangeConfig)
 addOperation("setRangeConfig", updateRangeConfig)
+addOperation("getVmDefs", getVmDefs)
 addOperation("systemInfo", fetchSystemInfo)
 addOperation("abortRange", abortRange)
 addOperation("restoreToBaseClean", restoreToBaseClean)

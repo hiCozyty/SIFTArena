@@ -799,3 +799,7 @@ export async function checkCaldera(ludusUrl, apiKey, data, ws) {
     return { calderaInstalled: false }
   }
 }
+
+export async function getVmDefs() {
+  return VM_DEFS
+}

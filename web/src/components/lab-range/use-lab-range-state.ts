@@ -1,12 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import * as backendWs from "@/lib/backend-ws"
 import { useHealthCheck, type HealthCheckStatus } from "@/hooks/use-health-check"
-import { validateRangeYaml, isYamlContentEqual } from "@/lib/range-yaml-validator"
 import type { DeploymentStatus } from "@/components/ui/tabs-fancy"
 
 export type GatePhase = "checking-templates" | "templates-error" | "templates-incomplete" | "show-content"
-export type SaveStatus = "idle" | "success" | "no-changes"
-export type RevertStatus = "idle" | "success"
 export type TimelineItem = { id: string; title: string; description: string; status?: string }
 export type TemplateItem = { id: number; label: string; subText: string; icon: string }
 
@@ -58,15 +55,10 @@ export function useLabRangeState(onComplete: () => void) {
   const [deployActive, setDeployActive] = useState(false)
   const [calderaActive, setCalderaActive] = useState(false)
   const [goldenImageActive, setGoldenImageActive] = useState(false)
-  const [rangeYaml, setRangeYaml] = useState<string | null>(null)
-  const [yamlErrors, setYamlErrors] = useState<string[]>([])
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
-  const [revertStatus, setRevertStatus] = useState<RevertStatus>("idle")
   const [deploymentStatus, setDeploymentStatus] = useState<DeploymentStatus>("Not Deployed")
   const [isDeploying, setIsDeploying] = useState(false)
   const [systemInfo, setSystemInfo] = useState<{ totalCpu: number; totalRam: number } | null>(null)
-  const lastSavedDraftRef = useRef<string | null>(null)
-  const serverYamlRef = useRef<string | null>(null)
+  const [vmDefs, setVmDefs] = useState<Record<string, Record<string, unknown>> | null>(null)
   const builtSentRef = useRef<Set<string>>(new Set())
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
   const calderaLogRef = useRef<string>("")
@@ -103,19 +95,6 @@ export function useLabRangeState(onComplete: () => void) {
       icon: "🖥️",
     })),
   [templatesResult])
-
-  const isStale = useMemo(() => {
-    if (rangeYaml === null || serverYamlRef.current === null) return false
-    return !isYamlContentEqual(rangeYaml, serverYamlRef.current)
-  }, [rangeYaml])
-
-  useEffect(() => {
-    if (deploymentStatus === "Deployed" && isStale) {
-      setDeploymentStatus("Deployed (stale)")
-    } else if (deploymentStatus === "Deployed (stale)" && !isStale) {
-      setDeploymentStatus("Deployed")
-    }
-  }, [isStale, deploymentStatus])
 
   useEffect(() => {
     if (status.type === "idle") {
@@ -276,9 +255,9 @@ export function useLabRangeState(onComplete: () => void) {
     if (status.type !== "ok") return
     if (!deployActive) return
 
-    type Phase = "saving-config" | "check" | "deleting" | "deploying"
+    type Phase = "check" | "deleting" | "deploying"
     const mode = deployModeRef.current
-    const phaseRef: { current: Phase } = { current: mode === "auto" ? "check" : mode === "deploy" ? "saving-config" : "deleting" }
+    const phaseRef: { current: Phase } = { current: mode === "auto" ? "check" : "deleting" }
     const seenVMsRef: { current: Set<string> } = { current: new Set() }
     const playRecapRef: { current: string[] | null } = { current: null }
 
@@ -306,31 +285,13 @@ export function useLabRangeState(onComplete: () => void) {
       deployModeRef.current = "auto"
       setTimelineItems((prev) => {
         const capped = prev.length >= 10 ? prev.slice(prev.length - 9) : prev
-        return [...capped, { id: "deploy-save", title: "Saving configuration", description: "sending config...", status: "building" }]
+        return [...capped, { id: "deploy-rebuilding", title: "Deploying range", description: "deploying VMs...", status: "building" }]
       })
-      backendWs.send({ type: "setRangeConfig", yaml: rangeYaml! })
+      backendWs.send({ type: "subscribe", channel: "rangeStatus" })
+      backendWs.send({ type: "deployAllBaseVMs" })
     }
 
     const unsub = backendWs.subscribe((data) => {
-      if (mode === "deploy" && data.type === "setRangeConfig" && phaseRef.current === "saving-config") {
-        serverYamlRef.current = lastSavedDraftRef.current
-        phaseRef.current = "deploying"
-        setTimelineItems((prev) =>
-          prev.map((item) =>
-            item.id === "deploy-save"
-              ? { ...item, title: "Configuration saved", description: "", status: "built" }
-              : item
-          )
-        )
-        setTimelineItems((prev) => [
-          ...prev,
-          { id: "deploy-rebuilding", title: "Deploying range", description: "deploying VMs...", status: "building" },
-        ])
-        backendWs.send({ type: "subscribe", channel: "rangeStatus" })
-        backendWs.send({ type: "deployAllBaseVMs", skipConfigGeneration: true })
-        return
-      }
-
       if (mode === "reset" && data.type === "deleteRangeVMs" && phaseRef.current === "deleting") {
         phaseRef.current = "deploying"
         seenVMsRef.current = new Set()
@@ -672,26 +633,6 @@ export function useLabRangeState(onComplete: () => void) {
     if (!deployActive) return
 
     const unsub = backendWs.subscribe((data) => {
-      if (data.type !== "getRangeConfig") return
-      const result = data.result as { result?: string } | undefined
-      const yaml = result?.result
-      if (yaml) {
-        setRangeYaml(yaml)
-        lastSavedDraftRef.current = yaml
-        serverYamlRef.current = yaml
-      }
-      unsub()
-    })
-    backendWs.send({ type: "getRangeConfig" })
-
-    return () => unsub()
-  }, [status.type, deployActive])
-
-  useEffect(() => {
-    if (status.type !== "ok") return
-    if (!deployActive) return
-
-    const unsub = backendWs.subscribe((data) => {
       if (data.type !== "systemInfo") return
       const result = data.result as { totalCpu?: number; totalRam?: number } | undefined
       if (result && result.totalCpu != null && result.totalRam != null) {
@@ -704,33 +645,16 @@ export function useLabRangeState(onComplete: () => void) {
     return () => unsub()
   }, [status.type, deployActive])
 
-  const handleRevert = () => {
-    if (serverYamlRef.current !== null) {
-      setRangeYaml(serverYamlRef.current)
-      lastSavedDraftRef.current = serverYamlRef.current
-      setYamlErrors([])
-    }
-    setRevertStatus("success")
-    const t = setTimeout(() => setRevertStatus("idle"), 3000)
-    timersRef.current.push(t)
-  }
-
-  const handleSave = () => {
-    if (!rangeYaml) return
-    if (lastSavedDraftRef.current !== null && isYamlContentEqual(rangeYaml, lastSavedDraftRef.current)) {
-      setSaveStatus("no-changes")
-      const t = setTimeout(() => setSaveStatus("idle"), 3000)
-      timersRef.current.push(t)
-      return
-    }
-    const { valid, errors } = validateRangeYaml(rangeYaml)
-    setYamlErrors(errors)
-    if (!valid) return
-    lastSavedDraftRef.current = rangeYaml
-    setSaveStatus("success")
-    const t = setTimeout(() => setSaveStatus("idle"), 3000)
-    timersRef.current.push(t)
-  }
+  useEffect(() => {
+    if (status.type !== "ok") return
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type !== "getVmDefs") return
+      setVmDefs(data.result as Record<string, Record<string, unknown>>)
+      unsub()
+    })
+    backendWs.send({ type: "getVmDefs" })
+    return () => unsub()
+  }, [status.type])
 
   const handleReset = () => {
     setIsDeploying(true)
@@ -740,20 +664,12 @@ export function useLabRangeState(onComplete: () => void) {
   }
 
   const handleDeploy = () => {
-    if (rangeYaml) {
-      lastSavedDraftRef.current = rangeYaml
-    }
     setIsDeploying(true)
     setDeploymentStatus("Deploying")
     deployModeRef.current = "deploy"
     vmsCapturedRef.current = false
     vmsBeforeDeployRef.current = []
     setDeployActive(true)
-  }
-
-  const handleYamlChange = (yaml: string) => {
-    setRangeYaml(yaml)
-    setYamlErrors([])
   }
 
   useEffect(() => {
@@ -996,8 +912,7 @@ export function useLabRangeState(onComplete: () => void) {
     return () => { unsub() }
   }, [status.type, postDeploySnapshotActive])
 
-  const yamlReady = timelineBuiltOnceRef.current && snapshotsTaken && rangeYaml !== null
-  const saveDisabled = saveStatus !== "idle"
+  const yamlReady = timelineBuiltOnceRef.current && snapshotsTaken
 
   return {
     status,
@@ -1015,14 +930,7 @@ export function useLabRangeState(onComplete: () => void) {
     deploymentStatus,
     isDeploying,
     systemInfo,
-    rangeYaml,
-    yamlErrors,
-    saveStatus,
-    revertStatus,
-    saveDisabled,
-    handleYamlChange,
-    handleSave,
-    handleRevert,
+    vmDefs,
     handleReset,
     handleDeploy,
   }

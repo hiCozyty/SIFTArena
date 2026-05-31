@@ -190,15 +190,7 @@ export function LabRangeContent({
             deploymentStatus={state.deploymentStatus}
             isDeploying={state.isDeploying}
             items={state.templateItems}
-            yamlContent={state.rangeYaml ?? undefined}
-            onYamlChange={state.handleYamlChange}
-            onSave={state.handleSave}
-            onRevert={state.handleRevert}
-            saveDisabled={state.saveDisabled}
-            yamlErrors={state.yamlErrors}
-            yamlLoading={false}
-            saveStatus={state.saveStatus}
-            revertStatus={state.revertStatus}
+            vmDefs={state.vmDefs}
             onReset={state.handleReset}
             onDeploy={state.handleDeploy}
             templateItems={state.templateItems}
