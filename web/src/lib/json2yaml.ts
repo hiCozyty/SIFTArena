@@ -43,7 +43,7 @@ export function vmDefsToYaml(obj: Record<string, Record<string, unknown>>): stri
   function formatInline(val: unknown): string {
     if (val === null || val === undefined) return "null"
     if (typeof val === "boolean" || typeof val === "number") return String(val)
-    if (typeof val === "string") return val
+    if (typeof val === "string") return val.includes("{{") ? JSON.stringify(val) : val
     if (typeof val === "object" && !Array.isArray(val)) {
       const entries = Object.entries(val as Record<string, unknown>)
       if (entries.length === 0) return "{}"
@@ -68,7 +68,14 @@ export function vmDefsToYaml(obj: Record<string, Record<string, unknown>>): stri
       lines.push("  " + hostnameEntry[0] + ": " + formatInline(hostnameEntry[1]))
     }
     for (const [k, v] of otherEntries) {
-      lines.push("  " + k + ": " + formatInline(v))
+      if (typeof v === "object" && v !== null && !Array.isArray(v)) {
+        lines.push("  " + k + ":")
+        for (const [nk, nv] of Object.entries(v as Record<string, unknown>)) {
+          lines.push("    " + nk + ": " + formatInline(nv))
+        }
+      } else {
+        lines.push("  " + k + ": " + formatInline(v))
+      }
     }
   }
 

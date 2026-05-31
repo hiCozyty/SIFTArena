@@ -16,6 +16,7 @@ type YamlTopologyGuiProps = {
   deploymentStatus?: DeploymentStatus
   isDeploying?: boolean
   vmDefs?: Record<string, Record<string, unknown>> | null
+  enrichedVmDefs?: Record<string, Record<string, unknown>> | null
   onReset?: () => void
   onDeploy?: () => void
   templateItems?: { id: number; label: string; subText: string; icon: string }[]
@@ -29,6 +30,7 @@ export function YamlTopologyGui({
   deploymentStatus,
   isDeploying,
   vmDefs,
+  enrichedVmDefs,
   onReset,
   onDeploy,
   templateItems = [],
@@ -36,6 +38,8 @@ export function YamlTopologyGui({
   const [activeLeftTab, setActiveLeftTab] = useState<"templates" | "range" | "snapshots">("range")
 
   const yamlText = useMemo(() => (vmDefs ? vmDefsToYaml(vmDefs) : ""), [vmDefs])
+  // Combined static + dynamic YAML fed to topology — auto-updates when dynamic VMs change
+  const enrichedYaml = useMemo(() => (enrichedVmDefs ? vmDefsToYaml(enrichedVmDefs) : ""), [enrichedVmDefs])
 
   const leftPanelTabs: Category[] = [
     {
@@ -72,7 +76,7 @@ export function YamlTopologyGui({
     {
       id: "topology",
       label: "Topology",
-      content: <VmTopology />,
+      content: <VmTopology yamlContent={enrichedYaml} />,
     },
   ]
 

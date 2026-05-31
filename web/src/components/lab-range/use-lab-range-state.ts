@@ -59,6 +59,15 @@ export function useLabRangeState(onComplete: () => void) {
   const [isDeploying, setIsDeploying] = useState(false)
   const [systemInfo, setSystemInfo] = useState<{ totalCpu: number; totalRam: number } | null>(null)
   const [vmDefs, setVmDefs] = useState<Record<string, Record<string, unknown>> | null>(null)
+  // Dynamic VMs appended by the user at runtime. Merged with static vmDefs
+  // to produce enrichedVmDefs for topology visualization. Use setDynamicVms
+  // to append VMs — topology will reactively update.
+  const [dynamicVms, setDynamicVms] = useState<Record<string, Record<string, unknown>>>({})
+  const enrichedVmDefs = useMemo(() => {
+    if (!vmDefs) return null
+    if (Object.keys(dynamicVms).length === 0) return vmDefs
+    return { ...vmDefs, ...dynamicVms }
+  }, [vmDefs, dynamicVms])
   const builtSentRef = useRef<Set<string>>(new Set())
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
   const calderaLogRef = useRef<string>("")
@@ -931,6 +940,10 @@ export function useLabRangeState(onComplete: () => void) {
     isDeploying,
     systemInfo,
     vmDefs,
+    // Combined static + dynamic VMs for topology visualization
+    enrichedVmDefs,
+    // Append dynamic VMs — topology auto-updates via reactivity
+    setDynamicVms,
     handleReset,
     handleDeploy,
   }

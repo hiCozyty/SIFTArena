@@ -11,6 +11,7 @@ interface YamlTopologyContentProps {
   isDeploying?: boolean
   items?: TemplateItem[]
   vmDefs?: Record<string, Record<string, unknown>> | null
+  enrichedVmDefs?: Record<string, Record<string, unknown>> | null
   onReset?: () => void
   onDeploy?: () => void
   templateItems?: TemplateItem[]
