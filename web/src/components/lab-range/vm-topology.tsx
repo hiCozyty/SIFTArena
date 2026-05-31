@@ -12,23 +12,16 @@ import {
 import { useState, useEffect, useMemo } from "react"
 import "@xyflow/react/dist/base.css"
 import yaml from "js-yaml"
-import { Info } from "lucide-react"
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 
 type VmNode = {
   label: string
   ip: string
-  status: "Healthy" | "Degraded" | "Unhealthy"
+  poweredOn: boolean
 }
 
 function VmNode({ data }: NodeProps) {
-  const { label, ip, status } = data as VmNode
-  const statusColor =
-    status === "Healthy"
-      ? "text-emerald-600"
-      : status === "Degraded"
-        ? "text-amber-600"
-        : "text-red-600"
+  const { label, ip, poweredOn } = data as VmNode
+  const statusColor = poweredOn ? "text-emerald-600" : "text-red-600"
 
   return (
     <div className="flex flex-col gap-1.5 rounded-4xl border bg-card px-3 py-2.5 text-sm shadow-xs min-w-[150px]">
@@ -36,7 +29,7 @@ function VmNode({ data }: NodeProps) {
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium text-foreground truncate">{label}</span>
         <span className={`shrink-0 text-xs font-medium ${statusColor}`}>
-          {status}
+          {poweredOn ? "On" : "Off"}
         </span>
       </div>
       <span className="text-xs text-muted-foreground font-mono">{ip}</span>
@@ -76,7 +69,7 @@ function parseTopology(yamlContent: string): { nodes: Node[]; edges: Edge[] } | 
         id: "router",
         type: "vmNode",
         position: { x: 200, y: yRouter },
-        data: { label, ip: "10.1.0.0/16", status: "Healthy" satisfies VmNode["status"] },
+        data: { label, ip: "10.1.0.0/16", poweredOn: true },
       })
     }
 
@@ -92,7 +85,7 @@ function parseTopology(yamlContent: string): { nodes: Node[]; edges: Edge[] } | 
           id: `ludus-${idx}`,
           type: "vmNode",
           position: { x, y: yVM },
-          data: { label, ip, status: "Healthy" satisfies VmNode["status"] },
+          data: { label, ip, poweredOn: true },
         })
         if (router) {
           edges.push({
@@ -126,19 +119,7 @@ export function VmTopology({ yamlContent }: { yamlContent?: string }) {
   const edges = parsed?.edges ?? lastValid.edges
 
   return (
-    <div className="h-full w-full relative">
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button className="absolute top-3 left-3 z-10 rounded-full bg-background/60 p-1.5 backdrop-blur-sm transition-colors hover:bg-background/80">
-              <Info className="size-4 text-muted-foreground" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            <p>This topology graph is read-only. Drag-and-drop features will be added at a later time.</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+    <div className="h-full w-full">
       <ReactFlow
         nodes={nodes}
         edges={edges}

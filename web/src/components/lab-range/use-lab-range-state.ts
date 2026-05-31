@@ -35,6 +35,18 @@ function isReallyBuilt(t: { built: boolean; status: string }): boolean {
   return t.built && t.status !== "not_built" && t.status !== "building"
 }
 
+const EXPECTED_VMS = ["router-debian11-x64", "attacker-kali", "win11-22h2"]
+
+function parsePlayRecap(playRecap: string[]): boolean {
+  return EXPECTED_VMS.every((suffix) => {
+    const line = playRecap.find((l) => l.includes(suffix))
+    if (!line) return false
+    const unreachable = line.match(/unreachable=(\d+)/)?.[1]
+    const failed = line.match(/failed=(\d+)/)?.[1]
+    return unreachable === "0" && failed === "0"
+  })
+}
+
 export function useLabRangeState(onComplete: () => void) {
   const { status, connect } = useHealthCheck()
   const [showGuide, setShowGuide] = useState(false)
@@ -59,7 +71,11 @@ export function useLabRangeState(onComplete: () => void) {
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
   const calderaLogRef = useRef<string>("")
   const timelineBuiltOnceRef = useRef(false)
-  const redeployRef = useRef(false)
+  const [snapshotsTaken, setSnapshotsTaken] = useState(false)
+  const deployModeRef = useRef<"auto" | "reset" | "deploy">("auto")
+  const vmsBeforeDeployRef = useRef<string[]>([])
+  const vmsCapturedRef = useRef(false)
+  const [postDeploySnapshotActive, setPostDeploySnapshotActive] = useState(false)
   const onCompleteRef = useRef(onComplete)
   onCompleteRef.current = onComplete
 
@@ -70,6 +86,14 @@ export function useLabRangeState(onComplete: () => void) {
       timelineBuiltOnceRef.current = true
     }
   }, [timelineItems])
+
+  useEffect(() => {
+    if (snapshotsTaken) return
+    const golden = timelineItems.find((item) => item.id === "golden-image")
+    if (golden && golden.status === "built") {
+      setSnapshotsTaken(true)
+    }
+  }, [timelineItems, snapshotsTaken])
 
   const templateItems = useMemo(() =>
     templatesResult.map((t, i) => ({
@@ -253,8 +277,8 @@ export function useLabRangeState(onComplete: () => void) {
     if (!deployActive) return
 
     type Phase = "saving-config" | "check" | "deleting" | "deploying"
-    const isRedeploy = redeployRef.current
-    const phaseRef: { current: Phase } = { current: isRedeploy ? "saving-config" : "check" }
+    const mode = deployModeRef.current
+    const phaseRef: { current: Phase } = { current: mode === "auto" ? "check" : mode === "deploy" ? "saving-config" : "deleting" }
     const seenVMsRef: { current: Set<string> } = { current: new Set() }
     const playRecapRef: { current: string[] | null } = { current: null }
 
@@ -272,31 +296,54 @@ export function useLabRangeState(onComplete: () => void) {
 
     const VM_ORDER = ["router", "kali", "windows"]
 
-    if (isRedeploy) {
-      redeployRef.current = false
+    if (mode === "reset") {
       setTimelineItems((prev) => {
         const capped = prev.length >= 10 ? prev.slice(prev.length - 9) : prev
-        return [...capped, { id: "redeploy-save", title: "Saving configuration", description: "sending config...", status: "building" }]
+        return [...capped, { id: "reset-delete", title: "Removing existing VMs", description: "deleting...", status: "building" }]
+      })
+      backendWs.send({ type: "deleteRangeVMs", all: true })
+    } else if (mode === "deploy") {
+      deployModeRef.current = "auto"
+      setTimelineItems((prev) => {
+        const capped = prev.length >= 10 ? prev.slice(prev.length - 9) : prev
+        return [...capped, { id: "deploy-save", title: "Saving configuration", description: "sending config...", status: "building" }]
       })
       backendWs.send({ type: "setRangeConfig", yaml: rangeYaml! })
     }
 
     const unsub = backendWs.subscribe((data) => {
-      if (isRedeploy && data.type === "setRangeConfig" && phaseRef.current === "saving-config") {
+      if (mode === "deploy" && data.type === "setRangeConfig" && phaseRef.current === "saving-config") {
         serverYamlRef.current = lastSavedDraftRef.current
-        phaseRef.current = "deleting"
+        phaseRef.current = "deploying"
         setTimelineItems((prev) =>
           prev.map((item) =>
-            item.id === "redeploy-save"
+            item.id === "deploy-save"
               ? { ...item, title: "Configuration saved", description: "", status: "built" }
               : item
           )
         )
         setTimelineItems((prev) => [
           ...prev,
-          { id: "redeploy-delete", title: "Removing existing VMs", description: "deleting...", status: "building" },
+          { id: "deploy-rebuilding", title: "Deploying range", description: "deploying VMs...", status: "building" },
         ])
-        backendWs.send({ type: "deleteRangeVMs", all: true })
+        backendWs.send({ type: "subscribe", channel: "rangeStatus" })
+        backendWs.send({ type: "deployAllBaseVMs", skipConfigGeneration: true })
+        return
+      }
+
+      if (mode === "reset" && data.type === "deleteRangeVMs" && phaseRef.current === "deleting") {
+        phaseRef.current = "deploying"
+        seenVMsRef.current = new Set()
+        setTimelineItems((prev) => [
+          ...prev.map((item) =>
+            item.id === "reset-delete"
+              ? { ...item, title: "Existing VMs removed", description: "", status: "built" }
+              : item
+          ),
+          { id: "reset-rebuilding", title: "Rebuilding range", description: "deploying VMs...", status: "building" },
+        ])
+        backendWs.send({ type: "subscribe", channel: "rangeStatus" })
+        backendWs.send({ type: "deployAllBaseVMs" })
         return
       }
 
@@ -304,14 +351,14 @@ export function useLabRangeState(onComplete: () => void) {
         if (phaseRef.current !== "deleting") return
         phaseRef.current = "deploying"
         seenVMsRef.current = new Set()
-        if (isRedeploy) {
+        if (mode === "reset") {
           setTimelineItems((prev) => [
             ...prev.map((item) =>
-              item.id === "redeploy-delete"
+              item.id === "reset-delete"
                 ? { ...item, title: "Existing VMs removed", description: "", status: "built" }
                 : item
             ),
-            { id: "redeploy-rebuilding", title: "Rebuilding range", description: "deploying VMs...", status: "building" },
+            { id: "reset-rebuilding", title: "Rebuilding range", description: "deploying VMs...", status: "building" },
           ])
         } else {
           setTimelineItems((prev) => {
@@ -348,9 +395,14 @@ export function useLabRangeState(onComplete: () => void) {
       const kaliFound = result.find((vm) => vm.name.endsWith("attacker-kali"))
       const windowsFound = result.find((vm) => vm.name.endsWith("win11-22h2"))
 
+      if (mode === "deploy" && phaseRef.current === "deploying" && !vmsCapturedRef.current) {
+        vmsBeforeDeployRef.current = result.map(vm => vm.name)
+        vmsCapturedRef.current = true
+      }
+
       const latestLog = data.latestLog as string | undefined
       const playRecap = data.playRecap as string[] | null | undefined
-      if (playRecap) playRecapRef.current = playRecap
+      if (playRecap && phaseRef.current === "deploying") playRecapRef.current = playRecap
 
       if (phaseRef.current === "check") {
         if (routerFound && kaliFound && windowsFound) {
@@ -400,11 +452,11 @@ export function useLabRangeState(onComplete: () => void) {
 
       if (phaseRef.current === "deleting") return
 
-      if (isRedeploy) {
+      if (mode === "reset") {
         if (latestLog) {
           setTimelineItems((prev) =>
             prev.map((item) =>
-              item.id === "redeploy-rebuilding"
+              item.id === "reset-rebuilding"
                 ? { ...item, description: latestLog }
                 : item
             )
@@ -423,7 +475,7 @@ export function useLabRangeState(onComplete: () => void) {
 
           setTimelineItems((prev) => [
             ...prev.map((item) =>
-              item.id === "redeploy-rebuilding"
+              item.id === "reset-rebuilding"
                 ? { ...item, title: "Range rebuilt", description: allOk ? "" : "completed with errors", status: allOk ? "built" : "error" }
                 : item
             ),
@@ -436,6 +488,55 @@ export function useLabRangeState(onComplete: () => void) {
           ])
           setCalderaActive(true)
           backendWs.send({ type: "checkCaldera", label: "kali" })
+          setDeployActive(false)
+          setDeploymentStatus("Deployed")
+          setIsDeploying(false)
+          unsub()
+          backendWs.send({ type: "unsubscribe", channel: "rangeStatus" })
+        }
+        return
+      }
+
+      if (mode === "deploy") {
+        if (latestLog) {
+          setTimelineItems((prev) =>
+            prev.map((item) =>
+              item.id === "deploy-rebuilding"
+                ? { ...item, description: latestLog }
+                : item
+            )
+          )
+        }
+
+        if (playRecapRef.current) {
+          const allOk = parsePlayRecap(playRecapRef.current)
+
+          const currentVMs = result.map(vm => vm.name)
+          const newVMs = currentVMs.filter(name => !vmsBeforeDeployRef.current.includes(name))
+
+          setTimelineItems((prev) => [
+            ...prev.map((item) =>
+              item.id === "deploy-rebuilding"
+                ? { ...item, title: "Range deployed", description: allOk ? "" : "completed with errors", status: allOk ? "built" : "error" }
+                : item
+            ),
+          ])
+
+          if (newVMs.length > 0) {
+            const newVMLabels = newVMs.map(name => name.replace(/^ty-/, "")).join(", ")
+            setTimelineItems((prev) => [
+              ...prev,
+              {
+                id: "post-deploy-snapshot",
+                title: `Preparing golden image for ${newVMLabels}`,
+                description: `Creating base-clean snapshot for newly deployed VMs...`,
+                status: "building",
+              },
+            ])
+            setPostDeploySnapshotActive(true)
+            backendWs.send({ type: "prepareGoldenImage", vmNames: newVMs })
+          }
+
           setDeployActive(false)
           setDeploymentStatus("Deployed")
           setIsDeploying(false)
@@ -554,7 +655,7 @@ export function useLabRangeState(onComplete: () => void) {
       }
     })
 
-    if (!isRedeploy) {
+    if (mode === "auto") {
       backendWs.send({ type: "rangeStatus" })
     }
 
@@ -631,40 +732,23 @@ export function useLabRangeState(onComplete: () => void) {
     timersRef.current.push(t)
   }
 
-  const handleDeploy = () => {
-    if (deploymentStatus === "Deployed") return
-    if (deploymentStatus === "Not Deployed" || deploymentStatus === "Deployed (stale)") {
-      if (isStale && rangeYaml) {
-        lastSavedDraftRef.current = rangeYaml
-      }
-      setIsDeploying(true)
-      setDeploymentStatus("Deploying")
-      redeployRef.current = true
-      setDeployActive(true)
-    }
-  }
-
   const handleReset = () => {
     setIsDeploying(true)
-    setDeploymentStatus("Resetting")
-    setTimelineItems((prev) => [
-      ...prev,
-      { id: "reset-range", title: "Resetting range", description: "removing all VMs...", status: "building" },
-    ])
-    const unsub = backendWs.subscribe((data) => {
-      if (data.type !== "deleteRangeVMs") return
-      setTimelineItems((prev) =>
-        prev.map((item) =>
-          item.id === "reset-range"
-            ? { ...item, title: "Range reset", description: "", status: "built" }
-            : item
-        )
-      )
-      setDeploymentStatus("Not Deployed")
-      setIsDeploying(false)
-      unsub()
-    })
-    backendWs.send({ type: "deleteRangeVMs", all: true })
+    setDeploymentStatus("Deploying")
+    deployModeRef.current = "reset"
+    setDeployActive(true)
+  }
+
+  const handleDeploy = () => {
+    if (rangeYaml) {
+      lastSavedDraftRef.current = rangeYaml
+    }
+    setIsDeploying(true)
+    setDeploymentStatus("Deploying")
+    deployModeRef.current = "deploy"
+    vmsCapturedRef.current = false
+    vmsBeforeDeployRef.current = []
+    setDeployActive(true)
   }
 
   const handleYamlChange = (yaml: string) => {
@@ -856,7 +940,63 @@ export function useLabRangeState(onComplete: () => void) {
     }
   }, [status.type, goldenImageActive])
 
-  const yamlReady = timelineBuiltOnceRef.current && rangeYaml !== null
+  useEffect(() => {
+    if (status.type !== "ok") return
+    if (!postDeploySnapshotActive) return
+
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type !== "prepareGoldenImage") return
+
+      const prepared = (data.result?.prepared ?? []) as GoldenImageResult[]
+
+      if (prepared.length === 0) {
+        setPostDeploySnapshotActive(false)
+        vmsCapturedRef.current = false
+        onCompleteRef.current()
+        unsub()
+        return
+      }
+
+      const allExisted = prepared.every((p) => p.created === false && !p.error)
+
+      if (allExisted) {
+        setTimelineItems((prev) =>
+          prev.map((item) =>
+            item.id === "post-deploy-snapshot"
+              ? {
+                  ...item,
+                  title: "Base Snapshots already exist",
+                  description: prepared.map((p) => p.ip ? `${p.vm} (${p.ip})` : p.vm).join(", "),
+                  status: "built",
+                }
+              : item,
+          ),
+        )
+      } else {
+        setTimelineItems((prev) =>
+          prev.map((item) =>
+            item.id === "post-deploy-snapshot"
+              ? {
+                  ...item,
+                  title: "Snapshots taken for new VMs",
+                  description: prepared.map((p) => p.ip ? `${p.vm} (${p.ip})` : p.vm).join(", "),
+                  status: "built",
+                }
+              : item,
+          ),
+        )
+      }
+
+      setPostDeploySnapshotActive(false)
+      vmsCapturedRef.current = false
+      onCompleteRef.current()
+      unsub()
+    })
+
+    return () => { unsub() }
+  }, [status.type, postDeploySnapshotActive])
+
+  const yamlReady = timelineBuiltOnceRef.current && snapshotsTaken && rangeYaml !== null
   const saveDisabled = saveStatus !== "idle"
 
   return {
@@ -883,7 +1023,7 @@ export function useLabRangeState(onComplete: () => void) {
     handleYamlChange,
     handleSave,
     handleRevert,
-    handleDeploy,
     handleReset,
+    handleDeploy,
   }
 }

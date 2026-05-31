@@ -237,10 +237,30 @@ export async function fetchRangeWithLog(ludusUrl, apiKey) {
   let currentVM = null
   try {
     const history = await apiCall(ludusUrl, apiKey, "/range/logs/history")
-    const entry = history.find((e) => e.status === "running") ?? history[0]
+    const runningEntry = history.find((e) => e.status === "running")
+    const candidates = runningEntry
+      ? [runningEntry, ...history.filter((e) => e !== runningEntry)]
+      : history
+
+    let entry = null
+    let raw = ""
+    for (const candidate of candidates) {
+      try {
+        const detail = await apiCall(ludusUrl, apiKey, `/range/logs/history/${candidate.id}`)
+        raw = detail.result ?? ""
+        if (raw) {
+          entry = candidate
+          break
+        }
+      } catch (err) {
+        if (err.message.includes("Log file not found")) {
+          continue
+        }
+        throw err
+      }
+    }
+
     if (entry) {
-      const detail = await apiCall(ludusUrl, apiKey, `/range/logs/history/${entry.id}`)
-      const raw = detail.result ?? ""
       const clean = raw.replace(/\u001b\[[0-9;]*m/g, "").replace(/\s+$/, "")
       logEmpty = !clean
       if (clean) {
@@ -414,9 +434,11 @@ router:
 
 export async function deployAllBaseVMs(ludusUrl, apiKey, data) {
   const userKey = (process.env.LUDUS_USER_API_KEY || apiKey).trim()
-  const vmNames = data?.vms ?? ["attacker-kali", "win11-22h2"]
-  const r = VM_DEFS.router
-  let yaml = `router:
+  
+  if (!data?.skipConfigGeneration) {
+    const vmNames = data?.vms ?? ["attacker-kali", "win11-22h2"]
+    const r = VM_DEFS.router
+    let yaml = `router:
   vm_name: "${r.vm_name}"
   hostname: "${r.hostname}"
   template: ${r.template}
@@ -424,10 +446,10 @@ export async function deployAllBaseVMs(ludusUrl, apiKey, data) {
   cpus: ${r.cpus}
 ludus:
 `
-  for (const name of vmNames) {
-    const d = VM_DEFS[name]
-    if (!d) throw new Error(`Unknown VM: "${name}"`)
-    yaml += `  - vm_name: "{{ range_id }}-${name}"
+    for (const name of vmNames) {
+      const d = VM_DEFS[name]
+      if (!d) throw new Error(`Unknown VM: "${name}"`)
+      yaml += `  - vm_name: "{{ range_id }}-${name}"
     hostname: ${d.hostname}
     template: ${d.template}
     vlan: ${d.vlan}
@@ -435,38 +457,51 @@ ludus:
     ram_gb: ${d.ram_gb}
     cpus: ${d.cpus}
 `
-    if (d.linux) {
-      yaml += `    linux: true\n`
-    } else if (d.windows) {
-      yaml += `    windows:\n      sysprep: false\n`
+      if (d.linux) {
+        yaml += `    linux: true\n`
+      } else if (d.windows) {
+        yaml += `    windows:\n      sysprep: false\n`
+      }
     }
+    await setRangeConfig(ludusUrl, userKey, yaml)
   }
-  await setRangeConfig(ludusUrl, userKey, yaml)
+  
   await apiCall(ludusUrl, apiKey, "/range/deploy", "POST", { force: true })
   setTimeout(() => preloadInventory(ludusUrl, apiKey).catch(() => {}), 5000)
-  return { deployed: ["router", ...vmNames] }
+  return { result: "ok" }
 }
 
 export async function prepareGoldenImage(ludusUrl, apiKey, data) {
   const rangeId = process.env.LUDUS_RANGE_ID || "ty"
   const snapshotName = "base-clean"
-  const log = (msg) => console.log(`[prepareGoldenImage ${Date.now()}] ${msg}`)
 
-  log("start")
   const range = await apiCall(ludusUrl, apiKey, "/range")
-  log(`/range done`)
   const vms = range.VMs ?? []
 
-  const kali = vms.find(v => v.name?.includes("attacker-kali"))
-  const windows = vms.find(v => !v.isRouter && !v.name?.includes("attacker-kali"))
   const router = vms.find(v => v.isRouter)
 
-  const targets = [router, kali, windows].filter(Boolean)
+  let entries = []
+  if (data?.vmNames && Array.isArray(data.vmNames)) {
+    const targetVMs = vms.filter(v => data.vmNames.includes(v.name))
+    entries = targetVMs.map(vm => ({
+      label: vm.name?.replace(new RegExp(`^${rangeId}-`), "") || vm.name,
+      vm,
+      isWindows: vm.name?.toLowerCase().includes("win") || false,
+    }))
+  } else {
+    const nonRouterVMs = vms.filter(v => !v.isRouter)
+    entries = nonRouterVMs.map(vm => ({
+      label: vm.name?.replace(new RegExp(`^${rangeId}-`), "") || vm.name,
+      vm,
+      isWindows: vm.name?.toLowerCase().includes("win") || false,
+    }))
+  }
+
+  const targets = entries.map(e => e.vm).concat(router).filter(Boolean)
   const offTargets = targets.filter(v => !v.poweredOn)
 
   if (offTargets.length > 0) {
     const names = offTargets.map(v => v.name)
-    log(`VMs powered off: ${names.join(", ")}. Powering on...`)
     await apiCall(ludusUrl, apiKey, "/range/poweron", "PUT", { machines: names })
     const pending = new Set(names)
     for (let i = 0; i < 30 && pending.size > 0; i++) {
@@ -476,27 +511,18 @@ export async function prepareGoldenImage(ludusUrl, apiKey, data) {
         if (vm.poweredOn) pending.delete(vm.name)
       }
     }
-    log("All VMs powered on")
   }
 
   const prepared = []
-
-  const entries = [
-    { label: "kali", vm: kali, isWindows: false },
-    { label: "windows", vm: windows, isWindows: true },
-  ]
 
   const t0_batch = Date.now()
   const snapshotChecks = data?.overwrite ? [] : await Promise.all(
     entries.map(async ({ label, vm }) => {
       if (!vm) return { label, exists: null }
-      const t0 = Date.now()
       const exists = await snapshotExists(ludusUrl, apiKey, vm.proxmoxID, rangeId, snapshotName)
-      log(`snapshotCheck ${label} ${exists} took ${Date.now() - t0}ms`)
       return { label, exists }
     })
   )
-  log(`snapshotChecks batch took ${Date.now() - t0_batch}ms total`)
 
   for (const { label, vm, isWindows } of entries) {
     if (!vm) {
@@ -505,9 +531,7 @@ export async function prepareGoldenImage(ludusUrl, apiKey, data) {
     }
 
     try {
-      log(`waitForVMIP start: ${label}`)
       const ip = vm.ip && vm.ip !== "null" ? vm.ip : await waitForVMIP(ludusUrl, apiKey, vm.name)
-      log(`waitForVMIP done: ${label} ip=${ip}`)
 
       if (!data?.overwrite) {
         const check = snapshotChecks.find(s => s.label === label)
@@ -534,7 +558,6 @@ export async function prepareGoldenImage(ludusUrl, apiKey, data) {
     }
   }
 
-  log(`done ${JSON.stringify(prepared.map(p => ({ label: p.label, ip: p.ip, created: p.created })))}`)
   return { prepared }
 }
 function findVM(vms, label) {

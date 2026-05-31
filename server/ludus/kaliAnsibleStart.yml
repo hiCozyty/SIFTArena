@@ -12,9 +12,16 @@
       HOME: /home/kali
       PATH: /home/kali/.local/bin:/home/kali/.bun/bin:/usr/local/bin:/usr/bin:/bin
 
+  handlers:
+    - name: restart caldera
+      systemd:
+        name: caldera
+        state: restarted
+      become: yes
+
   tasks:
 
-    # ── system deps ────────────────────────────────────────────────────────────
+    # system deps
     - name: Check which system packages are missing
       shell: >
         for pkg in git golang-go; do
@@ -33,7 +40,7 @@
       become: yes
       when: missing_pkgs.stdout_lines | length > 0
 
-    # ── uv ─────────────────────────────────────────────────────────────────────
+    # uv
     - name: Check for uv
       shell: command -v uv
       register: uv_which
@@ -50,7 +57,7 @@
       environment: "{{ caldera_env }}"
       when: uv_which.rc != 0
 
-    # ── bun ────────────────────────────────────────────────────────────────────
+    # bun
     - name: Check for bun
       shell: command -v bun
       register: bun_which
@@ -67,7 +74,7 @@
       environment: "{{ caldera_env }}"
       when: bun_which.rc != 0
 
-    # ── bun symlinks ───────────────────────────────────────────────────────────
+    # bun symlinks
     - name: Check npm and node symlink targets
       shell: |
         echo "npm:$(readlink /usr/local/bin/npm 2>/dev/null || echo '')"
@@ -100,23 +107,49 @@
         | select('match', '^node:' ~ bun_bin ~ '$')
         | list | length == 0
 
-    # ── clone ──────────────────────────────────────────────────────────────────
+    # clone
     - name: Check if Caldera repo exists
       stat:
         path: "{{ caldera_dir }}/.git"
       register: caldera_git
 
-    - name: Clone Caldera repository
-      git:
-        repo: https://github.com/mitre/caldera.git
-        dest: "{{ caldera_dir }}"
-        recursive: yes
-        update: no
+    - name: Clone Caldera repository (no submodules, handled separately)
+      shell: |
+        git clone https://github.com/mitre/caldera.git {{ caldera_dir }} 2>&1
       become: yes
       become_user: "{{ caldera_user }}"
+      environment: "{{ caldera_env }}"
       when: not caldera_git.stat.exists
 
-    # ── uv project init ────────────────────────────────────────────────────────
+    - name: Check for uninitialized submodules
+      shell: git submodule status | grep -c "^-" || true
+      args:
+        chdir: "{{ caldera_dir }}"
+      register: uninit_submodules
+      changed_when: false
+      become: yes
+      become_user: "{{ caldera_user }}"
+      environment: "{{ caldera_env }}"
+
+    - name: Ensure submodules are initialized and current
+      shell: |
+        git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 \
+            submodule update --init --recursive 2>&1
+      args:
+        chdir: "{{ caldera_dir }}"
+      become: yes
+      become_user: "{{ caldera_user }}"
+      environment: "{{ caldera_env }}"
+      register: submodule_update
+      failed_when: submodule_update.rc != 0
+      changed_when: "'Cloning into' in submodule_update.stdout"
+      retries: 5
+      delay: 10
+      until: submodule_update.rc == 0
+      when: uninit_submodules.stdout | int > 0
+      notify: restart caldera
+
+    # uv project init
     - name: Check uv project and venv state
       stat:
         path: "{{ item }}"
@@ -158,10 +191,10 @@
       environment: "{{ caldera_env }}"
       when: not uv_state.results[1].stat.exists
 
-    # ── first boot / ui build ──────────────────────────────────────────────────
-    - name: Check if UI has already been built
+    # UI build - keyed on the real build artifact, not a sentinel file
+    - name: Check if Vue UI has been built
       stat:
-        path: "{{ caldera_dir }}/.ui_built"
+        path: "{{ caldera_dir }}/plugins/magma/dist"
       register: ui_built_stat
 
     - name: Build Vue UI (background, wait for completion)
@@ -169,16 +202,17 @@
         {{ uv_bin }} run python3 server.py --insecure --build > /tmp/caldera_build.log 2>&1 &
         BUILD_PID=$!
         ELAPSED=0
-        while [ $ELAPSED -lt 300 ]; do
+        while [ $ELAPSED -lt 600 ]; do
           if grep -q "All systems ready" /tmp/caldera_build.log 2>/dev/null; then
             kill $BUILD_PID 2>/dev/null
-            touch {{ caldera_dir }}/.ui_built
             exit 0
           fi
           sleep 1
           ELAPSED=$((ELAPSED + 1))
         done
         kill $BUILD_PID 2>/dev/null
+        echo "Build timed out after 600s. Last log:"
+        tail -20 /tmp/caldera_build.log
         exit 1
       args:
         chdir: "{{ caldera_dir }}"
@@ -186,8 +220,9 @@
       become_user: "{{ caldera_user }}"
       environment: "{{ caldera_env }}"
       when: not ui_built_stat.stat.exists
+      notify: restart caldera
 
-    # ── systemd service ────────────────────────────────────────────────────────
+    # systemd service
     - name: Check Caldera service and active state
       shell: |
         echo "file:$(test -f /etc/systemd/system/caldera.service && echo exists || echo missing)"
@@ -226,6 +261,7 @@
         service_state.stdout_lines
         | select('match', '^file:missing$')
         | list | length > 0
+      notify: restart caldera
 
     - name: Reload systemd daemon
       systemd:

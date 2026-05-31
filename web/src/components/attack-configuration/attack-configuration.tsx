@@ -19,21 +19,37 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs"
-import { FileText, MessageCircle, ListChecks } from "lucide-react"
+import { FileText, MessageCircle, ListChecks, Trash2, ListPlus, Terminal } from "lucide-react"
 import { useCallback, useState } from "react"
 import { TechniqueTree, type SelectedItem } from "@/components/attack-configuration/technique-tree"
 import { AbilityInfoTab } from "@/components/attack-configuration/ability-info-tab"
 import { AiChatTab } from "@/components/attack-configuration/ai-chat-tab"
 import { useOpencodeChat } from "@/hooks/use-opencode-chat"
+import { Item, ItemContent, ItemMedia, ItemTitle, ItemDescription, ItemActions, ItemGroup } from "@/components/ui/item"
+
+type ScenarioItem = {
+  id: string
+  name: string
+  description: string
+}
 
 function AttackerConfigurationUi() {
   const [selected, setSelected] = useState<SelectedItem>({ type: "none" })
   const [activeTab, setActiveTab] = useState("ability")
+  const [scenarioItems, setScenarioItems] = useState<ScenarioItem[]>([])
   const chat = useOpencodeChat()
 
   const handleClearChat = useCallback(async () => {
     await chat.resetSession()
   }, [chat])
+
+  const handleAddToScenario = useCallback(() => {
+    if (selected.type !== "ability" && selected.type !== "negative-control") return
+    setScenarioItems((prev) => [
+      ...prev,
+      { id: `${selected.type === "ability" ? selected.abilityId : "negative-control"}-${Date.now()}`, name: selected.type === "ability" ? selected.name : "Negative Control", description: selected.type === "ability" ? (selected.description ?? "(no description)") : "An empty ability that does nothing." },
+    ])
+  }, [selected])
 
   const displayContent = (() => {
     if (selected.type === "none") {
@@ -76,8 +92,13 @@ function AttackerConfigurationUi() {
             </TabsList>
             {activeTab === "chat" ? (
               <Button onClick={handleClearChat}>Clear Chat Session</Button>
+            ) : activeTab === "scenario" ? (
+              <div className="flex items-center gap-2">
+                <Button onClick={() => setScenarioItems([])}>Clear Scenario</Button>
+                <Button disabled={selected.type === "technique" || selected.type === "none"} onClick={handleAddToScenario}>Add to Scenario</Button>
+              </div>
             ) : (
-              <Button disabled={selected.type === "technique" || selected.type === "none"}>Add to Scenario</Button>
+              <Button disabled={selected.type === "technique" || selected.type === "none"} onClick={handleAddToScenario}>Add to Scenario</Button>
             )}
           </div>
           <TabsContent value="ability" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
@@ -86,8 +107,36 @@ function AttackerConfigurationUi() {
           <TabsContent value="chat" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
             <AiChatTab variantMessage={variantMessage} variantLabel={selected.type === "ability" ? selected.name : undefined} {...chat} />
           </TabsContent>
-          <TabsContent value="scenario" className="flex-1 flex items-center justify-center rounded-4xl bg-muted shadow-sm">
-            Scenario panel content
+          <TabsContent value="scenario" className="flex-1 min-h-0 flex flex-col rounded-4xl bg-muted shadow-sm p-4">
+            {scenarioItems.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                <ListPlus className="size-12 opacity-50" />
+                <p className="text-sm">Please select an ability on the left and add to scenario</p>
+              </div>
+            ) : (
+              <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <ItemGroup>
+                  {scenarioItems.map((item) => (
+                    <Item key={item.id}>
+                      <ItemMedia>
+                        <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                          <Terminal className="size-5 text-primary" />
+                        </div>
+                      </ItemMedia>
+                      <ItemContent>
+                        <ItemTitle>{item.name}</ItemTitle>
+                        <ItemDescription>{item.description}</ItemDescription>
+                      </ItemContent>
+                      <ItemActions>
+                        <Button variant="ghost" size="icon" onClick={() => setScenarioItems((prev) => prev.filter((i) => i.id !== item.id))}>
+                          <Trash2 className="size-4 text-muted-foreground hover:text-destructive" />
+                        </Button>
+                      </ItemActions>
+                    </Item>
+                  ))}
+                </ItemGroup>
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>

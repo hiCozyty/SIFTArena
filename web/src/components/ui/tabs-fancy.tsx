@@ -33,7 +33,7 @@ interface Item {
 
 interface TabsFancyProps {
   categories: Category[]
-  items: Item[]
+  items?: Item[]
   defaultCategory?: Category["id"]
   activeCategory?: Category["id"]
   onCategoryChange?: (id: Category["id"]) => void
@@ -43,8 +43,9 @@ interface TabsFancyProps {
   memoryUsage?: string
   deploymentStatus?: DeploymentStatus
   isDeploying?: boolean
-  onDeploy?: () => void
   onReset?: () => void
+  onDeploy?: () => void
+  hideSidebar?: boolean
 }
 
 function StatusLabel({ status }: { status: DeploymentStatus }) {
@@ -66,7 +67,7 @@ function StatusLabel({ status }: { status: DeploymentStatus }) {
 
 function TabsFancy({
   categories,
-  items,
+  items = [],
   defaultCategory,
   activeCategory: controlledCategory,
   onCategoryChange,
@@ -76,11 +77,11 @@ function TabsFancy({
   memoryUsage,
   deploymentStatus,
   isDeploying,
-  onDeploy,
   onReset,
+  onDeploy,
+  hideSidebar,
 }: TabsFancyProps) {
   const [selectedItemId, setSelectedItemId] = useState<Item["id"] | null>(null)
-  const [alreadyDeployedOpen, setAlreadyDeployedOpen] = useState(false)
   const [addTemplateOpen, setAddTemplateOpen] = useState(false)
 
   const [internalCategory, setInternalCategory] = useState<Category["id"]>(
@@ -118,56 +119,60 @@ function TabsFancy({
   return (
     <div className={cn("w-full", className)}>
       <div className="flex flex-row gap-6 rounded-4xl overflow-hidden h-full min-h-0">
-        <div className="w-56 flex flex-col gap-3 rounded-4xl bg-muted p-3 min-h-0 overflow-hidden">
-          <div className="flex-1 flex flex-col gap-0.5 min-h-[120px] overflow-y-auto" onClick={() => setSelectedItemId(null)}>
-            {items.map((item) => (
-              <div
-                key={item.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, item)}
-                onClick={(e) => { e.stopPropagation(); setSelectedItemId(selectedItemId === item.id ? null : item.id) }}
-                className={cn(
-                  "group flex items-center w-full px-3 py-2 rounded-4xl transition-colors cursor-grab active:cursor-grabbing shrink-0",
-                  selectedItemId === item.id
-                    ? "bg-primary/10"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  {item.icon && <span className="text-lg">{item.icon}</span>}
-                  <div className="flex flex-col">
-                    <span className="font-medium text-sm leading-tight">{item.label}</span>
-                    {item.subText && (
-                      <span className="text-[11px] text-muted-foreground/70 leading-tight">{item.subText}</span>
-                    )}
+        {!hideSidebar && (
+          <div className="w-56 flex flex-col rounded-4xl bg-muted p-3 min-h-0 overflow-hidden">
+            <div className="shrink-0" style={{ minHeight: "40px" }} />
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              {items.map((item) => (
+                <div
+                  key={item.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, item)}
+                  onClick={(e) => { e.stopPropagation(); setSelectedItemId(selectedItemId === item.id ? null : item.id) }}
+                  className={cn(
+                    "group flex items-center w-full px-3 py-2 rounded-4xl transition-colors cursor-grab active:cursor-grabbing shrink-0",
+                    selectedItemId === item.id
+                      ? "bg-primary/10"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    {item.icon && <span className="text-lg">{item.icon}</span>}
+                    <div className="flex flex-col">
+                      <span className="font-medium text-sm leading-tight">{item.label}</span>
+                      {item.subText && (
+                        <span className="text-[11px] text-muted-foreground/70 leading-tight">{item.subText}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+            {onAddItem && (
+              <AlertDialog open={addTemplateOpen} onOpenChange={setAddTemplateOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full mt-3 border-dashed border-muted-foreground/30 text-muted-foreground hover:border-muted-foreground/60 hover:text-foreground">
+                    <span className="text-base leading-none">+</span>
+                    Add a Template
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Coming Soon</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This feature will be added at a later time.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogAction onClick={() => setAddTemplateOpen(false)}>OK</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
           </div>
+        )}
 
-          <AlertDialog open={addTemplateOpen} onOpenChange={setAddTemplateOpen}>
-            <AlertDialogTrigger asChild>
-              <Button variant="outline" size="sm" className="w-full border-dashed border-muted-foreground/30 text-muted-foreground hover:border-muted-foreground/60 hover:text-foreground">
-                <span className="text-base leading-none">+</span>
-                Add a Template
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Coming Soon</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This feature will be added at a later time.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogAction onClick={() => setAddTemplateOpen(false)}>OK</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 pt-0 pb-0 px-3">
           <div className="shrink-0 grid grid-cols-[1fr_auto_1fr] items-start gap-3 min-h-[40px] px-1">
             <div className="flex items-center gap-6 text-xs text-muted-foreground">
               {cpuUsage && (
@@ -199,14 +204,17 @@ function TabsFancy({
             <div className="flex items-center gap-3 justify-self-end">
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button size="sm" className="min-w-20 active:translate-y-px" disabled={isDeploying || deploymentStatus === "Not Deployed"}>Reset</Button>
+                  <Button size="sm" className="active:translate-y-px" disabled={isDeploying}>Reset</Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Reset Deployment</AlertDialogTitle>
+                    <AlertDialogTitle>Reset Configuration</AlertDialogTitle>
                     <AlertDialogDescription>
-                      Are you sure you want to remove all the deployed VMs?
+                      This will remove existing VMs and redeploy the baseline range. Continue?
                     </AlertDialogDescription>
+                    <p className="text-sm font-semibold text-destructive mt-2">
+                      NOT RECOMMENDED UNLESS THERE IS A BUG IN THE RANGE
+                    </p>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -214,42 +222,26 @@ function TabsFancy({
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
-              {deploymentStatus === "Deployed" ? (
-                <AlertDialog open={alreadyDeployedOpen} onOpenChange={setAlreadyDeployedOpen}>
-                  <AlertDialogTrigger asChild>
-                    <Button size="sm" className="min-w-20 active:translate-y-px" disabled={isDeploying}>Deploy</Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Already deployed</AlertDialogTitle>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogAction onClick={() => setAlreadyDeployedOpen(false)}>OK</AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              ) : (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button size="sm" className="min-w-20 active:translate-y-px" disabled={isDeploying}>Deploy</Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Deploy Configuration</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This will save your configuration, remove existing VMs, and redeploy. Continue?
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={onDeploy}>Deploy</AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              )}
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button size="sm" className="active:translate-y-px" disabled={isDeploying || deploymentStatus !== "Deployed (stale)"}>Deploy</Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Deploy Changes</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Do you want to deploy changes you made to the config.yaml?
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={onDeploy}>Deploy</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
-          <div className="flex-1 rounded-4xl bg-muted border shadow-sm overflow-hidden">
+          <div className="flex-1 mt-1 rounded-4xl bg-muted border shadow-sm overflow-hidden">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeCategoryId}

@@ -20,8 +20,9 @@ interface YamlTopologyContentProps {
   yamlLoading?: boolean
   saveStatus?: SaveStatus
   revertStatus?: RevertStatus
-  onDeploy?: () => void
   onReset?: () => void
+  onDeploy?: () => void
+  templateItems?: TemplateItem[]
 }
 
 export function YamlTopologyContent({

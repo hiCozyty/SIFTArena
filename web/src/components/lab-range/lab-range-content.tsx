@@ -199,8 +199,9 @@ export function LabRangeContent({
             yamlLoading={false}
             saveStatus={state.saveStatus}
             revertStatus={state.revertStatus}
-            onDeploy={state.handleDeploy}
             onReset={state.handleReset}
+            onDeploy={state.handleDeploy}
+            templateItems={state.templateItems}
           />
         </div>
       </TabContentCard>
