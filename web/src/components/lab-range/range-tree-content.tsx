@@ -8,7 +8,7 @@ import {
   TreeProvider,
   TreeView,
 } from "@/components/kibo-ui/tree"
-import { Monitor, FolderOpen } from "lucide-react"
+import { Monitor, FolderOpen, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 type RangeNode = {
@@ -20,16 +20,28 @@ type RangeNode = {
 
 function buildTreeFromVmDefs(
   vmDefs: Record<string, Record<string, unknown>> | null,
-  enrichedVmDefs: Record<string, Record<string, unknown>> | null,
+  deployedCustomVms: Record<string, Record<string, unknown>> | null,
   nonDeployedVms: Record<string, Record<string, unknown>> | null,
 ): RangeNode[] {
-  const deployedChildren: RangeNode[] = []
-  const allDefs = enrichedVmDefs ?? vmDefs ?? {}
+  const defaultChildren: RangeNode[] = []
+  const allDefs = vmDefs ?? {}
 
   for (const [key, def] of Object.entries(allDefs)) {
     const label = (def.hostname as string) || key
-    deployedChildren.push({
-      id: key,
+    defaultChildren.push({
+      id: `default-${key}`,
+      label,
+      icon: <Monitor className="h-4 w-4" />,
+    })
+  }
+
+  const deployedCustomChildren: RangeNode[] = []
+  const allDeployedCustom = deployedCustomVms ?? {}
+  for (const [key, def] of Object.entries(allDeployedCustom)) {
+    const parsed = (def as { parsed: Record<string, unknown>; raw: string }).parsed
+    const label = (parsed.hostname as string) || key
+    deployedCustomChildren.push({
+      id: `deployed-custom-${key}`,
       label,
       icon: <Monitor className="h-4 w-4" />,
     })
@@ -49,10 +61,16 @@ function buildTreeFromVmDefs(
 
   return [
     {
-      id: "deployed",
-      label: "Deployed VMs",
+      id: "default-vms",
+      label: "Default VMs",
       icon: <FolderOpen className="h-4 w-4" />,
-      children: deployedChildren,
+      children: defaultChildren,
+    },
+    {
+      id: "deployed-custom",
+      label: "Deployed Custom VMs",
+      icon: <FolderOpen className="h-4 w-4" />,
+      children: deployedCustomChildren,
     },
     {
       id: "non-deployed",
@@ -65,24 +83,26 @@ function buildTreeFromVmDefs(
 
 export function RangeTreeContent({
   vmDefs,
-  enrichedVmDefs,
+  deployedCustomVms,
   nonDeployedVms,
   onNodeSelect,
   onWriteVmConf,
   onAddVmConf,
+  onDeleteVm,
   isConfigTabActive,
   selectedNode,
 }: {
   vmDefs?: Record<string, Record<string, unknown>> | null
-  enrichedVmDefs?: Record<string, Record<string, unknown>> | null
+  deployedCustomVms?: Record<string, Record<string, unknown>> | null
   nonDeployedVms?: Record<string, Record<string, unknown>> | null
   onNodeSelect?: (nodeId: string | null) => void
   onWriteVmConf?: () => void
   onAddVmConf?: () => void
+  onDeleteVm?: (key: string) => void
   isConfigTabActive?: boolean
   selectedNode?: string | null
 }) {
-  const treeData = buildTreeFromVmDefs(vmDefs ?? null, enrichedVmDefs ?? null, nonDeployedVms ?? null)
+  const treeData = buildTreeFromVmDefs(vmDefs ?? null, deployedCustomVms ?? null, nonDeployedVms ?? null)
 
   return (
     <TreeProvider defaultExpandedIds={treeData.flatMap((n) => [n.id, ...(n.children?.map((c) => c.id) ?? [])])} selectedIds={selectedNode ? [selectedNode] : []} onSelectionChange={(ids) => { if (onNodeSelect) onNodeSelect(ids.length > 0 ? ids[0] : null) }} className="h-full">
@@ -101,11 +121,24 @@ export function RangeTreeContent({
                 <TreeNodeContent hasChildren={!!node.children?.length}>
                   {node.children?.map((child, childIdx) => {
                     const isLastChild = childIdx === (node.children?.length ?? 0) - 1
+                    const isDeletable = node.id === "deployed-custom" || node.id === "non-deployed"
+                    const childKey = child.id.replace(`${node.id}-`, "")
                     return (
                       <TreeNode key={child.id} isLast={isLastChild} level={1} nodeId={child.id}>
                         <TreeNodeTrigger>
                           <TreeIcon icon={child.icon} />
                           <TreeLabel className="whitespace-normal break-words">{child.label}</TreeLabel>
+                          {isDeletable && onDeleteVm && (
+                            <button
+                              className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onDeleteVm(childKey)
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </TreeNodeTrigger>
                       </TreeNode>
                     )

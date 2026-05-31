@@ -12,8 +12,12 @@ interface YamlTopologyContentProps {
   items?: TemplateItem[]
   vmDefs?: Record<string, Record<string, unknown>> | null
   enrichedVmDefs?: Record<string, Record<string, unknown>> | null
+  nonDeployedVms?: Record<string, { id: string; parsed: Record<string, unknown>; raw: string }>
+  deployedCustomVms?: Record<string, { id: string; parsed: Record<string, unknown>; raw: string }>
+  onCreateVmConfig?: (hostname: string, config: string, parsedConfig: Record<string, unknown>) => Promise<{ id: string } | { error: string }>
+  onDeleteVmConfig?: (id: string, hostname: string) => Promise<{ success: boolean } | { error: string }>
   onReset?: () => void
-  onDeploy?: () => void
+  onSingleDeploy?: (vmConfig: { hostname: string; yaml: string }) => void
   templateItems?: TemplateItem[]
 }
 

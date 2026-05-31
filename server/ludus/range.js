@@ -416,6 +416,50 @@ export async function deployVM(ludusUrl, apiKey, data) {
   return { deployed: vmName }
 }
 
+export async function deployCustomVM(ludusUrl, apiKey, data) {
+  const { hostname, yaml } = data
+  if (!hostname) throw new Error("Missing hostname")
+  if (!yaml) throw new Error("Missing yaml config")
+
+  const rangeId = process.env.LUDUS_RANGE_ID || "ty"
+  const expectedVmName = `${rangeId}-${hostname}`
+
+  const range = await apiCall(ludusUrl, apiKey, "/range")
+  const vms = range.VMs ?? []
+
+  const existingVM = vms.find(vm => vm.name === expectedVmName)
+
+  if (existingVM) {
+    const qs = `rangeID=${rangeId}&vmids=${existingVM.proxmoxID}`
+    const snapshotResult = await apiCall(ludusUrl, apiKey, `/snapshots/list?${qs}`)
+    const snapshots = snapshotResult?.snapshots || []
+    const hasBaseClean = snapshots.some(s => s.name === "base-clean")
+
+    if (hasBaseClean) {
+      return { deployed: null, alreadyDeployed: true, vmName: expectedVmName }
+    }
+
+    if (existingVM.poweredOn) {
+      await apiCall(ludusUrl, apiKey, "/range/poweroff", "PUT", { machines: [existingVM.name] })
+      for (let i = 0; i < 30; i++) {
+        await sleep(2000)
+        const cur = await apiCall(ludusUrl, apiKey, "/range")
+        const vm = cur.VMs?.find(v => v.name === existingVM.name)
+        if (!vm?.poweredOn) break
+      }
+    }
+
+    await apiCall(ludusUrl, apiKey, `/vm/${existingVM.proxmoxID}`, "DELETE")
+    await destroyZombieVMs(new URL(ludusUrl).hostname)
+  }
+
+  const userKey = (process.env.LUDUS_USER_API_KEY || apiKey).trim()
+  await setRangeConfig(ludusUrl, userKey, yaml)
+  await apiCall(ludusUrl, apiKey, "/range/deploy", "POST", { force: true })
+
+  return { deployed: hostname, vmName: expectedVmName, deletedExisting: !!existingVM }
+}
+
 export async function deployRouter(ludusUrl, apiKey) {
   const d = VM_DEFS.router
   const yaml = `ludus: []

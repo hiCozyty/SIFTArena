@@ -6,6 +6,7 @@ import type { DeploymentStatus } from "@/components/ui/tabs-fancy"
 export type GatePhase = "checking-templates" | "templates-error" | "templates-incomplete" | "show-content"
 export type TimelineItem = { id: string; title: string; description: string; status?: string }
 export type TemplateItem = { id: number; label: string; subText: string; icon: string }
+export type CustomVmConfig = { id: string; hostname: string; config: string; parsedConfig: Record<string, unknown> }
 
 export const REQUIRED_TEMPLATES = [
   "debian-11-x64-server-template",
@@ -73,10 +74,13 @@ export function useLabRangeState(onComplete: () => void) {
   const calderaLogRef = useRef<string>("")
   const timelineBuiltOnceRef = useRef(false)
   const [snapshotsTaken, setSnapshotsTaken] = useState(false)
-  const deployModeRef = useRef<"auto" | "reset" | "deploy">("auto")
-  const vmsBeforeDeployRef = useRef<string[]>([])
-  const vmsCapturedRef = useRef(false)
+  const deployModeRef = useRef<"auto" | "reset" | "singleDeploy">("auto")
+  const selectedDeployVmRef = useRef<string>("")
+  const selectedDeployYamlRef = useRef<string>("")
+  const deployedVmNameRef = useRef<string>("")
   const [postDeploySnapshotActive, setPostDeploySnapshotActive] = useState(false)
+  const [customVmConfigs, setCustomVmConfigs] = useState<Record<string, CustomVmConfig>>({})
+  const [rangeVmNames, setRangeVmNames] = useState<string[]>([])
   const onCompleteRef = useRef(onComplete)
   onCompleteRef.current = onComplete
 
@@ -290,14 +294,12 @@ export function useLabRangeState(onComplete: () => void) {
         return [...capped, { id: "reset-delete", title: "Removing existing VMs", description: "deleting...", status: "building" }]
       })
       backendWs.send({ type: "deleteRangeVMs", all: true })
-    } else if (mode === "deploy") {
-      deployModeRef.current = "auto"
+    } else if (mode === "singleDeploy") {
       setTimelineItems((prev) => {
         const capped = prev.length >= 10 ? prev.slice(prev.length - 9) : prev
-        return [...capped, { id: "deploy-rebuilding", title: "Deploying range", description: "deploying VMs...", status: "building" }]
+        return [...capped, { id: "deploy-rebuilding", title: "Deploying VM", description: "checking existing VMs...", status: "building" }]
       })
-      backendWs.send({ type: "subscribe", channel: "rangeStatus" })
-      backendWs.send({ type: "deployAllBaseVMs" })
+      backendWs.send({ type: "deployCustomVM", hostname: selectedDeployVmRef.current, yaml: selectedDeployYamlRef.current })
     }
 
     const unsub = backendWs.subscribe((data) => {
@@ -348,6 +350,56 @@ export function useLabRangeState(onComplete: () => void) {
         return
       }
 
+      if (mode === "singleDeploy" && data.type === "deployCustomVM") {
+        const error = data.error as string | undefined
+        const result = data.result as { deployed?: string | null; alreadyDeployed?: boolean; vmName?: string; deletedExisting?: boolean } | undefined
+
+        if (error) {
+          setTimelineItems((prev) =>
+            prev.map((item) =>
+              item.id === "deploy-rebuilding"
+                ? { ...item, title: "Deploy failed", description: error, status: "error" }
+                : item
+            )
+          )
+          setDeployActive(false)
+          setDeploymentStatus("Error")
+          setIsDeploying(false)
+          unsub()
+          return
+        }
+
+        if (result?.alreadyDeployed) {
+          setTimelineItems((prev) =>
+            prev.map((item) =>
+              item.id === "deploy-rebuilding"
+                ? { ...item, title: "VM already deployed", description: "base-clean snapshot exists", status: "built" }
+                : item
+            )
+          )
+          setDeployActive(false)
+          setDeploymentStatus("Deployed")
+          setIsDeploying(false)
+          unsub()
+          return
+        }
+
+        if (result?.vmName) {
+          deployedVmNameRef.current = result.vmName
+        }
+
+        phaseRef.current = "deploying"
+        setTimelineItems((prev) =>
+          prev.map((item) =>
+            item.id === "deploy-rebuilding"
+              ? { ...item, title: `Deploying ${result?.vmName ?? selectedDeployVmRef.current}`, description: result?.deletedExisting ? "deleted existing VM, deploying..." : "deploying...", status: "building" }
+              : item
+          )
+        )
+        backendWs.send({ type: "subscribe", channel: "rangeStatus" })
+        return
+      }
+
       if (data.type !== "rangeStatus") return
 
       const raw = data.result
@@ -364,11 +416,6 @@ export function useLabRangeState(onComplete: () => void) {
       const routerFound = result.find((vm) => vm.name.endsWith("router-debian11-x64"))
       const kaliFound = result.find((vm) => vm.name.endsWith("attacker-kali"))
       const windowsFound = result.find((vm) => vm.name.endsWith("win11-22h2"))
-
-      if (mode === "deploy" && phaseRef.current === "deploying" && !vmsCapturedRef.current) {
-        vmsBeforeDeployRef.current = result.map(vm => vm.name)
-        vmsCapturedRef.current = true
-      }
 
       const latestLog = data.latestLog as string | undefined
       const playRecap = data.playRecap as string[] | null | undefined
@@ -467,7 +514,7 @@ export function useLabRangeState(onComplete: () => void) {
         return
       }
 
-      if (mode === "deploy") {
+      if (mode === "singleDeploy") {
         if (latestLog) {
           setTimelineItems((prev) =>
             prev.map((item) =>
@@ -481,31 +528,22 @@ export function useLabRangeState(onComplete: () => void) {
         if (playRecapRef.current) {
           const allOk = parsePlayRecap(playRecapRef.current)
 
-          const currentVMs = result.map(vm => vm.name)
-          const newVMs = currentVMs.filter(name => !vmsBeforeDeployRef.current.includes(name))
-
+          const vmName = deployedVmNameRef.current || selectedDeployVmRef.current
           setTimelineItems((prev) => [
             ...prev.map((item) =>
               item.id === "deploy-rebuilding"
-                ? { ...item, title: "Range deployed", description: allOk ? "" : "completed with errors", status: allOk ? "built" : "error" }
+                ? { ...item, title: "VM deployed", description: allOk ? "" : "completed with errors", status: allOk ? "built" : "error" }
                 : item
             ),
+            {
+              id: "post-deploy-snapshot",
+              title: `Preparing golden image for ${vmName}`,
+              description: `Creating base-clean snapshot...`,
+              status: "building",
+            },
           ])
-
-          if (newVMs.length > 0) {
-            const newVMLabels = newVMs.map(name => name.replace(/^ty-/, "")).join(", ")
-            setTimelineItems((prev) => [
-              ...prev,
-              {
-                id: "post-deploy-snapshot",
-                title: `Preparing golden image for ${newVMLabels}`,
-                description: `Creating base-clean snapshot for newly deployed VMs...`,
-                status: "building",
-              },
-            ])
-            setPostDeploySnapshotActive(true)
-            backendWs.send({ type: "prepareGoldenImage", vmNames: newVMs })
-          }
+          setPostDeploySnapshotActive(true)
+          backendWs.send({ type: "prepareGoldenImage", vmNames: [vmName] })
 
           setDeployActive(false)
           setDeploymentStatus("Deployed")
@@ -665,6 +703,136 @@ export function useLabRangeState(onComplete: () => void) {
     return () => unsub()
   }, [status.type])
 
+  useEffect(() => {
+    if (status.type !== "ok") return
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type !== "getDeployableVmConfigs") return
+      const error = data.error as string | undefined
+      if (error) {
+        unsub()
+        return
+      }
+      const result = data.result as Array<{ id: string; hostname: string; config: string; parsed_config: Record<string, unknown> }> | undefined
+      if (!result) {
+        unsub()
+        return
+      }
+      const configs: Record<string, CustomVmConfig> = {}
+      for (const item of result) {
+        configs[item.hostname] = {
+          id: item.id,
+          hostname: item.hostname,
+          config: item.config,
+          parsedConfig: item.parsed_config,
+        }
+      }
+      setCustomVmConfigs(configs)
+      unsub()
+    })
+    backendWs.send({ type: "getDeployableVmConfigs" })
+    return () => unsub()
+  }, [status.type])
+
+  useEffect(() => {
+    if (status.type !== "ok") return
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type !== "rangeStatus") return
+      const raw = data.result
+      type VmInfo = { name: string; poweredOn?: boolean }
+      let result: VmInfo[] = []
+      if (Array.isArray(raw)) {
+        if (raw.length > 0 && typeof raw[0] === "object" && raw[0] !== null && "name" in raw[0]) {
+          result = raw as VmInfo[]
+        } else if (raw.length === 2 && Array.isArray(raw[0])) {
+          result = raw[0] as VmInfo[]
+        }
+      }
+      setRangeVmNames(result.map((vm) => vm.name))
+    })
+    backendWs.send({ type: "subscribe", channel: "rangeStatus" })
+    backendWs.send({ type: "rangeStatus" })
+    return () => {
+      backendWs.send({ type: "unsubscribe", channel: "rangeStatus" })
+      unsub()
+    }
+  }, [status.type])
+
+  const createDeployableVmConfig = (hostname: string, config: string, parsedConfig: Record<string, unknown>): Promise<{ id: string } | { error: string }> => {
+    return new Promise((resolve) => {
+      const unsub = backendWs.subscribe((data) => {
+        if (data.type !== "createDeployableVmConfig") return
+        const error = data.error as string | undefined
+        if (error) {
+          unsub()
+          resolve({ error })
+          return
+        }
+        const result = data.result as { id: string; hostname: string; config: string } | undefined
+        if (!result) {
+          unsub()
+          resolve({ error: "Empty response" })
+          return
+        }
+        setCustomVmConfigs((prev) => ({
+          ...prev,
+          [result.hostname]: {
+            id: result.id,
+            hostname: result.hostname,
+            config: result.config,
+            parsedConfig,
+          },
+        }))
+        unsub()
+        resolve({ id: result.id })
+      })
+      backendWs.send({ type: "createDeployableVmConfig", data: { hostname, config, parsed_config: parsedConfig } })
+    })
+  }
+
+  const deleteDeployableVmConfig = (id: string, hostname: string): Promise<{ success: boolean } | { error: string }> => {
+    return new Promise((resolve) => {
+      const unsub = backendWs.subscribe((data) => {
+        if (data.type !== "deleteDeployableVmConfig") return
+        const error = data.error as string | undefined
+        if (error) {
+          unsub()
+          resolve({ error })
+          return
+        }
+        setCustomVmConfigs((prev) => {
+          const next = { ...prev }
+          delete next[hostname]
+          return next
+        })
+        unsub()
+        resolve({ success: true })
+      })
+      backendWs.send({ type: "deleteDeployableVmConfig", data: { id } })
+    })
+  }
+
+  const nonDeployedVms = useMemo(() => {
+    const result: Record<string, { id: string; parsed: Record<string, unknown>; raw: string }> = {}
+    for (const [hostname, config] of Object.entries(customVmConfigs)) {
+      const isDeployed = rangeVmNames.some((vmName) => vmName.endsWith(hostname))
+      if (!isDeployed) {
+        result[hostname] = { id: config.id, parsed: config.parsedConfig, raw: config.config }
+      }
+    }
+    return result
+  }, [customVmConfigs, rangeVmNames])
+
+  const deployedCustomVms = useMemo(() => {
+    const result: Record<string, { id: string; parsed: Record<string, unknown>; raw: string }> = {}
+    for (const [hostname, config] of Object.entries(customVmConfigs)) {
+      const isDeployed = rangeVmNames.some((vmName) => vmName.endsWith(hostname))
+      if (isDeployed) {
+        result[hostname] = { id: config.id, parsed: config.parsedConfig, raw: config.config }
+      }
+    }
+    return result
+  }, [customVmConfigs, rangeVmNames])
+
   const handleReset = () => {
     setIsDeploying(true)
     setDeploymentStatus("Deploying")
@@ -672,12 +840,13 @@ export function useLabRangeState(onComplete: () => void) {
     setDeployActive(true)
   }
 
-  const handleDeploy = () => {
+  const handleSingleDeploy = (vmConfig: { hostname: string; yaml: string }) => {
+    selectedDeployVmRef.current = vmConfig.hostname
+    selectedDeployYamlRef.current = vmConfig.yaml
+    deployedVmNameRef.current = ""
     setIsDeploying(true)
     setDeploymentStatus("Deploying")
-    deployModeRef.current = "deploy"
-    vmsCapturedRef.current = false
-    vmsBeforeDeployRef.current = []
+    deployModeRef.current = "singleDeploy"
     setDeployActive(true)
   }
 
@@ -876,7 +1045,6 @@ export function useLabRangeState(onComplete: () => void) {
 
       if (prepared.length === 0) {
         setPostDeploySnapshotActive(false)
-        vmsCapturedRef.current = false
         onCompleteRef.current()
         unsub()
         return
@@ -913,7 +1081,6 @@ export function useLabRangeState(onComplete: () => void) {
       }
 
       setPostDeploySnapshotActive(false)
-      vmsCapturedRef.current = false
       onCompleteRef.current()
       unsub()
     })
@@ -940,11 +1107,13 @@ export function useLabRangeState(onComplete: () => void) {
     isDeploying,
     systemInfo,
     vmDefs,
-    // Combined static + dynamic VMs for topology visualization
     enrichedVmDefs,
-    // Append dynamic VMs — topology auto-updates via reactivity
     setDynamicVms,
+    nonDeployedVms,
+    deployedCustomVms,
+    createDeployableVmConfig,
+    deleteDeployableVmConfig,
     handleReset,
-    handleDeploy,
+    handleSingleDeploy,
   }
 }

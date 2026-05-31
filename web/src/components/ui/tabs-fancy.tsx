@@ -46,6 +46,7 @@ interface TabsFancyProps {
   onReset?: () => void
   onDeploy?: () => void
   hideSidebar?: boolean
+  isDeployable?: boolean
 }
 
 function StatusLabel({ status }: { status: DeploymentStatus }) {
@@ -80,6 +81,7 @@ function TabsFancy({
   onReset,
   onDeploy,
   hideSidebar,
+  isDeployable,
 }: TabsFancyProps) {
   const [selectedItemId, setSelectedItemId] = useState<Item["id"] | null>(null)
   const [addTemplateOpen, setAddTemplateOpen] = useState(false)
@@ -224,13 +226,13 @@ function TabsFancy({
               </AlertDialog>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button size="sm" className="active:translate-y-px" disabled={isDeploying || deploymentStatus !== "Deployed (stale)"}>Deploy</Button>
+                  <Button size="sm" className="active:translate-y-px" disabled={isDeploying || !isDeployable}>Deploy</Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
                     <AlertDialogTitle>Deploy Changes</AlertDialogTitle>
                     <AlertDialogDescription>
-                      Do you want to deploy changes you made to the config.yaml?
+                      Do you want to deploy this new vm?
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>

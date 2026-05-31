@@ -192,8 +192,12 @@ export function LabRangeContent({
             items={state.templateItems}
             vmDefs={state.vmDefs}
             enrichedVmDefs={state.enrichedVmDefs}
+            nonDeployedVms={state.nonDeployedVms}
+            deployedCustomVms={state.deployedCustomVms}
+            onCreateVmConfig={state.createDeployableVmConfig}
+            onDeleteVmConfig={state.deleteDeployableVmConfig}
             onReset={state.handleReset}
-            onDeploy={state.handleDeploy}
+            onSingleDeploy={state.handleSingleDeploy}
             templateItems={state.templateItems}
           />
         </div>

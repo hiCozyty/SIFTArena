@@ -9,6 +9,16 @@ import { TemplateTreeContent } from "@/components/lab-range/template-tree-conten
 import { RangeTreeContent } from "@/components/lab-range/range-tree-content"
 import { SnapshotListContent } from "@/components/lab-range/snapshot-list-content"
 import { LeftPanelTabs } from "@/components/lab-range/left-panel-tabs"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 type YamlTopologyGuiProps = {
   items?: Item[]
@@ -19,8 +29,12 @@ type YamlTopologyGuiProps = {
   isDeploying?: boolean
   vmDefs?: Record<string, Record<string, unknown>> | null
   enrichedVmDefs?: Record<string, Record<string, unknown>> | null
+  nonDeployedVms?: Record<string, { id: string; parsed: Record<string, unknown>; raw: string }>
+  deployedCustomVms?: Record<string, { id: string; parsed: Record<string, unknown>; raw: string }>
+  onCreateVmConfig?: (hostname: string, config: string, parsedConfig: Record<string, unknown>) => Promise<{ id: string } | { error: string }>
+  onDeleteVmConfig?: (id: string, hostname: string) => Promise<{ success: boolean } | { error: string }>
   onReset?: () => void
-  onDeploy?: () => void
+  onSingleDeploy?: (vmConfig: { hostname: string; yaml: string }) => void
   templateItems?: { id: number; label: string; subText: string; icon: string }[]
 }
 
@@ -33,8 +47,12 @@ export function YamlTopologyGui({
   isDeploying,
   vmDefs,
   enrichedVmDefs,
+  nonDeployedVms = {},
+  deployedCustomVms = {},
+  onCreateVmConfig,
+  onDeleteVmConfig,
   onReset,
-  onDeploy,
+  onSingleDeploy,
   templateItems = [],
 }: YamlTopologyGuiProps) {
   const [activeLeftTab, setActiveLeftTab] = useState<"templates" | "range" | "snapshots">("range")
@@ -44,7 +62,7 @@ export function YamlTopologyGui({
   const [isCustomVmMode, setIsCustomVmMode] = useState(false)
   const [addVmError, setAddVmError] = useState<string | null>(null)
   const [addVmSuccess, setAddVmSuccess] = useState(false)
-  const [nonDeployedVms, setNonDeployedVms] = useState<Record<string, { parsed: Record<string, unknown>; raw: string }>>({})
+  const [pendingDelete, setPendingDelete] = useState<{ key: string; hostname: string; id: string } | null>(null)
   const [proofreadState, setProofreadState] = useState(false)
   const [proofreadError, setProofreadError] = useState<string | null>(null)
   const [alerts, setAlerts] = useState<{ id: number; type: "error" | "success"; message: string }[]>([])
@@ -174,7 +192,7 @@ export function YamlTopologyGui({
     setActiveLeftTab("range")
   }
 
-  const handleAddVmConf = () => {
+  const handleAddVmConf = async () => {
     setAddVmError(null)
     setAddVmSuccess(false)
     if (!proofreadState) {
@@ -188,9 +206,16 @@ export function YamlTopologyGui({
         return
       }
       const hostname = result.vmDef.hostname as string
-      const key = hostname.toLowerCase().replace(/[^a-z0-9-]/g, "-")
       const rawConfig = customVmConfig.replace(/^#please write your single vm config here\n?/m, "").trimStart()
-      setNonDeployedVms((prev) => ({ ...prev, [key]: { parsed: result.vmDef!, raw: rawConfig || customVmConfig } }))
+      if (!onCreateVmConfig) {
+        addAlert("error", "Backend not connected")
+        return
+      }
+      const response = await onCreateVmConfig(hostname, rawConfig || customVmConfig, result.vmDef)
+      if ("error" in response) {
+        addAlert("error", response.error)
+        return
+      }
       addAlert("success", "✓ VM added to Non Deployed VMs")
       setAddVmSuccess(true)
       setProofreadState(false)
@@ -206,6 +231,45 @@ export function YamlTopologyGui({
     setSelectedRangeNode(nodeId)
   }
 
+  const handleDeploy = () => {
+    if (selectedRangeNode?.startsWith("non-deployed-")) {
+      const key = selectedRangeNode.replace("non-deployed-", "")
+      const vmConfig = nonDeployedVms[key]
+      if (vmConfig && onSingleDeploy) {
+        onSingleDeploy({ hostname: key, yaml: vmConfig.raw })
+        setSelectedRangeNode(null)
+        setIsCustomVmMode(false)
+        setActiveRightTab("topology")
+      }
+    }
+  }
+
+  const handleDeleteVm = (key: string) => {
+    const vmConfig = nonDeployedVms[key] ?? deployedCustomVms[key]
+    if (!vmConfig) return
+    const hostname = (vmConfig.parsed.hostname as string) || key
+    setPendingDelete({ key, hostname, id: vmConfig.id })
+  }
+
+  const confirmDeleteVm = async () => {
+    if (!pendingDelete) return
+    const { key, id } = pendingDelete
+    if (onDeleteVmConfig) {
+      const response = await onDeleteVmConfig(id, key)
+      if ("error" in response) {
+        addAlert("error", response.error)
+        setPendingDelete(null)
+        return
+      }
+    }
+    if (selectedRangeNode === `deployed-custom-${key}` || selectedRangeNode === `non-deployed-${key}`) {
+      setSelectedRangeNode(null)
+      setIsCustomVmMode(false)
+      setActiveRightTab("topology")
+    }
+    setPendingDelete(null)
+  }
+
   const resetCustomVmConfig = () => {
     setCustomVmConfig("#please write your single vm config here\n")
   }
@@ -219,7 +283,7 @@ export function YamlTopologyGui({
     {
       id: "range",
       label: "Range",
-        content: <RangeTreeContent vmDefs={vmDefs} enrichedVmDefs={enrichedVmDefs} nonDeployedVms={nonDeployedVms} selectedNode={selectedRangeNode} onNodeSelect={handleNodeSelect} onWriteVmConf={handleWriteVmConf} onAddVmConf={handleAddVmConf} isConfigTabActive={activeRightTab === "yaml"} />,
+        content: <RangeTreeContent vmDefs={vmDefs} deployedCustomVms={deployedCustomVms} nonDeployedVms={nonDeployedVms} selectedNode={selectedRangeNode} onNodeSelect={handleNodeSelect} onWriteVmConf={handleWriteVmConf} onAddVmConf={handleAddVmConf} onDeleteVm={handleDeleteVm} isConfigTabActive={isCustomVmMode} />,
     },
     {
       id: "snapshots",
@@ -287,34 +351,72 @@ export function YamlTopologyGui({
           ))}
         </div>
       ) : (() => {
-        return selectedRangeNode === "deployed" ? (
-          <textarea
-            className="h-full w-full resize-none bg-muted p-4 font-mono text-sm text-foreground placeholder-muted-foreground focus:outline-none"
-            value={enrichedYaml}
-            readOnly
-            placeholder="No VM definitions available"
-            spellCheck={false}
-          />
-      ) : selectedRangeNode === "non-deployed" || selectedRangeNode === null ? (
-        <div className="h-full w-full flex items-center justify-center">
-          <p className="text-sm text-muted-foreground">Please click on a VM</p>
-        </div>
-      ) : selectedRangeNode.startsWith("non-deployed-") ? (
-        <textarea
-          className="h-full w-full resize-none bg-muted p-4 font-mono text-sm text-foreground placeholder-muted-foreground focus:outline-none"
-          value={nonDeployedVms[selectedRangeNode.replace("non-deployed-", "")]?.raw ?? ""}
-          readOnly
-          placeholder="No VM definitions available"
-          spellCheck={false}
-        />
-      ) : (
-          <textarea
-            className="h-full w-full resize-none bg-muted p-4 font-mono text-sm text-foreground placeholder-muted-foreground focus:outline-none"
-            value={yamlText}
-            readOnly
-            placeholder="No VM definitions available"
-            spellCheck={false}
-          />
+        if (selectedRangeNode === null) {
+          return (
+            <div className="h-full w-full flex items-center justify-center">
+              <p className="text-sm text-muted-foreground">Please click on a VM</p>
+            </div>
+          )
+        }
+
+        if (selectedRangeNode === "default-vms" || selectedRangeNode.startsWith("default-")) {
+          return (
+            <textarea
+              className="h-full w-full resize-none bg-muted p-4 font-mono text-sm text-foreground placeholder-muted-foreground focus:outline-none"
+              value={yamlText}
+              readOnly
+              placeholder="No VM definitions available"
+              spellCheck={false}
+            />
+          )
+        }
+
+        if (selectedRangeNode === "deployed-custom") {
+          return (
+            <div className="h-full w-full flex items-center justify-center">
+              <p className="text-sm text-muted-foreground">Please click on a VM</p>
+            </div>
+          )
+        }
+
+        if (selectedRangeNode.startsWith("deployed-custom-")) {
+          const key = selectedRangeNode.replace("deployed-custom-", "")
+          return (
+            <textarea
+              className="h-full w-full resize-none bg-muted p-4 font-mono text-sm text-foreground placeholder-muted-foreground focus:outline-none"
+              value={deployedCustomVms[key]?.raw ?? ""}
+              readOnly
+              placeholder="No VM definitions available"
+              spellCheck={false}
+            />
+          )
+        }
+
+        if (selectedRangeNode === "non-deployed") {
+          return (
+            <div className="h-full w-full flex items-center justify-center">
+              <p className="text-sm text-muted-foreground">Please click on a VM</p>
+            </div>
+          )
+        }
+
+        if (selectedRangeNode.startsWith("non-deployed-")) {
+          const key = selectedRangeNode.replace("non-deployed-", "")
+          return (
+            <textarea
+              className="h-full w-full resize-none bg-muted p-4 font-mono text-sm text-foreground placeholder-muted-foreground focus:outline-none"
+              value={nonDeployedVms[key]?.raw ?? ""}
+              readOnly
+              placeholder="No VM definitions available"
+              spellCheck={false}
+            />
+          )
+        }
+
+        return (
+          <div className="h-full w-full flex items-center justify-center">
+            <p className="text-sm text-muted-foreground">Please click on a VM</p>
+          </div>
         )
       })(),
     },
@@ -352,10 +454,25 @@ export function YamlTopologyGui({
           deploymentStatus={deploymentStatus}
           isDeploying={isDeploying}
           onReset={onReset}
-          onDeploy={onDeploy}
+          onDeploy={handleDeploy}
+          isDeployable={selectedRangeNode?.startsWith("non-deployed-") ?? false}
           hideSidebar
         />
       )}
+      <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => { if (!open) setPendingDelete(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete VM</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{pendingDelete?.hostname}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={confirmDeleteVm}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
