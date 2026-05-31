@@ -3,6 +3,7 @@ import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./templat
 import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, preloadInventory, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, fetchRdpConfigs, getVmDefs } from "./ludus/range.js"
 import { fetchFocusedCategoriesAndTechniques } from "./caldera/categories.js"
 import { initDatabase, getCustomAbilities, createCustomAbility, updateCustomAbility, deleteCustomAbility } from "./caldera/customAbilities.js"
+import { initDatabase as initVmConfigDb, getDeployableVmConfigs, createDeployableVmConfig, updateDeployableVmConfig, deleteDeployableVmConfig } from "./ludus/deployableVmConfigs.js"
 import { createRdpProxyHandler } from "./rdp-proxy.js"
 
 const LUDUS_SERVER_URL = process.env.LUDUS_SERVER_URL + "/api/v2"
@@ -67,12 +68,18 @@ addOperation("getRdpConfigs", fetchRdpConfigs)
 addFetcher("getFocusedCategoriesAndTechniques", fetchFocusedCategoriesAndTechniques)
 addOperation("getFocusedCategoriesAndTechniques", fetchFocusedCategoriesAndTechniques)
 
-addOperation("getCustomAbilities", () => getCustomAbilities())
-addOperation("createCustomAbility", (_, __, data) => createCustomAbility(data.data))
-addOperation("updateCustomAbility", (_, __, data) => updateCustomAbility(data.abilityId, data.data))
-addOperation("deleteCustomAbility", (_, __, data) => deleteCustomAbility(data.abilityId))
+addOperation("getCustomAbilities", async () => getCustomAbilities())
+addOperation("createCustomAbility", async (_, __, data) => createCustomAbility(data.data))
+addOperation("updateCustomAbility", async (_, __, data) => updateCustomAbility(data.data.abilityId, data.data.data))
+addOperation("deleteCustomAbility", async (_, __, data) => deleteCustomAbility(data.data.abilityId))
+
+addOperation("getDeployableVmConfigs", async () => getDeployableVmConfigs())
+addOperation("createDeployableVmConfig", async (_, __, data) => createDeployableVmConfig(data.data))
+addOperation("updateDeployableVmConfig", async (_, __, data) => updateDeployableVmConfig(data.data.id, data.data.data))
+addOperation("deleteDeployableVmConfig", async (_, __, data) => deleteDeployableVmConfig(data.data.id))
 
 initDatabase()
+initVmConfigDb()
 
 const pollerHandler = createWsHandler(LUDUS_SERVER_URL, LUDUS_API_KEY)
 const rdpHandler = createRdpProxyHandler()

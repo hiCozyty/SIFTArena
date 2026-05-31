@@ -66,11 +66,9 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
     const sessionId = activeSessionIdRef.current
     if (!client || !sessionId) return
     if (eventLoopRunningRef.current) {
-      console.log("[opencode-chat] startEventLoop: skipped, already running")
       return
     }
     eventLoopRunningRef.current = true
-    console.log("[opencode-chat] startEventLoop: starting new subscription")
 
     let resolveSubscribeReady!: () => void
     subscribeReadyRef.current = new Promise<void>(resolve => {
@@ -93,9 +91,7 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
         for await (const event of events.stream) {
           if (abortController.signal.aborted) break
           const props = (event.properties || {}) as EventProps
-          console.log("[opencode-chat] SSE event:", { type: event.type, sessionID: props.sessionID, activeSession: activeSessionIdRef.current })
           if (props.sessionID && props.sessionID !== activeSessionIdRef.current) {
-            console.log("[opencode-chat] event filtered: session mismatch")
             continue
           }
 
@@ -176,10 +172,8 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
             }
           }
         }
-        console.log("[opencode-chat] event loop: for-await ended")
       } catch (err) {
         if (!abortController.signal.aborted) {
-          console.error("[opencode-chat] stream error:", err)
           setError(err instanceof Error ? err.message : "Stream error")
           setIsGenerating(false)
           setIsToolExecuting(false)
@@ -189,9 +183,7 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
       }
     } catch (err) {
       resolveSubscribeReady()
-      console.error("[opencode-chat] subscribe error:", err)
     } finally {
-      console.log("[opencode-chat] event loop finally: setting eventLoopRunning=false")
       eventLoopRunningRef.current = false
       resolveEventLoopExited?.()
       resolveEventLoopExited = null
@@ -205,9 +197,7 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
     subscribeReadyRef.current = null
 
     if (oldLoopExited) {
-      console.log("[opencode-chat] reconnect: awaiting old event loop exit")
       await oldLoopExited
-      console.log("[opencode-chat] reconnect: old event loop exited")
     }
 
     startEventLoop()
@@ -236,7 +226,6 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
         startEventLoop()
       } catch (err) {
         if (!mounted) return
-        console.error("[opencode-chat] Init error:", err)
         setError(err instanceof Error ? err.message : "Failed to initialize session")
       }
     }
@@ -334,7 +323,6 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
     async (content: string) => {
       const currentSessionId = activeSessionIdRef.current
       if (!clientRef.current || !currentSessionId) {
-        console.error("[opencode-chat] Not connected:", { clientRef: !!clientRef.current, sessionId: currentSessionId })
         setError("Not connected")
         return
       }
@@ -385,7 +373,6 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
           finalizeMessage()
           return
         }
-        console.error("[opencode-chat] Prompt error:", err)
         setError(err instanceof Error ? err.message : "Prompt failed")
         setIsGenerating(false)
         setIsToolExecuting(false)

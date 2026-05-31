@@ -85,7 +85,7 @@ export function vmDefsToYaml(obj: Record<string, Record<string, unknown>>): stri
     for (const [key, vmDef] of ludusEntries) {
       const entries = Object.entries(vmDef)
       const hostnameEntry = entries.find(([k]) => k === "hostname")
-      const otherEntries = entries.filter(([k]) => k !== "hostname")
+      const otherEntries = entries.filter(([k]) => k !== "hostname" && k !== "vm_name")
       lines.push("  - vm_name: \"{{ range_id }}-" + key + "\"")
       if (hostnameEntry) {
         lines.push("    " + hostnameEntry[0] + ": " + formatInline(hostnameEntry[1]))
