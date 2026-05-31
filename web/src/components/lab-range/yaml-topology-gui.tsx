@@ -50,7 +50,7 @@ export function YamlTopologyGui({
     {
       id: "range",
       label: "Range",
-      content: <RangeTreeContent />,
+      content: <RangeTreeContent vmDefs={vmDefs} enrichedVmDefs={enrichedVmDefs} />,
     },
     {
       id: "snapshots",

@@ -8,7 +8,7 @@ import {
   TreeProvider,
   TreeView,
 } from "@/components/kibo-ui/tree"
-import { Network, Monitor, Shield, Globe } from "lucide-react"
+import { Monitor, FolderOpen } from "lucide-react"
 
 type RangeNode = {
   id: string
@@ -17,36 +17,47 @@ type RangeNode = {
   children?: RangeNode[]
 }
 
-const PLACEHOLDER_RANGE: RangeNode[] = [
-  {
-    id: "network",
-    label: "Network Infrastructure",
-    icon: <Network className="h-4 w-4" />,
-    children: [
-      { id: "router", label: "router-debian11-x64", icon: <Globe className="h-4 w-4" /> },
-      { id: "switch", label: "Core Switch", icon: <Network className="h-4 w-4" /> },
-    ],
-  },
-  {
-    id: "attackers",
-    label: "Attacker VMs",
-    icon: <Shield className="h-4 w-4" />,
-    children: [
-      { id: "kali", label: "attacker-kali", icon: <Monitor className="h-4 w-4" /> },
-    ],
-  },
-  {
-    id: "targets",
-    label: "Target VMs",
-    icon: <Monitor className="h-4 w-4" />,
-    children: [
-      { id: "win11", label: "win11-22h2", icon: <Monitor className="h-4 w-4" /> },
-    ],
-  },
-]
+function buildTreeFromVmDefs(
+  vmDefs: Record<string, Record<string, unknown>> | null,
+  enrichedVmDefs: Record<string, Record<string, unknown>> | null,
+): RangeNode[] {
+  const deployedChildren: RangeNode[] = []
+  const allDefs = enrichedVmDefs ?? vmDefs ?? {}
 
-export function RangeTreeContent() {
-  const allIds = PLACEHOLDER_RANGE.flatMap((n) => [
+  for (const [key, def] of Object.entries(allDefs)) {
+    const label = (def.hostname as string) || key
+    deployedChildren.push({
+      id: key,
+      label,
+      icon: <Monitor className="h-4 w-4" />,
+    })
+  }
+
+  return [
+    {
+      id: "deployed",
+      label: "Deployed VMs",
+      icon: <FolderOpen className="h-4 w-4" />,
+      children: deployedChildren,
+    },
+    {
+      id: "non-deployed",
+      label: "Non Deployed VMs",
+      icon: <FolderOpen className="h-4 w-4" />,
+      children: [],
+    },
+  ]
+}
+
+export function RangeTreeContent({
+  vmDefs,
+  enrichedVmDefs,
+}: {
+  vmDefs?: Record<string, Record<string, unknown>> | null
+  enrichedVmDefs?: Record<string, Record<string, unknown>> | null
+}) {
+  const treeData = buildTreeFromVmDefs(vmDefs ?? null, enrichedVmDefs ?? null)
+  const allIds = treeData.flatMap((n) => [
     n.id,
     ...(n.children?.map((c) => c.id) ?? []),
   ])
@@ -56,8 +67,8 @@ export function RangeTreeContent() {
       <div className="flex h-full flex-col">
         <div className="flex-1 min-h-0 border border-white/20 overflow-clip">
           <TreeView className="p-0 h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {PLACEHOLDER_RANGE.map((node, idx) => {
-            const isLast = idx === PLACEHOLDER_RANGE.length - 1
+          {treeData.map((node, idx) => {
+            const isLast = idx === treeData.length - 1
             return (
               <TreeNode key={node.id} isLast={isLast} nodeId={node.id}>
                 <TreeNodeTrigger>

@@ -1,6 +1,6 @@
 import { createWsHandler, addFetcher, addOperation } from "./poller.js"
 import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./templates.js"
-import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, preloadInventory, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, fetchRdpConfigs, getVmDefs } from "./range.js"
+import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, preloadInventory, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, fetchRdpConfigs, getVmDefs } from "./ludus/range.js"
 import { fetchFocusedCategoriesAndTechniques } from "./caldera/categories.js"
 import { initDatabase, getCustomAbilities, createCustomAbility, updateCustomAbility, deleteCustomAbility } from "./caldera/customAbilities.js"
 import { createRdpProxyHandler } from "./rdp-proxy.js"
