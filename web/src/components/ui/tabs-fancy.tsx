@@ -118,7 +118,7 @@ function TabsFancy({
 
   return (
     <div className={cn("w-full", className)}>
-      <div className="flex flex-row gap-6 rounded-4xl overflow-hidden h-full min-h-0">
+      <div className="flex flex-row gap-6 overflow-hidden h-full min-h-0">
         {!hideSidebar && (
           <div className="w-56 flex flex-col rounded-4xl bg-muted p-3 min-h-0 overflow-hidden">
             <div className="shrink-0" style={{ minHeight: "40px" }} />
@@ -172,7 +172,7 @@ function TabsFancy({
           </div>
         )}
 
-        <div className="flex-1 flex flex-col min-w-0 pt-0 pb-0 px-3">
+        <div className="flex-1 flex flex-col min-w-0 pt-0 pb-0 rounded-none">
           <div className="shrink-0 grid grid-cols-[1fr_auto_1fr] items-start gap-3 min-h-[40px] px-1">
             <div className="flex items-center gap-6 text-xs text-muted-foreground">
               {cpuUsage && (

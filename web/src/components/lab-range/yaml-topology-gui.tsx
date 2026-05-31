@@ -36,10 +36,33 @@ export function YamlTopologyGui({
   templateItems = [],
 }: YamlTopologyGuiProps) {
   const [activeLeftTab, setActiveLeftTab] = useState<"templates" | "range" | "snapshots">("range")
+  const [selectedRangeNode, setSelectedRangeNode] = useState<string | null>(null)
+  const [activeRightTab, setActiveRightTab] = useState<string>("topology")
+  const [customVmConfig, setCustomVmConfig] = useState<string>("#please write your single vm config here\n")
+  const [isCustomVmMode, setIsCustomVmMode] = useState(false)
 
-  const yamlText = useMemo(() => (vmDefs ? vmDefsToYaml(vmDefs) : ""), [vmDefs])
-  // Combined static + dynamic YAML fed to topology — auto-updates when dynamic VMs change
-  const enrichedYaml = useMemo(() => (enrichedVmDefs ? vmDefsToYaml(enrichedVmDefs) : ""), [enrichedVmDefs])
+  const yamlText = useMemo(() => (vmDefs ? "# default\n" + vmDefsToYaml(vmDefs) : ""), [vmDefs])
+  const enrichedYaml = useMemo(() => (enrichedVmDefs ? "# enriched\n" + vmDefsToYaml(enrichedVmDefs) : ""), [enrichedVmDefs])
+
+  const handleWriteVmConf = () => {
+    setSelectedRangeNode(null)
+    setIsCustomVmMode(true)
+    setActiveRightTab("yaml")
+    setActiveLeftTab("range")
+  }
+
+  const handleAddVmConf = (name: string) => {
+    console.log("Add VM Conf:", name)
+  }
+
+  const handleNodeSelect = (nodeId: string | null) => {
+    setIsCustomVmMode(false)
+    setSelectedRangeNode(nodeId)
+  }
+
+  const resetCustomVmConfig = () => {
+    setCustomVmConfig("#please write your single vm config here\n")
+  }
 
   const leftPanelTabs: Category[] = [
     {
@@ -50,7 +73,7 @@ export function YamlTopologyGui({
     {
       id: "range",
       label: "Range",
-      content: <RangeTreeContent vmDefs={vmDefs} enrichedVmDefs={enrichedVmDefs} />,
+      content: <RangeTreeContent vmDefs={vmDefs} enrichedVmDefs={enrichedVmDefs} onNodeSelect={handleNodeSelect} onWriteVmConf={handleWriteVmConf} onAddVmConf={handleAddVmConf} />,
     },
     {
       id: "snapshots",
@@ -63,10 +86,21 @@ export function YamlTopologyGui({
     {
       id: "yaml",
       label: "config.yaml",
-      content: (
+      content: isCustomVmMode ? (
         <textarea
           className="h-full w-full resize-none bg-muted p-4 font-mono text-sm text-foreground placeholder-muted-foreground focus:outline-none"
-          value={yamlText}
+          value={customVmConfig}
+          onChange={(e) => setCustomVmConfig(e.target.value)}
+          spellCheck={false}
+        />
+      ) : selectedRangeNode === "non-deployed" || selectedRangeNode === null ? (
+        <div className="h-full w-full flex items-center justify-center">
+          <p className="text-sm text-muted-foreground">Please click on a VM</p>
+        </div>
+      ) : (
+        <textarea
+          className="h-full w-full resize-none bg-muted p-4 font-mono text-sm text-foreground placeholder-muted-foreground focus:outline-none"
+          value={selectedRangeNode === "deployed" ? enrichedYaml : yamlText}
           readOnly
           placeholder="No VM definitions available"
           spellCheck={false}
@@ -86,7 +120,7 @@ export function YamlTopologyGui({
     <div className={cn("flex flex-row gap-6 h-full min-h-0", className)}>
       <LeftPanelTabs
         tabs={leftPanelTabs}
-        className="w-56 shrink-0"
+        className="w-56 shrink-0 h-full"
         activeTab={activeLeftTab}
         onTabChange={setActiveLeftTab}
       />
@@ -98,6 +132,8 @@ export function YamlTopologyGui({
         <TabsFancy
           categories={rightPanelCategories}
           defaultCategory="topology"
+          activeCategory={activeRightTab}
+          onCategoryChange={setActiveRightTab}
           items={items}
           className="flex-1 min-w-0"
           cpuUsage={cpuUsage}

@@ -48,7 +48,7 @@ export function LeftPanelTabs({ tabs, className, activeTab: controlledTab, onTab
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.2 }}
-              className="h-full"
+              className="h-full min-h-0"
             >
               {activeTabData?.content}
             </motion.div>
