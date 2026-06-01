@@ -197,6 +197,7 @@ export function LabRangeContent({
             deployingVmHostname={state.deployingVmHostname}
             onCreateVmConfig={state.createDeployableVmConfig}
             onDeleteVmConfig={state.deleteDeployableVmConfig}
+            onDeleteRunningVm={state.handleDeleteRunningVM}
             onReset={state.handleReset}
             onSingleDeploy={state.handleSingleDeploy}
             templateItems={state.templateItems}

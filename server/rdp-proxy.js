@@ -277,7 +277,6 @@ function setupRelay(ws, tlsSocket, vmIp) {
   ws.binaryType = "arraybuffer"
 
   tlsSocket.on("end", () => {
-    console.log(`${log} TLS ended — WS→TLS: ${wsBytes}B, TLS→WS: ${tlsBytes}B`)
     ws.close()
   })
 
@@ -300,8 +299,6 @@ export function createRdpProxyHandler() {
         return
       }
 
-      console.log(`[rdp] WebSocket opened for ${vmIp}:3389`)
-
       let handshakeDone = false
 
       ws.binaryType = "arraybuffer"
@@ -318,12 +315,8 @@ export function createRdpProxyHandler() {
         handshakeDone = true
         try {
           const requestData = new Uint8Array(event.data)
-          console.log(`[rdp ${vmIp}] RDCleanPath request (${requestData.length} bytes)`)
-
           // Parse RDCleanPath request (use vmIp from URL, not destination from PDU)
           const request = parseRDCleanPathRequest(requestData)
-          console.log(`[rdp ${vmIp}] destination: ${request.destination}`)
-
           // Perform RDP handshake
           const { x224Response, certChain, tlsSocket } = await performRDPHandshake(
             vmIp,
@@ -334,7 +327,6 @@ export function createRdpProxyHandler() {
           // Send RDCleanPath response
           const serverAddr = `${vmIp}:3389`
           const responsePdu = buildRDCleanPathResponse(serverAddr, x224Response, certChain)
-          console.log(`[rdp ${vmIp}] Sending RDCleanPath response (${responsePdu.length} bytes)`)
           ws.send(responsePdu)
 
           // Set up relay
@@ -350,8 +342,7 @@ export function createRdpProxyHandler() {
             }
           })
 
-          console.log(`[rdp ${vmIp}] Handshake complete — relay active`)
-        } catch (err) {
+          } catch (err) {
           console.error(`[rdp ${vmIp}] Handshake error:`, err.message)
           try {
             const errorPdu = buildRDCleanPathError(1, 502)
@@ -367,8 +358,7 @@ export function createRdpProxyHandler() {
           session.tlsSocket.destroy()
           activeSessions.delete(ws)
         }
-        console.log(`[rdp ${vmIp}] WebSocket closed`)
-      })
+        })
     },
     message() {},
     close() {},

@@ -160,13 +160,8 @@ function deduplicate(abilities) {
 }
 
 async function main() {
-  console.log("Fetching all abilities from Caldera...")
   const abilities = await fetchAbilities()
-  console.log(`Total abilities: ${abilities.length}`)
-
   const filtered = abilities.filter(a => VALID_TECHNIQUES.has(a.technique_id) && hasWindowsExecutor(a))
-  console.log(`Windows abilities in focused techniques: ${filtered.length}`)
-
   const result = build()
 
   for (const ability of filtered) {
@@ -191,7 +186,6 @@ async function main() {
       const { keep, removed } = deduplicate(result.techniques[cat][tid].abilities)
       if (removed.length > 0) {
         result.techniques[cat][tid].abilities = keep
-        console.log(`  Deduped ${tid}: removed ${removed.length} cmd duplicate(s): ${removed.join(", ")}`)
         totalRemoved += removed.length
       }
     }
@@ -218,15 +212,11 @@ async function main() {
     totalTechs += Object.keys(techs).length
     for (const [tid, t] of Object.entries(techs)) {
       totalAbilities += t.abilities.length
-      console.log(`  ${cat}/${tid}: ${t.technique_name} (${t.abilities.length} abilities)`)
-    }
+      }
   }
-  console.log(`\nTotal: ${totalAbilities} abilities across ${totalTechs} techniques (${totalRemoved} duplicates removed)`)
-
   Bun.write(OUT_FILE, JSON.stringify(result, null, 2))
   const size = (Bun.file(OUT_FILE).size / 1024).toFixed(1)
-  console.log(`\nWrote ${OUT_FILE} (${size} KB)`)
-}
+  }
 
 main().catch(err => {
   console.error("Error:", err.message)

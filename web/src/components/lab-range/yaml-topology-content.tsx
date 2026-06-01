@@ -17,6 +17,7 @@ interface YamlTopologyContentProps {
   deployingVmHostname?: string | null
   onCreateVmConfig?: (hostname: string, config: string, parsedConfig: Record<string, unknown>) => Promise<{ id: string } | { error: string }>
   onDeleteVmConfig?: (id: string, hostname: string) => Promise<{ success: boolean } | { error: string }>
+  onDeleteRunningVm?: (vmName: string) => Promise<{ deleted: string } | { error: string }>
   onReset?: () => void
   onSingleDeploy?: (vmConfig: { hostname: string; yaml: string }) => void
   templateItems?: TemplateItem[]

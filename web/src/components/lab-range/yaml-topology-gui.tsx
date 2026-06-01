@@ -1,8 +1,9 @@
 import { useState, useMemo } from "react"
-import { FilePen } from "lucide-react"
+import { FilePen, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { vmDefsToYaml } from "@/lib/json2yaml"
 import yaml from "js-yaml"
+import * as backendWs from "@/lib/backend-ws"
 import { TabsFancy, type Category, type Item, type DeploymentStatus } from "@/components/ui/tabs-fancy"
 import { VmTopology } from "@/components/lab-range/vm-topology"
 import { TemplateTreeContent } from "@/components/lab-range/template-tree-content"
@@ -34,6 +35,7 @@ type YamlTopologyGuiProps = {
   deployingVmHostname?: string | null
   onCreateVmConfig?: (hostname: string, config: string, parsedConfig: Record<string, unknown>) => Promise<{ id: string } | { error: string }>
   onDeleteVmConfig?: (id: string, hostname: string) => Promise<{ success: boolean } | { error: string }>
+  onDeleteRunningVm?: (vmName: string) => Promise<{ deleted: string } | { error: string }>
   onReset?: () => void
   onSingleDeploy?: (vmConfig: { hostname: string; yaml: string }) => void
   templateItems?: { id: number; label: string; subText: string; icon: string }[]
@@ -53,6 +55,7 @@ export function YamlTopologyGui({
   deployingVmHostname,
   onCreateVmConfig,
   onDeleteVmConfig,
+  onDeleteRunningVm,
   onReset,
   onSingleDeploy,
   templateItems = [],
@@ -65,6 +68,7 @@ export function YamlTopologyGui({
   const [addVmError, setAddVmError] = useState<string | null>(null)
   const [addVmSuccess, setAddVmSuccess] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<{ key: string; hostname: string; id: string } | null>(null)
+  const [deletingVm, setDeletingVm] = useState(false)
   const [proofreadState, setProofreadState] = useState(false)
   const [proofreadError, setProofreadError] = useState<string | null>(null)
   const [alerts, setAlerts] = useState<{ id: number; type: "error" | "success"; message: string }[]>([])
@@ -248,14 +252,50 @@ export function YamlTopologyGui({
 
   const handleDeleteVm = (key: string) => {
     const vmConfig = nonDeployedVms[key] ?? deployedCustomVms[key]
+    console.log(`[delete] handleDeleteVm called with key: "${key}", found in: ${nonDeployedVms[key] ? "nonDeployedVms" : deployedCustomVms[key] ? "deployedCustomVms" : "neither"}`)
     if (!vmConfig) return
     const hostname = (vmConfig.parsed.hostname as string) || key
+    console.log(`[delete] Setting pendingDelete for hostname: "${hostname}"`)
     setPendingDelete({ key, hostname, id: vmConfig.id })
   }
 
   const confirmDeleteVm = async () => {
     if (!pendingDelete) return
     const { key, id } = pendingDelete
+    const isDeployed = !!deployedCustomVms[key]
+
+    if (isDeployed) {
+      if (!onDeleteRunningVm) return
+      console.log(`[delete] Deployed VM detected: "${pendingDelete.hostname}" (key: ${key})`)
+      setDeletingVm(true)
+      try {
+        const result = await onDeleteRunningVm(pendingDelete.hostname)
+        console.log(`[delete] onDeleteRunningVm result:`, result)
+        setDeletingVm(false)
+        if ("error" in result) {
+          console.error(`[delete] Failed to delete "${pendingDelete.hostname}":`, result.error)
+          addAlert("error", result.error)
+          setPendingDelete(null)
+          return
+        }
+        console.log(`[delete] VM deleted successfully, refreshing rangeStatus`)
+        backendWs.send({ type: "rangeStatus" })
+        if (selectedRangeNode === `deployed-custom-${key}`) {
+          setSelectedRangeNode(null)
+          setIsCustomVmMode(false)
+          setActiveRightTab("topology")
+        }
+        setPendingDelete(null)
+        return
+      } catch (err) {
+        console.error(`[delete] Unexpected error deleting "${pendingDelete.hostname}":`, err)
+        setDeletingVm(false)
+        addAlert("error", `Unexpected error: ${err.message}`)
+        setPendingDelete(null)
+        return
+      }
+    }
+
     if (onDeleteVmConfig) {
       const response = await onDeleteVmConfig(id, key)
       if ("error" in response) {
@@ -461,7 +501,7 @@ export function YamlTopologyGui({
           hideSidebar
         />
       )}
-      <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => { if (!open) setPendingDelete(null) }}>
+      <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => { if (!open && !deletingVm) setPendingDelete(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete VM</AlertDialogTitle>
@@ -469,10 +509,12 @@ export function YamlTopologyGui({
               Are you sure you want to delete "{pendingDelete?.hostname}"? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={confirmDeleteVm}>Delete</AlertDialogAction>
-          </AlertDialogFooter>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deletingVm}>Cancel</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={confirmDeleteVm} disabled={deletingVm}>
+            {deletingVm ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>

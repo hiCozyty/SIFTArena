@@ -421,9 +421,7 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
         return
       }
 
-      console.log("[opencode-chat] Q1: aborting session")
       await clientRef.current.session.abort({ path: { id: currentSessionId } }).catch(() => {})
-      console.log("[opencode-chat] Q2: reconnecting event stream")
       await reconnectEventStream()
 
       activeGenerationIdRef.current = null
@@ -443,8 +441,6 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
           return `Q${qi + 1}: ${q.question || "Unknown"}\nA${qi + 1}: ${optionLabel}`
         }).join("\n\n")
       }).filter(Boolean).join("\n\n") || Object.entries(answers).map(([qi, a]) => `Q${parseInt(qi) + 1}: ${a}`).join("\n\n")
-
-      console.log("[opencode-chat] Q3: questionContext built:", questionContext.slice(0, 80))
 
       const userMessage: Message = {
         id: crypto.randomUUID(),
@@ -473,18 +469,10 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
       partGenerationMapRef.current.clear()
       lastUserMessageRef.current = questionContext
 
-      console.log("[opencode-chat] Q4: refs set, genId:", newGenId, "assistantId:", assistantId)
-      console.log("[opencode-chat] Q5: eventLoopRunning:", eventLoopRunningRef.current, "streamAbort:", !!streamAbortRef.current)
-
       if (subscribeReadyRef.current) {
-        console.log("[opencode-chat] Q6: awaiting subscribeReadyRef")
         await subscribeReadyRef.current
-        console.log("[opencode-chat] Q7: subscribeReadyRef resolved")
-      } else {
-        console.log("[opencode-chat] Q6: subscribeReadyRef is null, skipping await")
-      }
-
-      console.log("[opencode-chat] Q8: calling promptAsync")
+        } else {
+        }
 
       try {
         promptAbortRef.current = new AbortController()
@@ -496,9 +484,7 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
           },
           signal: promptAbortRef.current.signal,
         })
-        console.log("[opencode-chat] Q9: promptAsync resolved")
-      } catch (err) {
-        console.log("[opencode-chat] Q9: promptAsync error:", err)
+        } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           finalizeMessage()
           return

@@ -133,7 +133,7 @@ export function RangeTreeContent({
                            <TreeIcon icon={child.icon} />
                            <TreeLabel className="whitespace-normal break-words">{child.label}</TreeLabel>
                            {isDeploying && <Spinner variant="circle" className="size-3 shrink-0 animate-spin" />}
-                           {isDeletable && onDeleteVm && (
+                            {isDeletable && !isDeploying && onDeleteVm && (
                             <button
                               className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
                               onClick={(e) => {

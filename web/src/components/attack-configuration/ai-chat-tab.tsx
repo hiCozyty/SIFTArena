@@ -53,7 +53,6 @@ export function AiChatTab({ messages, isGenerating, isToolExecuting, error, send
       console.error("[ai-chat-tab] handleAnswerQuestion: no assistant message found")
       return
     }
-    console.log("[ai-chat-tab] handleAnswerQuestion:", { answers, assistantMessageId: lastAssistantMsg.id })
     submitQuestionAnswer(lastAssistantMsg.id, answers)
   }, [messages, submitQuestionAnswer])
 
@@ -63,8 +62,6 @@ export function AiChatTab({ messages, isGenerating, isToolExecuting, error, send
     p.toolInvocation.toolName === "question" &&
     p.toolInvocation.state === "call"
   ) ?? false
-
-  console.log("[ai-chat] isWaitingForQuestion:", isWaitingForQuestion, "isGenerating:", isGenerating)
 
   const isEmpty = messages.length === 0
 

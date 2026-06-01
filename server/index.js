@@ -1,6 +1,6 @@
 import { createWsHandler, addFetcher, addOperation } from "./poller.js"
 import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./templates.js"
-import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, deployCustomVM, preloadInventory, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, fetchRdpConfigs, getVmDefs, listProxmoxVMs } from "./ludus/range.js"
+import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, deployCustomVM, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, fetchRdpConfigs, getVmDefs, listProxmoxVMs } from "./ludus/range.js"
 import { fetchFocusedCategoriesAndTechniques } from "./caldera/categories.js"
 import { initDatabase, getCustomAbilities, createCustomAbility, updateCustomAbility, deleteCustomAbility } from "./caldera/customAbilities.js"
 import { initDatabase as initVmConfigDb, getDeployableVmConfigs, createDeployableVmConfig, updateDeployableVmConfig, deleteDeployableVmConfig } from "./ludus/deployableVmConfigs.js"
@@ -9,12 +9,10 @@ import { createRdpProxyHandler } from "./rdp-proxy.js"
 const LUDUS_SERVER_URL = process.env.LUDUS_SERVER_URL + "/api/v2"
 const LUDUS_API_KEY = process.env.LUDUS_API_KEY
 const BUN_SERVER_PORT = parseInt(process.env.BUN_SERVER_PORT)
-
 console.log("CWD:", process.cwd())
 console.log("LUDUS_SERVER_URL:", process.env.LUDUS_SERVER_URL)
 console.log("LUDUS_API_KEY (first 5):", process.env.LUDUS_API_KEY?.slice(0, 5))
 console.log("BUN_SERVER_PORT:", process.env.BUN_SERVER_PORT)
-
 function maskKey(key) {
   if (!key) return undefined
   if (key.length <= 8) return key.slice(0, 3) + "****"
@@ -122,7 +120,5 @@ const server = Bun.serve({
     },
   },
 })
-
-preloadInventory(LUDUS_SERVER_URL, LUDUS_API_KEY).catch(() => {})
 
 console.log(`Bun API server running on ws://localhost:${BUN_SERVER_PORT}`)

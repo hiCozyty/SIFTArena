@@ -35,8 +35,9 @@ function isReallyBuilt(t: { built: boolean; status: string }): boolean {
 
 const EXPECTED_VMS = ["router-debian11-x64", "attacker-kali", "win11-22h2"]
 
-function parsePlayRecap(playRecap: string[]): boolean {
-  return EXPECTED_VMS.every((suffix) => {
+function parsePlayRecap(playRecap: string[], expectedVms?: string[]): boolean {
+  const vms = expectedVms ?? EXPECTED_VMS
+  return vms.every((suffix) => {
     const line = playRecap.find((l) => l.includes(suffix))
     if (!line) return false
     const unreachable = line.match(/unreachable=(\d+)/)?.[1]
@@ -406,7 +407,6 @@ export function useLabRangeState(onComplete: () => void) {
       if (data.type === "listProxmoxVMs") {
         const result = data.result as string[] | undefined
         if (result) proxmoxVMsRef.current = result
-        console.log("[check] listProxmoxVMs received:", result)
         if (mode === "auto" && phaseRef.current === "check" && rangeStatusReceivedRef.current) {
           runVmCheck()
         }
@@ -438,13 +438,7 @@ export function useLabRangeState(onComplete: () => void) {
       const runVmCheck = () => {
         if (phaseRef.current !== "check") return
 
-        console.log("[check] === DECISION POINT ===")
-        console.log("[check] Ludus API VMs:", result.map((vm) => vm.name))
-        console.log("[check] qm list VMs:", proxmoxVMs)
-        console.log("[check] routerFound:", routerFound, "| kaliFound:", kaliFound, "| windowsFound:", windowsFound)
-
         if (routerFound && kaliFound && windowsFound) {
-          console.log("[check] All VMs present — skipping to Caldera check")
           setTimelineItems((prev) =>
             prev.map((item) =>
               item.id === "check-vms"
@@ -496,8 +490,6 @@ export function useLabRangeState(onComplete: () => void) {
           return
         }
 
-        console.log("[check] VMs missing from both sources — HALTING (temporary safety stop)")
-        console.log("[check] Missing router:", !routerFound, "| Missing kali:", !kaliFound, "| Missing windows:", !windowsFound)
         setTimelineItems((prev) =>
           prev.map((item) =>
             item.id === "check-vms"
@@ -581,7 +573,7 @@ export function useLabRangeState(onComplete: () => void) {
 
           if (!recapContainsVM) return
 
-          const allOk = parsePlayRecap(playRecapRef.current)
+          const allOk = parsePlayRecap(playRecapRef.current, [vmName])
 
           setTimelineItems((prev) => [
             ...prev.map((item) =>
@@ -709,11 +701,10 @@ export function useLabRangeState(onComplete: () => void) {
         })
         setCalderaActive(true)
         backendWs.send({ type: "checkCaldera", label: "kali" })
-        setDeployActive(false)
-        setDeploymentStatus("Deployed")
-        setIsDeploying(false)
-        unsub()
-        backendWs.send({ type: "unsubscribe", channel: "rangeStatus" })
+          setDeployActive(false)
+          setDeploymentStatus("Deployed")
+          unsub()
+          backendWs.send({ type: "unsubscribe", channel: "rangeStatus" })
       }
     })
 
@@ -803,7 +794,9 @@ export function useLabRangeState(onComplete: () => void) {
           result = raw[0] as VmInfo[]
         }
       }
-      setRangeVmNames(result.map((vm) => vm.name))
+      const names = result.map((vm) => vm.name)
+      console.log(`[rangeStatus] Updated rangeVmNames:`, names)
+      setRangeVmNames(names)
     })
     backendWs.send({ type: "subscribe", channel: "rangeStatus" })
     backendWs.send({ type: "rangeStatus" })
@@ -867,27 +860,57 @@ export function useLabRangeState(onComplete: () => void) {
     })
   }
 
+  const handleDeleteRunningVM = (vmName: string): Promise<{ deleted: string } | { error: string }> => {
+    console.log(`[delete] handleDeleteRunningVM called with vmName: "${vmName}"`)
+    return new Promise((resolve) => {
+      const unsub = backendWs.subscribe((data) => {
+        if (data.type !== "deleteVM") return
+        const error = data.error as string | undefined
+        if (error) {
+          console.error(`[delete] Backend deleteVM error:`, error)
+          unsub()
+          resolve({ error })
+          return
+        }
+        const result = data.result as { deleted?: string } | undefined
+        if (!result?.deleted) {
+          console.error(`[delete] Backend returned empty result for deleteVM`)
+          unsub()
+          resolve({ error: "Empty response" })
+          return
+        }
+        console.log(`[delete] Backend confirmed deletion of: "${result.deleted}"`)
+        unsub()
+        resolve({ deleted: result.deleted })
+      })
+      console.log(`[delete] Sending deleteVM message to backend`)
+      backendWs.send({ type: "deleteVM", vm: vmName })
+    })
+  }
+
   const nonDeployedVms = useMemo(() => {
     const result: Record<string, { id: string; parsed: Record<string, unknown>; raw: string }> = {}
     for (const [hostname, config] of Object.entries(customVmConfigs)) {
       const isDeployed = rangeVmNames.some((vmName) => vmName.endsWith(hostname))
-      if (!isDeployed) {
+      if (!isDeployed || deployingVmHostname === hostname) {
         result[hostname] = { id: config.id, parsed: config.parsedConfig, raw: config.config }
       }
     }
+    console.log(`[nonDeployedVms] Computed:`, Object.keys(result))
     return result
-  }, [customVmConfigs, rangeVmNames])
+  }, [customVmConfigs, rangeVmNames, deployingVmHostname])
 
   const deployedCustomVms = useMemo(() => {
     const result: Record<string, { id: string; parsed: Record<string, unknown>; raw: string }> = {}
     for (const [hostname, config] of Object.entries(customVmConfigs)) {
       const isDeployed = rangeVmNames.some((vmName) => vmName.endsWith(hostname))
-      if (isDeployed) {
+      if (isDeployed && deployingVmHostname !== hostname) {
         result[hostname] = { id: config.id, parsed: config.parsedConfig, raw: config.config }
       }
     }
+    console.log(`[deployedCustomVms] Computed:`, Object.keys(result))
     return result
-  }, [customVmConfigs, rangeVmNames])
+  }, [customVmConfigs, rangeVmNames, deployingVmHostname])
 
   const handleReset = () => {
     setIsDeploying(true)
@@ -1139,6 +1162,7 @@ export function useLabRangeState(onComplete: () => void) {
 
       setPostDeploySnapshotActive(false)
       setDeployingVmHostname(null)
+      setIsDeploying(false)
       onCompleteRef.current()
       unsub()
     })
@@ -1172,6 +1196,7 @@ export function useLabRangeState(onComplete: () => void) {
     deployingVmHostname,
     createDeployableVmConfig,
     deleteDeployableVmConfig,
+    handleDeleteRunningVM,
     handleReset,
     handleSingleDeploy,
   }

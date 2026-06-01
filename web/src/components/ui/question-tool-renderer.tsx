@@ -19,7 +19,6 @@ export interface QuestionToolRendererProps {
 }
 
 export function QuestionToolRenderer({ questions, onAnswer }: QuestionToolRendererProps) {
-  console.log("[QuestionToolRenderer] mounted with questions:", questions)
   const [selections, setSelections] = useState<Record<number, Set<string>>>({})
   const [customAnswers, setCustomAnswers] = useState<Record<number, string>>({})
   const [submitted, setSubmitted] = useState(false)
@@ -52,9 +51,7 @@ export function QuestionToolRenderer({ questions, onAnswer }: QuestionToolRender
         answers[i] = selected.join(", ")
       }
     })
-    console.log("[QuestionToolRenderer] submit clicked, answers:", answers)
     if (Object.keys(answers).length > 0) {
-      console.log("[QuestionToolRenderer] calling onAnswer with:", answers)
       onAnswer(answers)
       setSubmitted(true)
     }
