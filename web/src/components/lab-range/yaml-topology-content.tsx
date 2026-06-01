@@ -14,6 +14,7 @@ interface YamlTopologyContentProps {
   enrichedVmDefs?: Record<string, Record<string, unknown>> | null
   nonDeployedVms?: Record<string, { id: string; parsed: Record<string, unknown>; raw: string }>
   deployedCustomVms?: Record<string, { id: string; parsed: Record<string, unknown>; raw: string }>
+  deployingVmHostname?: string | null
   onCreateVmConfig?: (hostname: string, config: string, parsedConfig: Record<string, unknown>) => Promise<{ id: string } | { error: string }>
   onDeleteVmConfig?: (id: string, hostname: string) => Promise<{ success: boolean } | { error: string }>
   onReset?: () => void

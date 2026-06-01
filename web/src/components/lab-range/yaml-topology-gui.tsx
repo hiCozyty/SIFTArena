@@ -31,6 +31,7 @@ type YamlTopologyGuiProps = {
   enrichedVmDefs?: Record<string, Record<string, unknown>> | null
   nonDeployedVms?: Record<string, { id: string; parsed: Record<string, unknown>; raw: string }>
   deployedCustomVms?: Record<string, { id: string; parsed: Record<string, unknown>; raw: string }>
+  deployingVmHostname?: string | null
   onCreateVmConfig?: (hostname: string, config: string, parsedConfig: Record<string, unknown>) => Promise<{ id: string } | { error: string }>
   onDeleteVmConfig?: (id: string, hostname: string) => Promise<{ success: boolean } | { error: string }>
   onReset?: () => void
@@ -49,6 +50,7 @@ export function YamlTopologyGui({
   enrichedVmDefs,
   nonDeployedVms = {},
   deployedCustomVms = {},
+  deployingVmHostname,
   onCreateVmConfig,
   onDeleteVmConfig,
   onReset,
@@ -283,7 +285,7 @@ export function YamlTopologyGui({
     {
       id: "range",
       label: "Range",
-        content: <RangeTreeContent vmDefs={vmDefs} deployedCustomVms={deployedCustomVms} nonDeployedVms={nonDeployedVms} selectedNode={selectedRangeNode} onNodeSelect={handleNodeSelect} onWriteVmConf={handleWriteVmConf} onAddVmConf={handleAddVmConf} onDeleteVm={handleDeleteVm} isConfigTabActive={isCustomVmMode} />,
+        content: <RangeTreeContent vmDefs={vmDefs} deployedCustomVms={deployedCustomVms} nonDeployedVms={nonDeployedVms} deployingVmHostname={deployingVmHostname} selectedNode={selectedRangeNode} onNodeSelect={handleNodeSelect} onWriteVmConf={handleWriteVmConf} onAddVmConf={handleAddVmConf} onDeleteVm={handleDeleteVm} isConfigTabActive={isCustomVmMode} />,
     },
     {
       id: "snapshots",

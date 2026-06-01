@@ -79,6 +79,7 @@ export function useLabRangeState(onComplete: () => void) {
   const selectedDeployYamlRef = useRef<string>("")
   const deployedVmNameRef = useRef<string>("")
   const [postDeploySnapshotActive, setPostDeploySnapshotActive] = useState(false)
+  const [deployingVmHostname, setDeployingVmHostname] = useState<string | null>(null)
   const [customVmConfigs, setCustomVmConfigs] = useState<Record<string, CustomVmConfig>>({})
   const [rangeVmNames, setRangeVmNames] = useState<string[]>([])
   const onCompleteRef = useRef(onComplete)
@@ -899,6 +900,7 @@ export function useLabRangeState(onComplete: () => void) {
     selectedDeployVmRef.current = vmConfig.hostname
     selectedDeployYamlRef.current = vmConfig.yaml
     deployedVmNameRef.current = ""
+    setDeployingVmHostname(vmConfig.hostname)
     setIsDeploying(true)
     setDeploymentStatus("Deploying")
     deployModeRef.current = "singleDeploy"
@@ -1136,6 +1138,7 @@ export function useLabRangeState(onComplete: () => void) {
       }
 
       setPostDeploySnapshotActive(false)
+      setDeployingVmHostname(null)
       onCompleteRef.current()
       unsub()
     })
@@ -1166,6 +1169,7 @@ export function useLabRangeState(onComplete: () => void) {
     setDynamicVms,
     nonDeployedVms,
     deployedCustomVms,
+    deployingVmHostname,
     createDeployableVmConfig,
     deleteDeployableVmConfig,
     handleReset,

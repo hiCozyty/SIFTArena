@@ -10,6 +10,7 @@ import {
 } from "@/components/kibo-ui/tree"
 import { Monitor, FolderOpen, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 
 type RangeNode = {
   id: string
@@ -85,6 +86,7 @@ export function RangeTreeContent({
   vmDefs,
   deployedCustomVms,
   nonDeployedVms,
+  deployingVmHostname,
   onNodeSelect,
   onWriteVmConf,
   onAddVmConf,
@@ -95,6 +97,7 @@ export function RangeTreeContent({
   vmDefs?: Record<string, Record<string, unknown>> | null
   deployedCustomVms?: Record<string, Record<string, unknown>> | null
   nonDeployedVms?: Record<string, Record<string, unknown>> | null
+  deployingVmHostname?: string | null
   onNodeSelect?: (nodeId: string | null) => void
   onWriteVmConf?: () => void
   onAddVmConf?: () => void
@@ -119,16 +122,18 @@ export function RangeTreeContent({
                   <TreeLabel className="whitespace-normal break-words">{node.label}</TreeLabel>
                 </TreeNodeTrigger>
                 <TreeNodeContent hasChildren={!!node.children?.length}>
-                  {node.children?.map((child, childIdx) => {
-                    const isLastChild = childIdx === (node.children?.length ?? 0) - 1
-                    const isDeletable = node.id === "deployed-custom" || node.id === "non-deployed"
-                    const childKey = child.id.replace(`${node.id}-`, "")
-                    return (
-                      <TreeNode key={child.id} isLast={isLastChild} level={1} nodeId={child.id}>
-                        <TreeNodeTrigger>
-                          <TreeIcon icon={child.icon} />
-                          <TreeLabel className="whitespace-normal break-words">{child.label}</TreeLabel>
-                          {isDeletable && onDeleteVm && (
+                   {node.children?.map((child, childIdx) => {
+                     const isLastChild = childIdx === (node.children?.length ?? 0) - 1
+                     const isDeletable = node.id === "deployed-custom" || node.id === "non-deployed"
+                     const childKey = child.id.replace(`${node.id}-`, "")
+                     const isDeploying = node.id === "non-deployed" && deployingVmHostname === childKey
+                     return (
+                       <TreeNode key={child.id} isLast={isLastChild} level={1} nodeId={child.id}>
+                         <TreeNodeTrigger>
+                           <TreeIcon icon={child.icon} />
+                           <TreeLabel className="whitespace-normal break-words">{child.label}</TreeLabel>
+                           {isDeploying && <Spinner variant="circle" className="size-3 shrink-0 animate-spin" />}
+                           {isDeletable && onDeleteVm && (
                             <button
                               className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
                               onClick={(e) => {

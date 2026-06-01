@@ -30,7 +30,6 @@ function generateYaml(vmName, ipLastOctet) {
 }
 
 async function setRangeConfig(ludusUrl, userKey, yaml) {
-  console.log("[setRangeConfig] PUT request to:", `${ludusUrl}/range/config`)
   const formData = new FormData()
   formData.append("file", new Blob([yaml], { type: "application/yaml" }), "range.yml")
   formData.append("force", "false")
@@ -40,10 +39,8 @@ async function setRangeConfig(ludusUrl, userKey, yaml) {
     body: formData,
     tls: { rejectUnauthorized: false },
   })
-  console.log("[setRangeConfig] Ludus API response status:", response.status)
   if (!response.ok) {
     const text = await response.text()
-    console.error("[setRangeConfig] Ludus API error:", text)
     throw new Error(`Config update failed (${response.status}): ${text}`)
   }
 }
@@ -155,9 +152,7 @@ export async function listProxmoxVMs(ludusUrl, apiKey) {
 
 export async function updateRangeConfig(ludusUrl, apiKey, data) {
   const payload = data.data ?? data
-  console.log("[setRangeConfig] received data:", JSON.stringify(data, null, 2))
   if (payload.defaults) {
-    console.log("[setRangeConfig] defaults flag detected — generating YAML from VM_DEFS")
     const ludusEntries = Object.entries(VM_DEFS)
       .filter(([key]) => key !== "router")
       .map(([key, d]) => {
@@ -176,12 +171,9 @@ export async function updateRangeConfig(ludusUrl, apiKey, data) {
 ludus:
 ${ludusEntries}
 `
-    console.log("[setRangeConfig] generated YAML:\n", yaml)
     await setRangeConfig(ludusUrl, apiKey, yaml)
-    console.log("[setRangeConfig] defaults YAML sent to Ludus API successfully")
     return { result: "ok" }
   }
-  console.log("[setRangeConfig] using provided YAML from client")
   await setRangeConfig(ludusUrl, apiKey, payload.yaml)
   return { result: "ok" }
 }

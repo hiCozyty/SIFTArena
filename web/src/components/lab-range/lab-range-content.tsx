@@ -194,6 +194,7 @@ export function LabRangeContent({
             enrichedVmDefs={state.enrichedVmDefs}
             nonDeployedVms={state.nonDeployedVms}
             deployedCustomVms={state.deployedCustomVms}
+            deployingVmHostname={state.deployingVmHostname}
             onCreateVmConfig={state.createDeployableVmConfig}
             onDeleteVmConfig={state.deleteDeployableVmConfig}
             onReset={state.handleReset}
