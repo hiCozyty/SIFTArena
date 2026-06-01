@@ -385,14 +385,11 @@ export async function deleteVM(ludusUrl, apiKey, data) {
     }
   }
 
-  console.log(`[deleteVM] calling Ludus API DELETE /vm/${target.proxmoxID} for ${target.name}`)
   await apiCall(ludusUrl, apiKey, `/vm/${target.proxmoxID}`, "DELETE")
   const host = new URL(ludusUrl).hostname
-  console.log(`[deleteVM] running qm stop+destroy on ${target.proxmoxID} (${target.name}) via SSH`)
   try {
     await $`ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 root@${host} "qm stop ${target.proxmoxID} 2>/dev/null; qm destroy ${target.proxmoxID} 2>/dev/null"`.quiet()
   } catch {}
-  console.log(`[deleteVM] done — ${target.name} deleted`)
   return { deleted: target.name }
 }
 
@@ -464,15 +461,12 @@ export async function deployCustomVM(ludusUrl, apiKey, data) {
       }
     }
 
-    console.log(`[deployCustomVM] deleting existing VM ${existingVM.name} (proxmoxID: ${existingVM.proxmoxID})`)
     await apiCall(ludusUrl, apiKey, `/vm/${existingVM.proxmoxID}`, "DELETE")
     const host = new URL(ludusUrl).hostname
-    console.log(`[deployCustomVM] running qm stop+destroy on ${existingVM.proxmoxID} (${existingVM.name}) via SSH`)
     try {
       await $`ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 root@${host} "qm stop ${existingVM.proxmoxID} 2>/dev/null; qm destroy ${existingVM.proxmoxID} 2>/dev/null"`.quiet()
     } catch {}
-    console.log(`[deployCustomVM] existing VM deleted, proceeding with deploy`)
-  }
+    }
 
   const userKey = (process.env.LUDUS_USER_API_KEY || apiKey).trim()
   await setRangeConfig(ludusUrl, userKey, yaml)

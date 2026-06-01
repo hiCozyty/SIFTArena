@@ -3,10 +3,8 @@ const WS_URL = `ws://localhost:${PORT}`
 
 function connect() {
   return new Promise((resolve, reject) => {
-    console.log(`Connecting to ${WS_URL}...`)
     const ws = new WebSocket(WS_URL)
     ws.addEventListener("open", () => {
-      console.log("WebSocket connected")
       resolve(ws)
     })
     ws.addEventListener("error", (e) => {
@@ -26,7 +24,6 @@ function sendAndWait(ws, msg, timeoutMs = 300000) {
     }, timeoutMs)
     const handler = (e) => {
       const data = JSON.parse(e.data)
-      console.log(`RECV: type="${data.type}"${data.error ? ` error="${data.error}"` : ""}`)
       if (data.type === msg.type) {
         clearTimeout(timer)
         ws.removeEventListener("message", handler)
@@ -34,7 +31,6 @@ function sendAndWait(ws, msg, timeoutMs = 300000) {
       }
     }
     ws.addEventListener("message", handler)
-    console.log(`SEND: ${JSON.stringify(msg)}`)
     ws.send(JSON.stringify(msg))
   })
 }
@@ -44,42 +40,28 @@ function sendAndWait(ws, msg, timeoutMs = 300000) {
 async function exampleList(ws, label) {
   const res = await sendAndWait(ws, { type: "listSnapshots", label })
   if (res.error) { console.error("error:", res.error); return }
-  console.log(JSON.stringify(res.result, null, 2))
-}
+  }
 
 // Usage: bun test.js reset win11-22h2
 // Full lifecycle: rollback to base-clean → wait IP → wait WinRM → ansible ping
 // Returns timing breakdown of each phase
 async function exampleReset(ws, label) {
-  console.log(`Resetting ${label} to base-clean...`)
   const res = await sendAndWait(ws, { type: "restoreToBaseClean", label })
   if (res.error) { console.error("error:", res.error); return }
-  console.log(JSON.stringify(res.result, null, 2))
-}
+  }
 
 // Usage: bun test.js save win11-22h2
 // Waits for connectivity, then removes old base-clean and creates a new one
 async function exampleSave(ws, label) {
-  console.log(`Saving ${label} as new base-clean...`)
   const res = await sendAndWait(ws, { type: "saveBaseClean", label })
   if (res.error) { console.error("error:", res.error); return }
-  console.log(JSON.stringify(res.result, null, 2))
-}
+  }
 
 async function main() {
   const cmd = Bun.argv[2]
   const label = Bun.argv[3]
 
   if (!cmd || cmd === "help") {
-    console.log("Usage:")
-    console.log("  bun test.js list <label>")
-    console.log("  bun test.js reset <label>")
-    console.log("  bun test.js save <label>")
-    console.log("")
-    console.log("Examples:")
-    console.log("  bun test.js list win11-22h2")
-    console.log("  bun test.js reset win11-22h2")
-    console.log("  bun test.js save kali")
     process.exit(0)
   }
 
@@ -95,7 +77,7 @@ async function main() {
   }
 
   const ws = await connect()
-  ws.addEventListener("close", (e) => console.log(`WebSocket closed: code=${e.code} reason="${e.reason}"`))
+  ws.addEventListener("close", (e) => )
   ws.addEventListener("error", (e) => console.error("WebSocket error during session:", e.message ?? "no message"))
   await handler(ws, label)
   ws.close()

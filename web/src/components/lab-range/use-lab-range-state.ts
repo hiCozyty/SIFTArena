@@ -275,6 +275,7 @@ export function useLabRangeState(onComplete: () => void) {
     const phaseRef: { current: Phase } = { current: mode === "auto" ? "check" : "deleting" }
     const seenVMsRef: { current: Set<string> } = { current: new Set() }
     const playRecapRef: { current: string[] | null } = { current: null }
+    const playRecapPassStartRef: { current: number } = { current: 0 }
     const proxmoxVMsRef: { current: string[] } = { current: [] }
     const rangeStatusReceivedRef: { current: boolean } = { current: false }
 
@@ -433,7 +434,7 @@ export function useLabRangeState(onComplete: () => void) {
 
       const latestLog = data.latestLog as string | undefined
       const playRecap = data.playRecap as string[] | null | undefined
-      if (playRecap && phaseRef.current === "deploying") playRecapRef.current = playRecap
+      if (phaseRef.current === "deploying") playRecapRef.current = playRecap || null
 
       const runVmCheck = () => {
         if (phaseRef.current !== "check") return
@@ -567,36 +568,55 @@ export function useLabRangeState(onComplete: () => void) {
           )
         }
 
-        if (playRecapRef.current) {
-          const vmName = deployedVmNameRef.current || selectedDeployVmRef.current
-          const recapContainsVM = playRecapRef.current.some((l) => l.includes(vmName))
-
-          if (!recapContainsVM) return
-
-          const allOk = parsePlayRecap(playRecapRef.current, [vmName])
-
-          setTimelineItems((prev) => [
-            ...prev.map((item) =>
-              item.id === "deploy-rebuilding"
-                ? { ...item, title: "VM deployed", description: allOk ? "" : "completed with errors", status: allOk ? "built" : "error" }
-                : item
-            ),
-            {
-              id: "post-deploy-snapshot",
-              title: `Preparing golden image for ${vmName}`,
-              description: `Creating base-clean snapshot...`,
-              status: "building",
-            },
-          ])
-          setPostDeploySnapshotActive(true)
-          backendWs.send({ type: "prepareGoldenImage", vmNames: [vmName] })
-
-          setDeployActive(false)
-          setDeploymentStatus("Deployed")
-          setIsDeploying(false)
-          unsub()
-          backendWs.send({ type: "unsubscribe", channel: "rangeStatus" })
+        if (!playRecapRef.current) {
+          playRecapPassStartRef.current = 0
+          return
         }
+
+        const vmName = deployedVmNameRef.current || selectedDeployVmRef.current
+        const recapContainsVM = playRecapRef.current.some((l) => l.includes(vmName))
+
+        if (!recapContainsVM) {
+          playRecapPassStartRef.current = 0
+          return
+        }
+
+        const allOk = parsePlayRecap(playRecapRef.current, [vmName])
+
+        if (!allOk) {
+          playRecapPassStartRef.current = 0
+          return
+        }
+
+        const now = Date.now()
+        if (!playRecapPassStartRef.current) {
+          playRecapPassStartRef.current = now
+          return
+        }
+
+        if (now - playRecapPassStartRef.current < 5000) return
+
+        setTimelineItems((prev) => [
+          ...prev.map((item) =>
+            item.id === "deploy-rebuilding"
+              ? { ...item, title: "VM deployed", description: allOk ? "" : "completed with errors", status: allOk ? "built" : "error" }
+              : item
+          ),
+          {
+            id: "post-deploy-snapshot",
+            title: `Preparing golden image for ${vmName}`,
+            description: `Creating base-clean snapshot...`,
+            status: "building",
+          },
+        ])
+        setPostDeploySnapshotActive(true)
+        backendWs.send({ type: "prepareGoldenImage", vmNames: [vmName] })
+
+        setDeployActive(false)
+        setDeploymentStatus("Deployed")
+        setIsDeploying(false)
+        unsub()
+        backendWs.send({ type: "unsubscribe", channel: "rangeStatus" })
         return
       }
 
@@ -795,7 +815,6 @@ export function useLabRangeState(onComplete: () => void) {
         }
       }
       const names = result.map((vm) => vm.name)
-      console.log(`[rangeStatus] Updated rangeVmNames:`, names)
       setRangeVmNames(names)
     })
     backendWs.send({ type: "subscribe", channel: "rangeStatus" })
@@ -860,34 +879,6 @@ export function useLabRangeState(onComplete: () => void) {
     })
   }
 
-  const handleDeleteRunningVM = (vmName: string): Promise<{ deleted: string } | { error: string }> => {
-    console.log(`[delete] handleDeleteRunningVM called with vmName: "${vmName}"`)
-    return new Promise((resolve) => {
-      const unsub = backendWs.subscribe((data) => {
-        if (data.type !== "deleteVM") return
-        const error = data.error as string | undefined
-        if (error) {
-          console.error(`[delete] Backend deleteVM error:`, error)
-          unsub()
-          resolve({ error })
-          return
-        }
-        const result = data.result as { deleted?: string } | undefined
-        if (!result?.deleted) {
-          console.error(`[delete] Backend returned empty result for deleteVM`)
-          unsub()
-          resolve({ error: "Empty response" })
-          return
-        }
-        console.log(`[delete] Backend confirmed deletion of: "${result.deleted}"`)
-        unsub()
-        resolve({ deleted: result.deleted })
-      })
-      console.log(`[delete] Sending deleteVM message to backend`)
-      backendWs.send({ type: "deleteVM", vm: vmName })
-    })
-  }
-
   const nonDeployedVms = useMemo(() => {
     const result: Record<string, { id: string; parsed: Record<string, unknown>; raw: string }> = {}
     for (const [hostname, config] of Object.entries(customVmConfigs)) {
@@ -896,7 +887,6 @@ export function useLabRangeState(onComplete: () => void) {
         result[hostname] = { id: config.id, parsed: config.parsedConfig, raw: config.config }
       }
     }
-    console.log(`[nonDeployedVms] Computed:`, Object.keys(result))
     return result
   }, [customVmConfigs, rangeVmNames, deployingVmHostname])
 
@@ -908,7 +898,6 @@ export function useLabRangeState(onComplete: () => void) {
         result[hostname] = { id: config.id, parsed: config.parsedConfig, raw: config.config }
       }
     }
-    console.log(`[deployedCustomVms] Computed:`, Object.keys(result))
     return result
   }, [customVmConfigs, rangeVmNames, deployingVmHostname])
 
@@ -1196,7 +1185,6 @@ export function useLabRangeState(onComplete: () => void) {
     deployingVmHostname,
     createDeployableVmConfig,
     deleteDeployableVmConfig,
-    handleDeleteRunningVM,
     handleReset,
     handleSingleDeploy,
   }
