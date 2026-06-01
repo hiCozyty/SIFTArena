@@ -200,6 +200,7 @@ export function LabRangeContent({
             onReset={state.handleReset}
             onSingleDeploy={state.handleSingleDeploy}
             templateItems={state.templateItems}
+            snapshotData={state.snapshotData}
           />
         </div>
       </TabContentCard>

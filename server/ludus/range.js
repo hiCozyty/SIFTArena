@@ -89,29 +89,6 @@ async function fetchAnsibleInventory(ludusUrl, apiKey) {
   if (!data?.result) throw new Error("No inventory data in response")
   return data.result
 }
-
-export async function fetchRdpConfigs(ludusUrl, apiKey, data) {
-  const rangeId = data?.rangeID || process.env.LUDUS_RANGE_ID
-  let path = `/range/rdpconfigs?rangeID=${rangeId}`
-  if (data?.userID) path += `&userID=${data.userID}`
-
-  const response = await fetch(`${ludusUrl}${path}`, {
-    headers: { "X-API-KEY": apiKey },
-    tls: { rejectUnauthorized: false },
-  })
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`RDP configs error (${response.status}): ${text}`)
-  }
-
-  const buffer = await response.arrayBuffer()
-  return {
-    filename: `rdp-range-${rangeId}.zip`,
-    data: Buffer.from(buffer).toString("base64"),
-    size: buffer.byteLength,
-  }
-}
-
 export async function fetchRangeConfig(ludusUrl, apiKey) {
   return await apiCall(ludusUrl, apiKey, "/range/config")
 }
@@ -682,10 +659,26 @@ export async function restoreToBaseClean(ludusUrl, apiKey, data) {
 }
 
 export async function listSnapshots(ludusUrl, apiKey, data) {
-  const { label } = data
-  const range = await apiCall(ludusUrl, apiKey, "/range")
-  const vm = findVM(range.VMs ?? [], label)
   const rangeId = process.env.LUDUS_RANGE_ID || "ty"
+  const range = await apiCall(ludusUrl, apiKey, "/range")
+  const vms = range.VMs ?? []
+
+  if (!data.label) {
+    const results = {}
+    for (const vm of vms) {
+      try {
+        const qs = `rangeID=${rangeId}&vmids=${vm.proxmoxID}`
+        const snapResult = await apiCall(ludusUrl, apiKey, `/snapshots/list?${qs}`)
+        results[vm.name] = { vm: vm.name, snapshots: snapResult?.snapshots || [] }
+      } catch {
+        results[vm.name] = { vm: vm.name, snapshots: [] }
+      }
+    }
+    return results
+  }
+
+  const { label } = data
+  const vm = findVM(vms, label)
   const qs = `rangeID=${rangeId}&vmids=${vm.proxmoxID}`
   const result = await apiCall(ludusUrl, apiKey, `/snapshots/list?${qs}`)
   return { vm: vm.name, snapshots: result?.snapshots || [] }

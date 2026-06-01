@@ -8,6 +8,8 @@ export type TimelineItem = { id: string; title: string; description: string; sta
 export type TemplateItem = { id: number; label: string; subText: string; icon: string }
 export type CustomVmConfig = { id: string; hostname: string; config: string; parsedConfig: Record<string, unknown> }
 
+export type SnapshotInfo = { vm: string; snapshots: { name: string; parent?: string }[] }
+
 export const REQUIRED_TEMPLATES = [
   "debian-11-x64-server-template",
   "kali-x64-desktop-template",
@@ -78,6 +80,7 @@ export function useLabRangeState(onComplete: () => void) {
   const [deployingVmHostname, setDeployingVmHostname] = useState<string | null>(null)
   const [customVmConfigs, setCustomVmConfigs] = useState<Record<string, CustomVmConfig>>({})
   const [rangeVmNames, setRangeVmNames] = useState<string[]>([])
+  const [snapshotData, setSnapshotData] = useState<Record<string, SnapshotInfo>>({})
   const onCompleteRef = useRef(onComplete)
   onCompleteRef.current = onComplete
 
@@ -96,6 +99,24 @@ export function useLabRangeState(onComplete: () => void) {
       setSnapshotsTaken(true)
     }
   }, [timelineItems, snapshotsTaken])
+
+  useEffect(() => {
+    if (status.type !== "ok") return
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type !== "listSnapshots") return
+      const result = data.result as Record<string, SnapshotInfo> | undefined
+      if (result) {
+        const nonRouter = Object.fromEntries(
+          Object.entries(result).filter(([name]) => !name.includes("router"))
+        )
+        console.log("[snapshotData] Updated:", nonRouter)
+        setSnapshotData(nonRouter)
+      }
+    })
+    return () => { unsub() }
+  }, [status.type])
+
+  const refreshSnapshotData = () => backendWs.send({ type: "listSnapshots" })
 
   const templateItems = useMemo(() =>
     templatesResult.map((t, i) => ({
@@ -1036,6 +1057,7 @@ export function useLabRangeState(onComplete: () => void) {
         setGoldenImageActive(false)
         setDeploymentStatus("Deployed")
         onCompleteRef.current()
+        refreshSnapshotData()
         unsub()
         return
       }
@@ -1058,6 +1080,7 @@ export function useLabRangeState(onComplete: () => void) {
         setGoldenImageActive(false)
         setDeploymentStatus("Deployed")
         onCompleteRef.current()
+        refreshSnapshotData()
         unsub()
       } else {
         for (let i = 1; i <= prepared.length; i++) {
@@ -1092,6 +1115,7 @@ export function useLabRangeState(onComplete: () => void) {
               setGoldenImageActive(false)
               setDeploymentStatus("Deployed")
               onCompleteRef.current()
+              refreshSnapshotData()
               unsub()
             }
           }, i * 1200)
@@ -1119,6 +1143,7 @@ export function useLabRangeState(onComplete: () => void) {
       if (prepared.length === 0) {
         setPostDeploySnapshotActive(false)
         onCompleteRef.current()
+        refreshSnapshotData()
         unsub()
         return
       }
@@ -1157,6 +1182,7 @@ export function useLabRangeState(onComplete: () => void) {
       setDeployingVmHostname(null)
       setIsDeploying(false)
       onCompleteRef.current()
+      refreshSnapshotData()
       unsub()
     })
 
@@ -1191,5 +1217,7 @@ export function useLabRangeState(onComplete: () => void) {
     deleteDeployableVmConfig,
     handleReset,
     handleSingleDeploy,
+    snapshotData,
+    refreshSnapshotData,
   }
 }

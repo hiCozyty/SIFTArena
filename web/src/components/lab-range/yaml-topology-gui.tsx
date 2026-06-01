@@ -10,6 +10,8 @@ import { VmTopology } from "@/components/lab-range/vm-topology"
 import { TemplateTreeContent } from "@/components/lab-range/template-tree-content"
 import { RangeTreeContent } from "@/components/lab-range/range-tree-content"
 import { SnapshotListContent } from "@/components/lab-range/snapshot-list-content"
+import { SnapshotRightPanel } from "@/components/lab-range/snapshot-right-panel"
+import type { SnapshotInfo } from "@/components/lab-range/use-lab-range-state"
 import { LeftPanelTabs } from "@/components/lab-range/left-panel-tabs"
 import {
   AlertDialog,
@@ -40,6 +42,7 @@ type YamlTopologyGuiProps = {
   onReset?: () => void
   onSingleDeploy?: (vmConfig: { hostname: string; yaml: string }) => void
   templateItems?: { id: number; label: string; subText: string; icon: string }[]
+  snapshotData?: Record<string, SnapshotInfo>
 }
 
 export function YamlTopologyGui({
@@ -59,6 +62,7 @@ export function YamlTopologyGui({
   onReset,
   onSingleDeploy,
   templateItems = [],
+  snapshotData = {},
 }: YamlTopologyGuiProps) {
   const [activeLeftTab, setActiveLeftTab] = useState<"templates" | "range" | "snapshots">("range")
   const [selectedRangeNode, setSelectedRangeNode] = useState<string | null>(null)
@@ -284,6 +288,7 @@ export function YamlTopologyGui({
         if (result?.deleted) {
           console.log("[delete] Success, requesting rangeStatus refresh")
           backendWs.send({ type: "rangeStatus" })
+          backendWs.send({ type: "listSnapshots" })
           if (selectedRangeNode === `deployed-custom-${key}`) {
             console.log("[delete] Clearing selection (was on deleted VM)")
             setSelectedRangeNode(null)
@@ -342,7 +347,7 @@ export function YamlTopologyGui({
     {
       id: "snapshots",
       label: "Snapshots",
-      content: <SnapshotListContent />,
+      content: <SnapshotListContent snapshotData={snapshotData} />,
     },
   ]
 
@@ -492,9 +497,7 @@ export function YamlTopologyGui({
         onTabChange={setActiveLeftTab}
       />
       {showSnapshotPlaceholder ? (
-        <div className="flex-1 min-w-0 flex items-center justify-center rounded-4xl bg-muted border shadow-sm">
-          <p className="text-sm text-muted-foreground">Snapshot management coming soon</p>
-        </div>
+        <SnapshotRightPanel />
       ) : (
         <TabsFancy
           categories={rightPanelCategories}

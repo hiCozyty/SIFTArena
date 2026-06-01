@@ -1,6 +1,6 @@
 import { YamlTopologyGui, YamlTopologySkeleton } from "@/components/lab-range/yaml-topology-gui"
 import type { DeploymentStatus } from "@/components/ui/tabs-fancy"
-import type { TemplateItem } from "@/components/lab-range/use-lab-range-state"
+import type { TemplateItem, SnapshotInfo } from "@/components/lab-range/use-lab-range-state"
 
 interface YamlTopologyContentProps {
   ready: boolean
@@ -20,6 +20,7 @@ interface YamlTopologyContentProps {
   onReset?: () => void
   onSingleDeploy?: (vmConfig: { hostname: string; yaml: string }) => void
   templateItems?: TemplateItem[]
+  snapshotData?: Record<string, SnapshotInfo>
 }
 
 export function YamlTopologyContent({

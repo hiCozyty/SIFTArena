@@ -1,10 +1,10 @@
 import { createWsHandler, addFetcher, addOperation } from "./poller.js"
-import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./templates.js"
-import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, deployCustomVM, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, fetchRdpConfigs, getVmDefs, listProxmoxVMs } from "./ludus/range.js"
+import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./ludus/templates.js"
+import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, deployCustomVM, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, getVmDefs, listProxmoxVMs } from "./ludus/range.js"
 import { fetchFocusedCategoriesAndTechniques } from "./caldera/categories.js"
 import { initDatabase, getCustomAbilities, createCustomAbility, updateCustomAbility, deleteCustomAbility } from "./caldera/customAbilities.js"
 import { initDatabase as initVmConfigDb, getDeployableVmConfigs, createDeployableVmConfig, updateDeployableVmConfig, deleteDeployableVmConfig } from "./ludus/deployableVmConfigs.js"
-import { createRdpProxyHandler } from "./rdp-proxy.js"
+import { createVncProxyHandler, getOrCreateVncSession } from "./ludus/proxmox-vnc.js"
 
 const LUDUS_SERVER_URL = process.env.LUDUS_SERVER_URL + "/api/v2"
 const LUDUS_API_KEY = process.env.LUDUS_API_KEY
@@ -64,7 +64,6 @@ addOperation("listSnapshots", listSnapshots)
 addOperation("saveBaseClean", saveBaseClean)
 addOperation("runAnsibleScript", runAnsibleScript)
 addOperation("checkCaldera", checkCaldera)
-addOperation("getRdpConfigs", fetchRdpConfigs)
 addFetcher("getFocusedCategoriesAndTechniques", fetchFocusedCategoriesAndTechniques)
 addOperation("getFocusedCategoriesAndTechniques", fetchFocusedCategoriesAndTechniques)
 
@@ -82,7 +81,7 @@ initDatabase()
 initVmConfigDb()
 
 const pollerHandler = createWsHandler(LUDUS_SERVER_URL, LUDUS_API_KEY)
-const rdpHandler = createRdpProxyHandler()
+const vncHandler = createVncProxyHandler()
 
 const server = Bun.serve({
   port: BUN_SERVER_PORT,
@@ -92,9 +91,22 @@ const server = Bun.serve({
     }
 
     const url = new URL(request.url)
-    if (url.pathname.startsWith("/rdp/")) {
-      const vmIp = url.pathname.split("/rdp/")[1]
-      if (vmIp && server.upgrade(request, { data: { vmIp, isRdp: true } })) {
+    
+    if (url.pathname.startsWith("/vnc-ticket/")) {
+      const vmid = url.pathname.split("/vnc-ticket/")[1]
+      return getOrCreateVncSession(vmid)
+        .then((info) => new Response(JSON.stringify(info), {
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        }))
+        .catch((e) => new Response(JSON.stringify({ error: e.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        }))
+    }
+
+    if (url.pathname.startsWith("/vnc/")) {
+      const vmid = url.pathname.split("/vnc/")[1]
+      if (vmid && server.upgrade(request, { data: { vmid, isVnc: true } })) {
         return
       }
     }
@@ -110,13 +122,13 @@ const server = Bun.serve({
   },
   websocket: {
     open(ws) {
-      (ws.data?.isRdp ? rdpHandler : pollerHandler).open(ws)
+      (ws.data?.isVnc ? vncHandler : pollerHandler).open(ws)
     },
     message(ws, message) {
-      (ws.data?.isRdp ? rdpHandler : pollerHandler).message(ws, message)
+      (ws.data?.isVnc ? vncHandler : pollerHandler).message(ws, message)
     },
     close(ws, code, reason) {
-      (ws.data?.isRdp ? rdpHandler : pollerHandler).close(ws, code, reason)
+      (ws.data?.isVnc ? vncHandler : pollerHandler).close(ws, code, reason)
     },
   },
 })

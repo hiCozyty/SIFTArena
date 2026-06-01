@@ -39,6 +39,9 @@ export function createWsHandler(ludusUrl, apiKey) {
     open(ws) {
       client = ws
       ws.send(JSON.stringify({ type: "connected" }))
+      ws.heartbeat = setInterval(() => {
+        if (ws.readyState === 1) ws.ping()
+      }, 30000)
     },
     message(ws, message) {
       try {
@@ -56,6 +59,7 @@ export function createWsHandler(ludusUrl, apiKey) {
       } catch {}
     },
     close(ws) {
+      clearInterval(ws.heartbeat)
       if (client === ws) {
         client = null
         subscriptions.clear()

@@ -9,6 +9,7 @@ import {
   TreeView,
 } from "@/components/kibo-ui/tree"
 import { Database, Server } from "lucide-react"
+import type { SnapshotInfo } from "@/components/lab-range/use-lab-range-state"
 
 type SnapshotNode = {
   id: string
@@ -16,61 +17,96 @@ type SnapshotNode = {
   children?: SnapshotNode[]
 }
 
-const PLACEHOLDER_SNAPSHOTS: SnapshotNode[] = [
-  {
-    id: "kali",
-    label: "attacker-kali",
-    children: [
-      { id: "kali-base", label: "Base Snapshot" },
-      { id: "kali-caldera", label: "Caldera Installed" },
-    ],
-  },
-  {
-    id: "windows",
-    label: "win11-22h2",
-    children: [
-      { id: "win-base", label: "Base Snapshot" },
-      { id: "win-hardened", label: "Hardened Config" },
-    ],
-  },
-]
+function buildSnapshotTree(vmName: string, snapshots: { name: string; parent?: string }[]): SnapshotNode[] {
+  const nodeMap = new Map<string, SnapshotNode>()
 
-export function SnapshotTreeContent() {
-  const allIds = PLACEHOLDER_SNAPSHOTS.flatMap((s) => [
-    s.id,
-    ...(s.children?.map((c) => c.id) ?? []),
-  ])
+  for (const s of snapshots) {
+    nodeMap.set(s.name, {
+      id: `${vmName}::${s.name}`,
+      label: s.name,
+      children: [],
+    })
+  }
+
+  const roots: SnapshotNode[] = []
+  for (const s of snapshots) {
+    const node = nodeMap.get(s.name)!
+    if (s.parent && nodeMap.has(s.parent)) {
+      nodeMap.get(s.parent)!.children!.push(node)
+    } else {
+      roots.push(node)
+    }
+  }
+
+  return roots
+}
+
+function SnapshotNodeTree({ node, isLast, level = 0 }: { node: SnapshotNode; isLast: boolean; level?: number }) {
+  const hasChildren = !!node.children?.length
 
   return (
-    <TreeProvider defaultExpandedIds={allIds} selectable={false}>
-      <div className="flex h-full flex-col">
-        <TreeView className="pl-0 rounded-lg m-2 -ml-[5px] h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {PLACEHOLDER_SNAPSHOTS.map((snapshot, idx) => {
-            const isLast = idx === PLACEHOLDER_SNAPSHOTS.length - 1
-            return (
-              <TreeNode key={snapshot.id} isLast={isLast} nodeId={snapshot.id}>
-                <TreeNodeTrigger>
-                  <TreeExpander hasChildren={!!snapshot.children?.length} />
-                  <TreeIcon icon={<Server className="h-4 w-4" />} />
-                  <TreeLabel className="whitespace-normal break-words">{snapshot.label}</TreeLabel>
-                </TreeNodeTrigger>
-                <TreeNodeContent hasChildren={!!snapshot.children?.length}>
-                  {snapshot.children?.map((child, childIdx) => {
-                    const isLastChild = childIdx === (snapshot.children?.length ?? 0) - 1
-                    return (
-                      <TreeNode key={child.id} isLast={isLastChild} level={1} nodeId={child.id}>
-                        <TreeNodeTrigger>
-                          <TreeIcon icon={<Database className="h-4 w-4" />} />
-                          <TreeLabel className="whitespace-normal break-words">{child.label}</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                    )
-                  })}
-                </TreeNodeContent>
-              </TreeNode>
-            )
-          })}
-        </TreeView>
+    <TreeNode isLast={isLast} level={level} nodeId={node.id}>
+      <TreeNodeTrigger>
+        <TreeExpander hasChildren={hasChildren} />
+        <TreeIcon icon={level === 0 ? <Server className="h-4 w-4" /> : <Database className="h-4 w-4" />} />
+        <TreeLabel className="whitespace-normal break-words">{node.label}</TreeLabel>
+      </TreeNodeTrigger>
+      {hasChildren && (
+        <TreeNodeContent hasChildren>
+          {node.children!.map((child, idx) => (
+            <SnapshotNodeTree
+              key={child.id}
+              node={child}
+              isLast={idx === node.children!.length - 1}
+              level={level + 1}
+            />
+          ))}
+        </TreeNodeContent>
+      )}
+    </TreeNode>
+  )
+}
+
+export function SnapshotTreeContent({ snapshotData }: { snapshotData: Record<string, SnapshotInfo> }) {
+  const vmNodes: SnapshotNode[] = []
+  const allIds: string[] = []
+
+  for (const [vmName, info] of Object.entries(snapshotData)) {
+    const vmId = vmName
+    const snapNodes = buildSnapshotTree(vmName, info.snapshots)
+    allIds.push(vmId)
+
+    if (snapNodes.length > 0) {
+      for (const n of snapNodes) {
+        const collectIds = (node: SnapshotNode) => {
+          allIds.push(node.id)
+          node.children?.forEach(collectIds)
+        }
+        collectIds(n)
+      }
+    }
+
+    vmNodes.push({
+      id: vmId,
+      label: vmName,
+      children: snapNodes,
+    })
+  }
+
+  return (
+    <TreeProvider defaultExpandedIds={allIds} selectable={false} className="h-full">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg">
+        <div className="flex-1 min-h-0 overflow-clip">
+          <TreeView className="p-0 h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {vmNodes.map((vmNode, idx) => (
+              <SnapshotNodeTree
+                key={vmNode.id}
+                node={vmNode}
+                isLast={idx === vmNodes.length - 1}
+              />
+            ))}
+          </TreeView>
+        </div>
       </div>
     </TreeProvider>
   )
