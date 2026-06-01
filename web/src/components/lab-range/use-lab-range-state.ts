@@ -526,9 +526,13 @@ export function useLabRangeState(onComplete: () => void) {
         }
 
         if (playRecapRef.current) {
+          const vmName = deployedVmNameRef.current || selectedDeployVmRef.current
+          const recapContainsVM = playRecapRef.current.some((l) => l.includes(vmName))
+
+          if (!recapContainsVM) return
+
           const allOk = parsePlayRecap(playRecapRef.current)
 
-          const vmName = deployedVmNameRef.current || selectedDeployVmRef.current
           setTimelineItems((prev) => [
             ...prev.map((item) =>
               item.id === "deploy-rebuilding"
