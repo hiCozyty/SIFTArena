@@ -9,28 +9,51 @@ import {
   BackgroundVariant,
   Controls,
 } from "@xyflow/react"
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import "@xyflow/react/dist/base.css"
 import yaml from "js-yaml"
+import { Power, PowerOff } from "lucide-react"
 
 type VmNode = {
   label: string
   ip: string
   poweredOn: boolean
+  onTogglePower?: (nodeId: string) => void
 }
 
 function VmNode({ data }: NodeProps) {
-  const { label, ip, poweredOn } = data as VmNode
-  const statusColor = poweredOn ? "text-emerald-600" : "text-red-600"
+  const { label, ip, poweredOn: initialPoweredOn, onTogglePower } = data as VmNode
+  const [poweredOn, setPoweredOn] = useState(initialPoweredOn)
+
+  const handleTogglePower = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      e.preventDefault()
+      setPoweredOn((prev) => !prev)
+      onTogglePower?.((data as Node<VmNode>).id)
+    },
+    [data, onTogglePower],
+  )
 
   return (
-    <div className="flex flex-col gap-1.5 rounded-4xl border bg-card px-3 py-2.5 text-sm shadow-xs min-w-[150px]">
+    <div className="flex flex-col gap-1.5 rounded-4xl border bg-card px-3 py-2.5 text-sm shadow-xs w-[200px]">
       <Handle type="target" position={Position.Top} className="!bg-border" />
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium text-foreground truncate">{label}</span>
-        <span className={`shrink-0 text-xs font-medium ${statusColor}`}>
-          {poweredOn ? "On" : "Off"}
-        </span>
+      <div className="flex items-center justify-between gap-2 min-w-0">
+        <span className="font-medium text-foreground break-words min-w-0">{label}</span>
+        <button
+          onClick={handleTogglePower}
+          className="shrink-0 flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium transition-colors hover:bg-muted cursor-pointer"
+          title={poweredOn ? "Power off" : "Power on"}
+        >
+          {poweredOn ? (
+            <Power className="size-3.5 text-emerald-600" />
+          ) : (
+            <PowerOff className="size-3.5 text-red-600" />
+          )}
+          <span className={poweredOn ? "text-emerald-600" : "text-red-600"}>
+            {poweredOn ? "On" : "Off"}
+          </span>
+        </button>
       </div>
       <span className="text-xs text-muted-foreground font-mono">{ip}</span>
       <Handle
