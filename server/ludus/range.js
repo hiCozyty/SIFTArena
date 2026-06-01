@@ -30,6 +30,7 @@ function generateYaml(vmName, ipLastOctet) {
 }
 
 async function setRangeConfig(ludusUrl, userKey, yaml) {
+  console.log("[setRangeConfig] PUT request to:", `${ludusUrl}/range/config`)
   const formData = new FormData()
   formData.append("file", new Blob([yaml], { type: "application/yaml" }), "range.yml")
   formData.append("force", "false")
@@ -39,8 +40,10 @@ async function setRangeConfig(ludusUrl, userKey, yaml) {
     body: formData,
     tls: { rejectUnauthorized: false },
   })
+  console.log("[setRangeConfig] Ludus API response status:", response.status)
   if (!response.ok) {
     const text = await response.text()
+    console.error("[setRangeConfig] Ludus API error:", text)
     throw new Error(`Config update failed (${response.status}): ${text}`)
   }
 }
@@ -135,8 +138,51 @@ export async function fetchSystemInfo(ludusUrl, apiKey) {
   }
 }
 
+export async function listProxmoxVMs(ludusUrl, apiKey) {
+  const host = new URL(ludusUrl).hostname
+  try {
+    const raw = await $`ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 root@${host} "qm list"`.quiet().text()
+    const lines = raw.trim().split("\n")
+    return lines
+      .slice(1)
+      .map(line => line.trim().split(/\s+/)[1])
+      .filter(name => name && !name.endsWith("-template"))
+  } catch (e) {
+    console.error("listProxmoxVMs ssh failed:", e.stderr?.toString() || e.message)
+    return []
+  }
+}
+
 export async function updateRangeConfig(ludusUrl, apiKey, data) {
-  await setRangeConfig(ludusUrl, apiKey, data.yaml)
+  const payload = data.data ?? data
+  console.log("[setRangeConfig] received data:", JSON.stringify(data, null, 2))
+  if (payload.defaults) {
+    console.log("[setRangeConfig] defaults flag detected — generating YAML from VM_DEFS")
+    const ludusEntries = Object.entries(VM_DEFS)
+      .filter(([key]) => key !== "router")
+      .map(([key, d]) => {
+        let entry = `  - vm_name: "{{ range_id }}-${key}"\n    hostname: ${d.hostname}\n    template: ${d.template}\n    vlan: ${d.vlan}\n    ip_last_octet: ${d.ip_last_octet}\n    ram_gb: ${d.ram_gb}\n    cpus: ${d.cpus}`
+        if (d.linux) entry += `\n    linux: true`
+        if (d.windows) entry += `\n    windows:\n      sysprep: false`
+        return entry
+      })
+      .join("\n")
+    const yaml = `router:
+  vm_name: "${VM_DEFS.router.vm_name}"
+  hostname: ${VM_DEFS.router.hostname}
+  template: ${VM_DEFS.router.template}
+  ram_gb: ${VM_DEFS.router.ram_gb}
+  cpus: ${VM_DEFS.router.cpus}
+ludus:
+${ludusEntries}
+`
+    console.log("[setRangeConfig] generated YAML:\n", yaml)
+    await setRangeConfig(ludusUrl, apiKey, yaml)
+    console.log("[setRangeConfig] defaults YAML sent to Ludus API successfully")
+    return { result: "ok" }
+  }
+  console.log("[setRangeConfig] using provided YAML from client")
+  await setRangeConfig(ludusUrl, apiKey, payload.yaml)
   return { result: "ok" }
 }
 

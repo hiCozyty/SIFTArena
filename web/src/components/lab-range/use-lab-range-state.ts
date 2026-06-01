@@ -273,6 +273,8 @@ export function useLabRangeState(onComplete: () => void) {
     const phaseRef: { current: Phase } = { current: mode === "auto" ? "check" : "deleting" }
     const seenVMsRef: { current: Set<string> } = { current: new Set() }
     const playRecapRef: { current: string[] | null } = { current: null }
+    const proxmoxVMsRef: { current: string[] } = { current: [] }
+    const rangeStatusReceivedRef: { current: boolean } = { current: false }
 
     const VM_LABELS: Record<string, string> = {
       router: "router-debian11-x64",
@@ -400,6 +402,16 @@ export function useLabRangeState(onComplete: () => void) {
         return
       }
 
+      if (data.type === "listProxmoxVMs") {
+        const result = data.result as string[] | undefined
+        if (result) proxmoxVMsRef.current = result
+        console.log("[check] listProxmoxVMs received:", result)
+        if (mode === "auto" && phaseRef.current === "check" && rangeStatusReceivedRef.current) {
+          runVmCheck()
+        }
+        return
+      }
+
       if (data.type !== "rangeStatus") return
 
       const raw = data.result
@@ -413,16 +425,25 @@ export function useLabRangeState(onComplete: () => void) {
         }
       }
 
-      const routerFound = result.find((vm) => vm.name.endsWith("router-debian11-x64"))
-      const kaliFound = result.find((vm) => vm.name.endsWith("attacker-kali"))
-      const windowsFound = result.find((vm) => vm.name.endsWith("win11-22h2"))
+      const proxmoxVMs = proxmoxVMsRef.current
+      const routerFound = result.find((vm) => vm.name.endsWith("router-debian11-x64")) || proxmoxVMs.some((n) => n.endsWith("router-debian11-x64"))
+      const kaliFound = result.find((vm) => vm.name.endsWith("attacker-kali")) || proxmoxVMs.some((n) => n.endsWith("attacker-kali"))
+      const windowsFound = result.find((vm) => vm.name.endsWith("win11-22h2")) || proxmoxVMs.some((n) => n.endsWith("win11-22h2"))
 
       const latestLog = data.latestLog as string | undefined
       const playRecap = data.playRecap as string[] | null | undefined
       if (playRecap && phaseRef.current === "deploying") playRecapRef.current = playRecap
 
-      if (phaseRef.current === "check") {
+      const runVmCheck = () => {
+        if (phaseRef.current !== "check") return
+
+        console.log("[check] === DECISION POINT ===")
+        console.log("[check] Ludus API VMs:", result.map((vm) => vm.name))
+        console.log("[check] qm list VMs:", proxmoxVMs)
+        console.log("[check] routerFound:", routerFound, "| kaliFound:", kaliFound, "| windowsFound:", windowsFound)
+
         if (routerFound && kaliFound && windowsFound) {
+          console.log("[check] All VMs present — skipping to Caldera check")
           setTimelineItems((prev) =>
             prev.map((item) =>
               item.id === "check-vms"
@@ -431,22 +452,40 @@ export function useLabRangeState(onComplete: () => void) {
             )
           )
           setTimeout(() => {
-            setTimelineItems((prev) => [
-              ...prev,
-              { id: "deploy-kali", title: "attacker-kali is already deployed", description: "", status: "built" },
-            ])
+            setTimelineItems((prev) => {
+              if (prev.some(item => item.id === "deploy-kali")) {
+                return prev.map((item) =>
+                  item.id === "deploy-kali"
+                    ? { ...item, title: "attacker-kali is already deployed", description: "", status: "built" }
+                    : item
+                )
+              }
+              return [...prev, { id: "deploy-kali", title: "attacker-kali is already deployed", description: "", status: "built" }]
+            })
           }, 200)
           setTimeout(() => {
-            setTimelineItems((prev) => [
-              ...prev,
-              { id: "deploy-windows", title: "win11-22h2 is already deployed", description: "", status: "built" },
-            ])
+            setTimelineItems((prev) => {
+              if (prev.some(item => item.id === "deploy-windows")) {
+                return prev.map((item) =>
+                  item.id === "deploy-windows"
+                    ? { ...item, title: "win11-22h2 is already deployed", description: "", status: "built" }
+                    : item
+                )
+              }
+              return [...prev, { id: "deploy-windows", title: "win11-22h2 is already deployed", description: "", status: "built" }]
+            })
           }, 400)
           setTimeout(() => {
-            setTimelineItems((prev) => [
-              ...prev,
-              { id: "caldera-setup", title: "Installing ansible script on attacker-kali", description: "Checking Caldera status...", status: "building" },
-            ])
+            setTimelineItems((prev) => {
+              if (prev.some(item => item.id === "caldera-setup")) {
+                return prev.map((item) =>
+                  item.id === "caldera-setup"
+                    ? { ...item, title: "Installing ansible script on attacker-kali", description: "Checking Caldera status...", status: "building" }
+                    : item
+                )
+              }
+              return [...prev, { id: "caldera-setup", title: "Installing ansible script on attacker-kali", description: "Checking Caldera status...", status: "building" }]
+            })
             setCalderaActive(true)
             backendWs.send({ type: "checkCaldera", label: "kali" })
           }, 600)
@@ -455,16 +494,26 @@ export function useLabRangeState(onComplete: () => void) {
           unsub()
           return
         }
-        phaseRef.current = "deleting"
+
+        console.log("[check] VMs missing from both sources — HALTING (temporary safety stop)")
+        console.log("[check] Missing router:", !routerFound, "| Missing kali:", !kaliFound, "| Missing windows:", !windowsFound)
         setTimelineItems((prev) =>
           prev.map((item) =>
             item.id === "check-vms"
-              ? { ...item, title: "Cleaning up existing VMs", description: "deleting before redeploy...", status: "building" }
+              ? { ...item, title: "VM check inconclusive — halted for analysis", description: `Ludus API: ${result.map(v => v.name).join(", ") || "empty"} | qm list: ${proxmoxVMs.join(", ") || "empty"}`, status: "error" }
               : item
           )
         )
-        backendWs.send({ type: "deleteRangeVMs", all: true })
-        return
+        setDeployActive(false)
+        setDeploymentStatus("Halted")
+        unsub()
+      }
+
+      if (mode === "auto" && phaseRef.current === "check") {
+        rangeStatusReceivedRef.current = true
+        if (proxmoxVMs.length > 0) {
+          runVmCheck()
+        }
       }
 
       if (phaseRef.current === "deleting") return
@@ -668,7 +717,9 @@ export function useLabRangeState(onComplete: () => void) {
     })
 
     if (mode === "auto") {
+      backendWs.send({ type: "setRangeConfig", data: { defaults: true } })
       backendWs.send({ type: "rangeStatus" })
+      backendWs.send({ type: "listProxmoxVMs" })
     }
 
     return () => {
