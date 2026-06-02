@@ -1,10 +1,12 @@
 import { createWsHandler, addFetcher, addOperation } from "./poller.js"
 import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./ludus/templates.js"
-import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, deployCustomVM, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, getVmDefs, listProxmoxVMs } from "./ludus/range.js"
+import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, deployCustomVM, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, getVmDefs, listProxmoxVMs, parseInventoryForHost, fetchAnsibleInventory, getVMInfo } from "./ludus/range.js"
 import { fetchFocusedCategoriesAndTechniques } from "./caldera/categories.js"
 import { initDatabase, getCustomAbilities, createCustomAbility, updateCustomAbility, deleteCustomAbility } from "./caldera/customAbilities.js"
 import { initDatabase as initVmConfigDb, getDeployableVmConfigs, createDeployableVmConfig, updateDeployableVmConfig, deleteDeployableVmConfig } from "./ludus/deployableVmConfigs.js"
-import { createVncProxyHandler, getOrCreateVncSession } from "./ludus/proxmox-vnc.js"
+import { createVncProxyHandler, getOrCreateVncSession } from "./ludus/proxmox.js"
+import { createWinrmProxy } from "./ludus/winrm-proxy.js"
+import { createSshProxy } from "./ludus/ssh-proxy.js"
 
 const LUDUS_SERVER_URL = process.env.LUDUS_SERVER_URL + "/api/v2"
 const LUDUS_API_KEY = process.env.LUDUS_API_KEY
@@ -82,10 +84,12 @@ initVmConfigDb()
 
 const pollerHandler = createWsHandler(LUDUS_SERVER_URL, LUDUS_API_KEY)
 const vncHandler = createVncProxyHandler()
+const winrmHandler = createWinrmProxy()
+const sshHandler = createSshProxy()
 
 const server = Bun.serve({
   port: BUN_SERVER_PORT,
-  fetch(request, server) {
+  async fetch(request, server) {
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders })
     }
@@ -111,6 +115,41 @@ const server = Bun.serve({
       }
     }
 
+    if (url.pathname.startsWith("/term/")) {
+      const vmid = url.pathname.split("/term/")[1]
+      if (!vmid) return new Response(JSON.stringify({ error: "Missing VM ID" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      })
+
+      if (LUDUS_SERVER_URL && LUDUS_API_KEY) {
+        try {
+          const vm = await getVMInfo(LUDUS_SERVER_URL, LUDUS_API_KEY, vmid)
+          if (!vm?.ip) {
+            console.log(`[term ${vmid}] VM IP not reachable`)
+          } else {
+            console.log(`[term ${vmid}] VM found: ${vm.name} (${vm.ip}), isWindows=${vm.isWindows}`)
+
+            if (vm.isWindows) {
+              console.log(`[term ${vmid}] Upgrading to WinRM for ${vm.ip}`)
+              if (server.upgrade(request, { data: { vmid, isWinrm: true, host: vm.ip, username: "localuser", password: "password" } })) {
+                return
+              }
+              console.log(`[term ${vmid}] WebSocket upgrade to WinRM failed`)
+            } else {
+              console.log(`[term ${vmid}] Upgrading to SSH for ${vm.ip}`)
+              if (server.upgrade(request, { data: { vmid, isSsh: true, host: vm.ip, username: "kali", password: "kali" } })) {
+                return
+              }
+              console.log(`[term ${vmid}] WebSocket upgrade to SSH failed`)
+            }
+          }
+        } catch (err) {
+          console.log(`[term ${vmid}] Route error:`, err.message)
+        }
+      }
+    }
+
     if (server.upgrade(request)) {
       return
     }
@@ -122,13 +161,22 @@ const server = Bun.serve({
   },
   websocket: {
     open(ws) {
-      (ws.data?.isVnc ? vncHandler : pollerHandler).open(ws)
+      if (ws.data?.isVnc) return vncHandler.open(ws)
+      if (ws.data?.isWinrm) return winrmHandler.open(ws)
+      if (ws.data?.isSsh) return sshHandler.open(ws)
+      pollerHandler.open(ws)
     },
     message(ws, message) {
-      (ws.data?.isVnc ? vncHandler : pollerHandler).message(ws, message)
+      if (ws.data?.isVnc) return vncHandler.message(ws, message)
+      if (ws.data?.isWinrm) return winrmHandler.message(ws, message)
+      if (ws.data?.isSsh) return sshHandler.message(ws, message)
+      pollerHandler.message(ws, message)
     },
     close(ws, code, reason) {
-      (ws.data?.isVnc ? vncHandler : pollerHandler).close(ws, code, reason)
+      if (ws.data?.isVnc) return vncHandler.close(ws, code, reason)
+      if (ws.data?.isWinrm) return winrmHandler.close(ws, code, reason)
+      if (ws.data?.isSsh) return sshHandler.close(ws, code, reason)
+      pollerHandler.close(ws, code, reason)
     },
   },
 })

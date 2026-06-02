@@ -119,7 +119,6 @@ export function createVncProxyHandler(config = {}) {
     headers: { Cookie: `PVEAuthCookie=${authTicket}` },
   }))
 
-  // key: vmid string, value: { abort, proxmoxWs }
   const activeSessions = new Map()
 
   return {
@@ -127,12 +126,11 @@ export function createVncProxyHandler(config = {}) {
       const vmid = ws.data?.vmid
       console.log(`[vnc ${vmid}] Browser WebSocket opened`)
       if (!vmid) {
-        console.error(`[vnc ?] No VM ID in WebSocket data`)
+        console.error("[vnc ?] No VM ID in WebSocket data")
         ws.close(1008, "Missing VM ID")
         return
       }
 
-      // Kill any in-flight or active session for this vmId first
       if (activeSessions.has(vmid)) {
         console.log(`[vnc ${vmid}] Aborting existing session`)
         activeSessions.get(vmid).abort()
@@ -143,6 +141,8 @@ export function createVncProxyHandler(config = {}) {
       let proxmoxWs = null
       let aborted = false
 
+      let proxmoxHeartbeat = null
+
       const heartbeat = setInterval(() => {
         if (ws.readyState === 1) ws.ping()
       }, 30000)
@@ -150,67 +150,67 @@ export function createVncProxyHandler(config = {}) {
       function abort() {
         aborted = true
         clearInterval(heartbeat)
+        if (proxmoxHeartbeat) clearInterval(proxmoxHeartbeat)
         if (proxmoxWs) {
           proxmoxWs.close()
           proxmoxWs = null
         }
       }
 
-      // Register immediately so close() can find it before getVncInfo resolves
       activeSessions.set(vmid, { abort, proxmoxWs: null })
 
       getVncInfoFn(vmid)
-        .then((info) => {
+      .then((info) => {
+        if (aborted) return
+
+        if (activeSessions.get(vmid)?.abort !== abort) {
+          console.log(`[vnc ${vmid}] Session superseded, dropping`)
+          return
+        }
+
+        const url = info.url || vncWebSocketUrl(nodeName, vmid, info.port, info.ticket)
+        console.log(`[vnc ${vmid}] Info: port=${info.port}, ticket=${info.ticket?.slice(0, 20)}...`)
+
+        proxmoxWs = new WebSocket(url, wSOptionsFn())
+        proxmoxWs.binaryType = "arraybuffer"
+
+        proxmoxHeartbeat = setInterval(() => {
+          if (proxmoxWs?.readyState === 1) proxmoxWs.ping()
+        }, 60000)
+
+        activeSessions.set(vmid, { abort, proxmoxWs })
+
+        proxmoxWs.onopen = () => {
+          if (aborted) { proxmoxWs.close(); return }
+          console.log(`[vnc ${vmid}] Proxmox WebSocket connected`)
+        }
+
+        proxmoxWs.onmessage = (event) => {
           if (aborted) return
-
-          // Check we're still the current session for this vmId
-          if (activeSessions.get(vmid)?.abort !== abort) {
-            console.log(`[vnc ${vmid}] Session superseded, dropping`)
-            return
-          }
-
-          const url = info.url || vncWebSocketUrl(nodeName, vmid, info.port, info.ticket)
-          console.log(`[vnc ${vmid}] VNC info: port=${info.port}, ticket=${info.ticket?.slice(0, 20)}...`)
-          console.log(`[vnc ${vmid}] Proxmox WS URL: ${url.slice(0, 120)}...`)
-
-          proxmoxWs = new WebSocket(url, wSOptionsFn())
-          proxmoxWs.binaryType = "arraybuffer"
-
-          // Update session with the live proxmoxWs reference
-          activeSessions.set(vmid, { abort, proxmoxWs })
-
-          proxmoxWs.onopen = () => {
-            if (aborted) { proxmoxWs.close(); return }
-            console.log(`[vnc ${vmid}] Proxmox VNC WebSocket connected`)
-          }
-
-          proxmoxWs.onmessage = (event) => {
-            if (aborted) return
-
-            if (ws.readyState === 1) {
-              if (event.data instanceof ArrayBuffer || ArrayBuffer.isView(event.data)) {
-                ws.send(event.data, true)
-              } else {
-                ws.send(event.data)
-              }
+          if (ws.readyState === 1) {
+            if (event.data instanceof ArrayBuffer || ArrayBuffer.isView(event.data)) {
+              ws.send(event.data, true)
+            } else {
+              ws.send(event.data)
             }
           }
+        }
 
-          proxmoxWs.onerror = (event) => {
-            console.error(`[vnc ${vmid}] Proxmox WS error:`, event?.message || event?.type || "unknown")
-            if (ws.readyState === 1) ws.close(1011, "VNC connection failed")
-          }
+        proxmoxWs.onerror = (event) => {
+          console.error(`[vnc ${vmid}] Proxmox WS error:`, event?.message || event?.type || "unknown")
+          if (ws.readyState === 1) ws.close(1011, "Connection failed")
+        }
 
-          proxmoxWs.onclose = (event) => {
-            console.log(`[vnc ${vmid}] Proxmox WS closed (code: ${event?.code || "?"}, reason: ${event?.reason || "?"})`)
-            if (ws.readyState === 1) ws.close()
-          }
-        })
-        .catch((err) => {
-          console.error(`[vnc ${vmid}] Setup error:`, err.message)
-          activeSessions.delete(vmid)
-          if (ws.readyState === 1) ws.close(1011, err.message)
-        })
+        proxmoxWs.onclose = (event) => {
+          console.log(`[vnc ${vmid}] Proxmox WS closed (code: ${event?.code || "?"}, reason: ${event?.reason || "?"})`)
+          if (ws.readyState === 1) ws.close()
+        }
+      })
+      .catch((err) => {
+        console.error(`[vnc ${vmid}] Setup error:`, err.message)
+        activeSessions.delete(vmid)
+        if (ws.readyState === 1) ws.close(1011, err.message)
+      })
     },
     message(ws, message) {
       const vmid = ws.data?.vmid

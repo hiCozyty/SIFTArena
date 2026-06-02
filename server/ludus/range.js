@@ -83,7 +83,7 @@ async function waitForVMIP(ludusUrl, apiKey, vmName, timeoutSecs = 120) {
   throw new Error(`Timeout waiting for IP on ${vmName}`)
 }
 
-async function fetchAnsibleInventory(ludusUrl, apiKey) {
+export async function fetchAnsibleInventory(ludusUrl, apiKey) {
   const rangeId = process.env.LUDUS_RANGE_ID || "ty"
   const data = await apiCall(ludusUrl, apiKey, `/range/ansibleinventory?rangeID=${rangeId}`)
   if (!data?.result) throw new Error("No inventory data in response")
@@ -818,6 +818,44 @@ export async function checkCaldera(ludusUrl, apiKey, data, ws) {
   } catch {
     return { calderaInstalled: false }
   }
+}
+
+export function parseInventoryForHost(inventoryText, hostName) {
+  const lines = inventoryText.split("\n")
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith("[") || trimmed.startsWith("#") || trimmed.startsWith(";")) continue
+
+    if (trimmed === hostName || trimmed.startsWith(hostName + " ")) {
+      const varsStr = trimmed.slice(hostName.length).trim()
+      const vars = {}
+
+      const re = /(\w+)=("[^"]*"|'[^']*'|\S+)/g
+      let match
+      while ((match = re.exec(varsStr)) !== null) {
+        let val = match[2]
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.slice(1, -1)
+        }
+        vars[match[1]] = val
+      }
+
+      return {
+        ansible_user: vars.ansible_user,
+        ansible_password: vars.ansible_password,
+        ansible_host: vars.ansible_host,
+      }
+    }
+  }
+  return null
+}
+
+export async function getVMInfo(ludusUrl, apiKey, vmid) {
+  const range = await apiCall(ludusUrl, apiKey, "/range")
+  const vm = range.VMs?.find(v => String(v.proxmoxID) === String(vmid))
+  if (!vm) return null
+  const isWindows = (vm.name || "").toLowerCase().includes("win")
+  return { name: vm.name, ip: vm.ip, isWindows }
 }
 
 export async function getVmDefs() {
