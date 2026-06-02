@@ -96,7 +96,7 @@ export function SnapshotTreeContent({ snapshotData, selectedIds, onSelectionChan
   }
 
   return (
-    <TreeProvider defaultExpandedIds={allIds} selectable={true} selectedIds={selectedIds} onSelectionChange={onSelectionChange} className="h-full">
+    <TreeProvider defaultExpandedIds={allIds} selectable={true} selectedIds={selectedIds} onSelectionChange={onSelectionChange} className="h-full" collapseDisabled noDeselect>
       <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg">
         <div className="flex-1 min-h-0 overflow-clip">
           <TreeView className="p-0 h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

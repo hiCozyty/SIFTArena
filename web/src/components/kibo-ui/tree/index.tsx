@@ -69,6 +69,8 @@ export type TreeProviderProps = {
   indent?: number;
   animateExpand?: boolean;
   className?: string;
+  collapseDisabled?: boolean;
+  noDeselect?: boolean;
 };
 
 export const TreeProvider = ({
@@ -83,6 +85,8 @@ export const TreeProvider = ({
   indent = 20,
   animateExpand = true,
   className,
+  collapseDisabled = false,
+  noDeselect = false,
 }: TreeProviderProps) => {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(
     new Set(defaultExpandedIds)
@@ -96,6 +100,7 @@ export const TreeProvider = ({
   const currentSelectedIds = isControlled ? selectedIds : internalSelectedIds;
 
   const toggleExpanded = useCallback((nodeId: string) => {
+    if (collapseDisabled) return;
     setExpandedIds((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(nodeId)) {
@@ -105,7 +110,7 @@ export const TreeProvider = ({
       }
       return newSet;
     });
-  }, []);
+  }, [collapseDisabled]);
 
   const handleSelection = useCallback(
     (nodeId: string, ctrlKey = false) => {
@@ -120,7 +125,12 @@ export const TreeProvider = ({
           ? currentSelectedIds.filter((id) => id !== nodeId)
           : [...currentSelectedIds, nodeId];
       } else {
-        newSelection = currentSelectedIds.includes(nodeId) ? [] : [nodeId];
+        if (currentSelectedIds.includes(nodeId)) {
+          if (noDeselect) return;
+          newSelection = [];
+        } else {
+          newSelection = [nodeId];
+        }
       }
 
       if (isControlled) {
@@ -135,6 +145,7 @@ export const TreeProvider = ({
       currentSelectedIds,
       isControlled,
       onSelectionChange,
+      noDeselect,
     ]
   );
 

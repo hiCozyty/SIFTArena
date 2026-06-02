@@ -8,7 +8,7 @@ export type TimelineItem = { id: string; title: string; description: string; sta
 export type TemplateItem = { id: number; label: string; subText: string; icon: string }
 export type CustomVmConfig = { id: string; hostname: string; config: string; parsedConfig: Record<string, unknown> }
 
-export type SnapshotInfo = { vm: string; snapshots: { name: string; parent?: string }[] }
+export type SnapshotInfo = { vm: string; proxmoxID: number; snapshots: { name: string; parent?: string }[] }
 
 export const REQUIRED_TEMPLATES = [
   "debian-11-x64-server-template",

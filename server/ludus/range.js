@@ -669,9 +669,9 @@ export async function listSnapshots(ludusUrl, apiKey, data) {
       try {
         const qs = `rangeID=${rangeId}&vmids=${vm.proxmoxID}`
         const snapResult = await apiCall(ludusUrl, apiKey, `/snapshots/list?${qs}`)
-        results[vm.name] = { vm: vm.name, snapshots: snapResult?.snapshots || [] }
+        results[vm.name] = { vm: vm.name, proxmoxID: vm.proxmoxID, snapshots: snapResult?.snapshots || [] }
       } catch {
-        results[vm.name] = { vm: vm.name, snapshots: [] }
+        results[vm.name] = { vm: vm.name, proxmoxID: vm.proxmoxID, snapshots: [] }
       }
     }
     return results

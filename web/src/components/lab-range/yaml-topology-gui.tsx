@@ -498,7 +498,7 @@ export function YamlTopologyGui({
         onTabChange={setActiveLeftTab}
       />
       {showSnapshotPlaceholder ? (
-        <SnapshotRightPanel selectedNodeId={snapshotSelectedNodeId} />
+        <SnapshotRightPanel selectedNodeId={snapshotSelectedNodeId} snapshotData={snapshotData} />
       ) : (
         <TabsFancy
           categories={rightPanelCategories}
