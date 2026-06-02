@@ -22,8 +22,11 @@ function getWsUrl(vmId: number) {
 export function TermViewer({ vmId, className, onStatusChange }: TermViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState<TermStatus>("disconnected")
+  const [copied, setCopied] = useState(false)
   const onStatusChangeRef = useRef(onStatusChange)
   onStatusChangeRef.current = onStatusChange
+  const setCopiedRef = useRef(setCopied)
+  setCopiedRef.current = setCopied
 
   const updateStatus = useCallback((next: TermStatus) => {
     setStatus(next)
@@ -40,6 +43,26 @@ export function TermViewer({ vmId, className, onStatusChange }: TermViewerProps)
     let term: Terminal | null = null
     let fitAddon: FitAddon | null = null
     let ws: WebSocket | null = null
+
+    const onMouseUp = () => {
+      const sel = term?.getSelection()
+      if (!sel) return
+      navigator.clipboard.writeText(sel).then(() => {
+        setCopiedRef.current(true)
+        setTimeout(() => setCopiedRef.current(false), 1500)
+      }).catch(() => {})
+    }
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault()
+      const currentWs = ws
+      if (currentWs?.readyState === WebSocket.OPEN) {
+        navigator.clipboard.readText().then(text => {
+          if (text) currentWs.send(text)
+        }).catch(() => {})
+      }
+    }
+    container.addEventListener("mouseup", onMouseUp)
+    container.addEventListener("contextmenu", onContextMenu)
 
     const timer = setTimeout(() => {
       if (cancelled) return
@@ -84,6 +107,9 @@ export function TermViewer({ vmId, className, onStatusChange }: TermViewerProps)
         if (cancelled) return
         console.log(`[Term] Connected to VM ${vmId}`)
         updateStatus("connected")
+        if (term) {
+          ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }))
+        }
         term?.focus()
       }
 
@@ -113,24 +139,14 @@ export function TermViewer({ vmId, className, onStatusChange }: TermViewerProps)
           ws.send(data)
         }
       })
-
-      term.attachCustomKeyEventHandler((e) => {
-        if (e.ctrlKey && e.key === "v" && e.type === "keydown") {
-          navigator.clipboard.readText().then((text) => {
-            if (ws?.readyState === WebSocket.OPEN) {
-              ws.send(text)
-            }
-          })
-          return false
-        }
-        return true
-      })
     }, 50)
 
     return () => {
       console.log(`[Term] Cleaning up VM ${vmId} connection`)
       cancelled = true
       clearTimeout(timer)
+      container.removeEventListener("mouseup", onMouseUp)
+      container.removeEventListener("contextmenu", onContextMenu)
       if (ws) {
         ws.onclose = null
         ws.close()
@@ -144,6 +160,11 @@ export function TermViewer({ vmId, className, onStatusChange }: TermViewerProps)
   return (
     <div className={cn("relative", className)}>
       <div ref={containerRef} className="h-full w-full" />
+      {copied && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground shadow">
+          Copied to clipboard
+        </div>
+      )}
       {status !== "connected" && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/80">
           <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "motion/react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { VncViewer } from "@/components/lab-range/vnc-viewer"
+import { TermViewer } from "@/components/lab-range/term-viewer"
 import type { SnapshotInfo } from "@/components/lab-range/use-lab-range-state"
 
 export function SnapshotRightPanel({ selectedNodeId, snapshotData }: {
@@ -23,8 +24,8 @@ export function SnapshotRightPanel({ selectedNodeId, snapshotData }: {
     return snapshotData[vmHostname]?.proxmoxID ?? null
   }, [vmHostname, snapshotData])
 
+  const showTerm = activeTab === "terminal" && proxmoxID !== null
   const showVnc = activeTab === "vnc" && proxmoxID !== null
-  const termText = vmHostname ? "Terminal coming soon" : "Select a vm from the left"
 
   return (
     <div className="w-full flex-1 flex flex-col min-w-0 pt-0 pb-0 rounded-none">
@@ -45,7 +46,9 @@ export function SnapshotRightPanel({ selectedNodeId, snapshotData }: {
         </div>
       </div>
       <div className="flex-1 mt-1 rounded-4xl bg-muted border shadow-sm overflow-hidden">
-        {showVnc ? (
+        {showTerm ? (
+          <TermViewer key={proxmoxID} vmId={proxmoxID} className="h-full w-full" />
+        ) : showVnc ? (
           <VncViewer key={proxmoxID} vmId={proxmoxID} className="h-full w-full" />
         ) : (
           <AnimatePresence mode="wait">
@@ -58,7 +61,7 @@ export function SnapshotRightPanel({ selectedNodeId, snapshotData }: {
               className="h-full flex items-center justify-center"
             >
               <p className="text-sm text-muted-foreground">
-                {activeTab === "vnc" ? "Select a vm from the left" : termText}
+                Select a vm from the left
               </p>
             </motion.div>
           </AnimatePresence>
