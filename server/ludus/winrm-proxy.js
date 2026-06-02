@@ -14,7 +14,6 @@ export function createWinrmProxy() {
       const username = ws.data?.username
       const password = ws.data?.password
 
-      console.log(`[winrm ${vmid}] Browser WebSocket opened, target: ${host}`)
       if (!host || !username || !password) {
         console.error(`[winrm ${vmid}] Missing connection info in ws.data`)
         ws.close(1008, "Missing WinRM connection info")
@@ -22,7 +21,6 @@ export function createWinrmProxy() {
       }
 
       if (activeSessions.has(vmid)) {
-        console.log(`[winrm ${vmid}] Aborting existing session`)
         activeSessions.get(vmid).abort()
         activeSessions.delete(vmid)
       }
@@ -48,8 +46,6 @@ export function createWinrmProxy() {
 
       try {
         const args = ["run", "evil-winrm-py", "-i", host, "-u", username, "-p", password, "--ssl", "--port", "5986"]
-        console.log(`[winrm ${vmid}] Spawning: uv ${args.slice(0, -1).join(" ")} ***`)
-
         proc = Bun.spawn(["uv", ...args], {
           cwd: projectRoot,
           terminal: {
@@ -58,8 +54,7 @@ export function createWinrmProxy() {
             data(terminal, data) {
               if (!firstOutput) {
                 firstOutput = true
-                console.log(`[winrm ${vmid}] First PTY output received`)
-              }
+                }
               if (!aborted && ws.readyState === 1) {
                 ws.send(data)
               }
@@ -70,7 +65,6 @@ export function createWinrmProxy() {
         activeSessions.set(vmid, { abort, proc })
 
         proc.exited.then((exitCode) => {
-          console.log(`[winrm ${vmid}] evil-winrm-py exited (code: ${exitCode})`)
           activeSessions.delete(vmid)
           if (!aborted && ws.readyState === 1) ws.close()
         })
@@ -99,14 +93,12 @@ export function createWinrmProxy() {
 
       const text = typeof message === "string" ? message : Buffer.from(message).toString()
       if (text.length > 1 || text.charCodeAt(0) !== 13) {
-        console.log(`[winrm ${vmid}] Writing ${text.length}b to PTY`)
-      }
+        }
       session.proc.terminal.write(text)
     },
 
     close(ws, code, reason) {
       const vmid = ws.data?.vmid
-      console.log(`[winrm ${vmid}] Browser WebSocket closed (code: ${code}, reason: ${reason})`)
       const session = activeSessions.get(vmid)
       if (session) {
         session.abort()

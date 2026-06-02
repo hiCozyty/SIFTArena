@@ -601,7 +601,7 @@ function findVM(vms, label) {
 }
 
 export async function restoreToBaseClean(ludusUrl, apiKey, data) {
-  const { label } = data
+  const { label, snapshotName = "base-clean", snapshotsToDelete } = data
   const timings = {}
   const tStart = performance.now()
 
@@ -613,10 +613,24 @@ export async function restoreToBaseClean(ludusUrl, apiKey, data) {
   const rangeId = process.env.LUDUS_RANGE_ID || "ty"
   const isWindows = vm.name?.includes("win") || vm.name?.includes("WIN")
 
+  const tDelete = performance.now()
+  if (snapshotsToDelete?.length) {
+    for (const name of snapshotsToDelete) {
+      const delResult = await apiCall(ludusUrl, apiKey, `/snapshots/remove?rangeID=${rangeId}`, "POST", {
+        vmids: [vm.proxmoxID],
+        name,
+      })
+      if (delResult?.errors?.length) {
+        console.warn(`[restoreToBaseClean] Failed to delete snapshot '${name}': ${delResult.errors[0].error}`)
+      }
+    }
+  }
+  timings.deleteSnapshots_ms = performance.now() - tDelete
+
   const tRollback = performance.now()
   const rbResult = await apiCall(ludusUrl, apiKey, `/snapshots/rollback?rangeID=${rangeId}`, "POST", {
     vmids: [vm.proxmoxID],
-    name: "base-clean",
+    name: snapshotName,
   })
   if (rbResult?.errors?.length) throw new Error(`Rollback failed: ${rbResult.errors[0].error}`)
   timings.rollback_ms = performance.now() - tRollback
@@ -669,7 +683,8 @@ export async function listSnapshots(ludusUrl, apiKey, data) {
       try {
         const qs = `rangeID=${rangeId}&vmids=${vm.proxmoxID}`
         const snapResult = await apiCall(ludusUrl, apiKey, `/snapshots/list?${qs}`)
-        results[vm.name] = { vm: vm.name, proxmoxID: vm.proxmoxID, snapshots: snapResult?.snapshots || [] }
+        const snaps = snapResult?.snapshots || []
+        results[vm.name] = { vm: vm.name, proxmoxID: vm.proxmoxID, snapshots: snaps }
       } catch {
         results[vm.name] = { vm: vm.name, proxmoxID: vm.proxmoxID, snapshots: [] }
       }
@@ -685,7 +700,9 @@ export async function listSnapshots(ludusUrl, apiKey, data) {
 }
 
 export async function saveBaseClean(ludusUrl, apiKey, data) {
-  const { label } = data
+  const { label, snapshotName } = data
+  if (!snapshotName) throw new Error("snapshotName is required")
+  const name = snapshotName
   const timings = {}
   const tStart = performance.now()
   const t0 = performance.now()
@@ -701,18 +718,18 @@ export async function saveBaseClean(ludusUrl, apiKey, data) {
   await waitForConnectivity(ludusUrl, apiKey, vm.name, ip, isWindows)
   timings.connectivityWait_ms = performance.now() - tConn
   const tRemove = performance.now()
-  const exists = await snapshotExists(ludusUrl, apiKey, vm.proxmoxID, rangeId, "base-clean")
+  const exists = await snapshotExists(ludusUrl, apiKey, vm.proxmoxID, rangeId, name)
   if (exists) {
-    const removed = await removeSnapshot(ludusUrl, apiKey, vm.proxmoxID, rangeId, "base-clean")
-    if (!removed) throw new Error(`Failed to remove existing base-clean snapshot on ${vm.name}`)
+    const removed = await removeSnapshot(ludusUrl, apiKey, vm.proxmoxID, rangeId, name)
+    if (!removed) throw new Error(`Failed to remove existing ${name} snapshot on ${vm.name}`)
     }
   timings.removeOld_ms = performance.now() - tRemove
 
   const tCreate = performance.now()
-  await createSnapshot(ludusUrl, apiKey, vm.proxmoxID, rangeId, "base-clean")
+  await createSnapshot(ludusUrl, apiKey, vm.proxmoxID, rangeId, name)
   timings.createSnapshot_ms = performance.now() - tCreate
   timings.total_ms = performance.now() - tStart
-  return { vm: vm.name, snapshot: "base-clean", ip, created: true, timings }
+  return { vm: vm.name, snapshot: name, ip, created: true, timings }
 }
 
 export async function runAnsibleScript(ludusUrl, apiKey, data, ws) {

@@ -124,7 +124,6 @@ export function createVncProxyHandler(config = {}) {
   return {
     open(ws) {
       const vmid = ws.data?.vmid
-      console.log(`[vnc ${vmid}] Browser WebSocket opened`)
       if (!vmid) {
         console.error("[vnc ?] No VM ID in WebSocket data")
         ws.close(1008, "Missing VM ID")
@@ -132,7 +131,6 @@ export function createVncProxyHandler(config = {}) {
       }
 
       if (activeSessions.has(vmid)) {
-        console.log(`[vnc ${vmid}] Aborting existing session`)
         activeSessions.get(vmid).abort()
         activeSessions.delete(vmid)
       }
@@ -164,13 +162,10 @@ export function createVncProxyHandler(config = {}) {
         if (aborted) return
 
         if (activeSessions.get(vmid)?.abort !== abort) {
-          console.log(`[vnc ${vmid}] Session superseded, dropping`)
           return
         }
 
         const url = info.url || vncWebSocketUrl(nodeName, vmid, info.port, info.ticket)
-        console.log(`[vnc ${vmid}] Info: port=${info.port}, ticket=${info.ticket?.slice(0, 20)}...`)
-
         proxmoxWs = new WebSocket(url, wSOptionsFn())
         proxmoxWs.binaryType = "arraybuffer"
 
@@ -182,8 +177,7 @@ export function createVncProxyHandler(config = {}) {
 
         proxmoxWs.onopen = () => {
           if (aborted) { proxmoxWs.close(); return }
-          console.log(`[vnc ${vmid}] Proxmox WebSocket connected`)
-        }
+          }
 
         proxmoxWs.onmessage = (event) => {
           if (aborted) return
@@ -202,7 +196,6 @@ export function createVncProxyHandler(config = {}) {
         }
 
         proxmoxWs.onclose = (event) => {
-          console.log(`[vnc ${vmid}] Proxmox WS closed (code: ${event?.code || "?"}, reason: ${event?.reason || "?"})`)
           if (ws.readyState === 1) ws.close()
         }
       })
@@ -221,7 +214,6 @@ export function createVncProxyHandler(config = {}) {
     },
     close(ws, code, reason) {
       const vmid = ws.data?.vmid
-      console.log(`[vnc ${vmid}] Browser WebSocket closed (code: ${code}, reason: ${reason})`)
       const session = activeSessions.get(vmid)
       if (session) {
         session.abort()

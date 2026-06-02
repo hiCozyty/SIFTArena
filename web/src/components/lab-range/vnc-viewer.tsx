@@ -51,12 +51,9 @@ export function VncViewer({ vmId, className, onStatusChange }: VncViewerProps) {
         const ticketRes = await fetch(getTicketUrl(vmId))
         if (!ticketRes.ok) throw new Error(`Failed to fetch VNC ticket: ${ticketRes.status}`)
         const { ticket } = await ticketRes.json()
-        console.log(`[VNC] Raw ticket for VM ${vmId}:`, JSON.stringify(ticket))
         if (cancelled) return
 
         const wsUrl = getWsUrl(vmId)
-        console.log(`[VNC] Connecting to ${wsUrl}`)
-
         rfb = new RFB(container, wsUrl, {
           wsProtocols: ["binary"],
           credentials: { password: ticket },
@@ -67,37 +64,27 @@ export function VncViewer({ vmId, className, onStatusChange }: VncViewerProps) {
 
         rfb.addEventListener("connect", () => {
           if (cancelled) return
-          console.log(`[VNC] Connected to VM ${vmId}`)
           updateStatus("connected")
         })
 
         rfb.addEventListener("disconnect", (e: any) => {
           if (cancelled) return
           const detail = e?.detail || {}
-          console.log(`[VNC] Disconnected from VM ${vmId}`, {
-            clean: detail.clean,
-            code: detail.code,
-            reason: detail.reason,
-          })
           updateStatus("disconnected")
         })
 
         rfb.addEventListener("securityfailure", (e: any) => {
           if (cancelled) return
-          console.log(`[VNC] Security failure for VM ${vmId}`, e?.detail)
           updateStatus("error")
         })
 
         rfb.addEventListener("desktopname", (e: any) => {
-          console.log(`[VNC] Desktop name for VM ${vmId}:`, e?.detail?.name)
-        })
+          })
 
         rfb.addEventListener("clipboard", (e: any) => {
-          console.log(`[VNC] Clipboard from VM ${vmId}:`, e?.detail?.text?.slice(0, 50))
-        })
+          })
 
         rfb.addEventListener("credentialsrequired", () => {
-          console.log(`[VNC] Credentials required for VM ${vmId}, sending ticket`)
           rfb.sendCredentials({ password: ticket })
         })
       } catch (err) {
@@ -107,7 +94,6 @@ export function VncViewer({ vmId, className, onStatusChange }: VncViewerProps) {
     }, 50)
 
     return () => {
-      console.log(`[VNC] Cleaning up VM ${vmId} connection`)
       cancelled = true
       clearTimeout(timer)
       rfbRef.current = null

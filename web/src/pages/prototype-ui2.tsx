@@ -22,7 +22,6 @@ export function PrototypeUI2() {
   const [status, setStatus] = useState<TermStatus>("disconnected")
 
   const handleStatusChange = (next: TermStatus) => {
-    console.log(`[PrototypeUI2] Status: ${status} → ${next}`)
     setStatus(next)
   }
 
@@ -37,7 +36,6 @@ export function PrototypeUI2() {
             value={selectedVm?.toString() ?? ""}
             onValueChange={(v) => {
               const id = Number(v)
-              console.log(`[PrototypeUI2] VM selected: ${id}`)
               setSelectedVm(id)
               setStatus("connecting")
             }}

@@ -98,14 +98,11 @@ export function TermViewer({ vmId, className, onStatusChange }: TermViewerProps)
       observer.observe(container)
 
       const wsUrl = getWsUrl(vmId)
-      console.log(`[Term] Connecting to ${wsUrl}`)
-
       ws = new WebSocket(wsUrl)
       ws.binaryType = "arraybuffer"
 
       ws.onopen = () => {
         if (cancelled) return
-        console.log(`[Term] Connected to VM ${vmId}`)
         updateStatus("connected")
         if (term) {
           ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }))
@@ -130,7 +127,6 @@ export function TermViewer({ vmId, className, onStatusChange }: TermViewerProps)
 
       ws.onclose = (event) => {
         if (cancelled) return
-        console.log(`[Term] Disconnected from VM ${vmId}`, { code: event.code, reason: event.reason })
         updateStatus("disconnected")
       }
 
@@ -142,7 +138,6 @@ export function TermViewer({ vmId, className, onStatusChange }: TermViewerProps)
     }, 50)
 
     return () => {
-      console.log(`[Term] Cleaning up VM ${vmId} connection`)
       cancelled = true
       clearTimeout(timer)
       container.removeEventListener("mouseup", onMouseUp)

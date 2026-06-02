@@ -109,7 +109,8 @@ export function useLabRangeState(onComplete: () => void) {
         const nonRouter = Object.fromEntries(
           Object.entries(result).filter(([name]) => !name.includes("router"))
         )
-        console.log("[snapshotData] Updated:", nonRouter)
+        for (const [vmName, info] of Object.entries(nonRouter)) {
+          }
         setSnapshotData(nonRouter)
       }
     })

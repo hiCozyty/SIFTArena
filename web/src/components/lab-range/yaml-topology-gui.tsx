@@ -260,43 +260,32 @@ export function YamlTopologyGui({
     const vmConfig = nonDeployedVms[key] ?? deployedCustomVms[key]
     if (!vmConfig) return
     const hostname = (vmConfig.parsed.hostname as string) || key
-    console.log("[delete] Opening delete dialog:", { key, hostname, id: vmConfig.id })
     setDeleteComplete(false)
     setPendingDelete({ key, hostname, id: vmConfig.id })
   }
 
   const confirmDeleteVm = async () => {
-    console.log("[delete] confirmDeleteVm called", { pendingDelete })
     if (!pendingDelete) {
-      console.log("[delete] pendingDelete is null, returning")
       return
     }
     const { key, id } = pendingDelete
     const isDeployed = !!deployedCustomVms[key]
-    console.log("[delete] VM details:", { key, id, isDeployed, hostname: pendingDelete.hostname })
-
     if (isDeployed) {
-      console.log("[delete] Setting deletingVm=true")
       setDeletingVm(true)
       try {
-        console.log("[delete] Sending deleteVM via executeWsOperation")
         const result = await executeWsOperation<{ deleted: string }>({
           messageType: "deleteVM",
           sendFn: () => backendWs.send({ type: "deleteVM", vm: pendingDelete.hostname }),
           ensurePaint: true,
         })
-        console.log("[delete] Received response:", result)
         if (result?.deleted) {
-          console.log("[delete] Success, requesting rangeStatus refresh")
           backendWs.send({ type: "rangeStatus" })
           backendWs.send({ type: "listSnapshots" })
           if (selectedRangeNode === `deployed-custom-${key}`) {
-            console.log("[delete] Clearing selection (was on deleted VM)")
             setSelectedRangeNode(null)
             setIsCustomVmMode(false)
             setActiveRightTab("topology")
           }
-          console.log("[delete] Setting deleteComplete=true")
           setDeleteComplete(true)
         } else {
           console.error("[delete] Unexpected response:", result)
@@ -308,7 +297,6 @@ export function YamlTopologyGui({
         addAlert("error", `Unexpected error: ${err.message}`)
         setDeleteComplete(true)
       } finally {
-        console.log("[delete] Setting deletingVm=false")
         setDeletingVm(false)
       }
       return
@@ -517,7 +505,7 @@ export function YamlTopologyGui({
           hideSidebar
         />
       )}
-      <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => { console.log("[delete] onOpenChange called:", { open, deletingVm, deleteComplete }); if (!open && !deletingVm) setPendingDelete(null) }}>
+      <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => {  if (!open && !deletingVm) setPendingDelete(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete VM</AlertDialogTitle>

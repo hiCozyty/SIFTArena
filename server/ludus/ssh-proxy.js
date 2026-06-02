@@ -8,7 +8,6 @@ export function createSshProxy() {
       const username = ws.data?.username
       const password = ws.data?.password
 
-      console.log(`[ssh ${vmid}] Browser WebSocket opened, target: ${host}`)
       if (!host || !username || !password) {
         console.error(`[ssh ${vmid}] Missing connection info in ws.data`)
         ws.close(1008, "Missing SSH connection info")
@@ -16,7 +15,6 @@ export function createSshProxy() {
       }
 
       if (activeSessions.has(vmid)) {
-        console.log(`[ssh ${vmid}] Aborting existing session`)
         activeSessions.get(vmid).abort()
         activeSessions.delete(vmid)
       }
@@ -41,8 +39,6 @@ export function createSshProxy() {
 
       try {
         const args = ["-p", password, "ssh", "-tt", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=5", `${username}@${host}`]
-        console.log(`[ssh ${vmid}] Spawning: sshpass -p *** ssh ${username}@${host}`)
-
         proc = Bun.spawn(["sshpass", ...args], {
           terminal: {
             cols: 80,
@@ -58,7 +54,6 @@ export function createSshProxy() {
         activeSessions.set(vmid, { abort, proc })
 
         proc.exited.then((exitCode) => {
-          console.log(`[ssh ${vmid}] ssh exited (code: ${exitCode})`)
           activeSessions.delete(vmid)
           if (!aborted && ws.readyState === 1) ws.close()
         })
@@ -92,7 +87,6 @@ export function createSshProxy() {
 
     close(ws, code, reason) {
       const vmid = ws.data?.vmid
-      console.log(`[ssh ${vmid}] Browser WebSocket closed (code: ${code}, reason: ${reason})`)
       const session = activeSessions.get(vmid)
       if (session) {
         session.abort()

@@ -22,7 +22,6 @@ export function PrototypeUI() {
   const [status, setStatus] = useState<VncStatus>("disconnected")
 
   const handleStatusChange = (next: VncStatus) => {
-    console.log(`[PrototypeUI] Status: ${status} → ${next}`)
     setStatus(next)
   }
 
@@ -37,7 +36,6 @@ export function PrototypeUI() {
             value={selectedVm?.toString() ?? ""}
             onValueChange={(v) => {
               const id = Number(v)
-              console.log(`[PrototypeUI] VM selected: ${id}`)
               setSelectedVm(id)
               setStatus("connecting")
             }}
