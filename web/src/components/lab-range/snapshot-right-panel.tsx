@@ -1,11 +1,20 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Monitor } from "lucide-react"
 import { motion, AnimatePresence } from "motion/react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 
-export function SnapshotRightPanel() {
+export function SnapshotRightPanel({ selectedNodeId }: { selectedNodeId?: string | null }) {
   const [activeTab, setActiveTab] = useState("vnc")
+
+  const { snapshotSelected, vmSelected } = useMemo(() => {
+    if (!selectedNodeId) return { snapshotSelected: false, vmSelected: false }
+    const isSnapshot = selectedNodeId.includes("::")
+    return { snapshotSelected: isSnapshot, vmSelected: true }
+  }, [selectedNodeId])
+
+  const vncText = snapshotSelected ? "VNC coming soon" : "Select a snapshot from the left"
+  const termText = vmSelected ? "Terminal coming soon" : "Select a vm from the left"
 
   return (
     <div className="flex-1 flex flex-col min-w-0 pt-0 pb-0 rounded-none">
@@ -36,7 +45,7 @@ export function SnapshotRightPanel() {
             className="h-full flex items-center justify-center"
           >
             <p className="text-sm text-muted-foreground">
-              {activeTab === "vnc" ? "VNC coming soon" : "Terminal coming soon"}
+              {activeTab === "vnc" ? vncText : termText}
             </p>
           </motion.div>
         </AnimatePresence>

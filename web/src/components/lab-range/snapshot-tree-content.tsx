@@ -18,9 +18,11 @@ type SnapshotNode = {
 }
 
 function buildSnapshotTree(vmName: string, snapshots: { name: string; parent?: string }[]): SnapshotNode[] {
+  const filtered = snapshots.filter(s => s.name !== "current")
+
   const nodeMap = new Map<string, SnapshotNode>()
 
-  for (const s of snapshots) {
+  for (const s of filtered) {
     nodeMap.set(s.name, {
       id: `${vmName}::${s.name}`,
       label: s.name,
@@ -29,7 +31,7 @@ function buildSnapshotTree(vmName: string, snapshots: { name: string; parent?: s
   }
 
   const roots: SnapshotNode[] = []
-  for (const s of snapshots) {
+  for (const s of filtered) {
     const node = nodeMap.get(s.name)!
     if (s.parent && nodeMap.has(s.parent)) {
       nodeMap.get(s.parent)!.children!.push(node)
@@ -67,7 +69,7 @@ function SnapshotNodeTree({ node, isLast, level = 0 }: { node: SnapshotNode; isL
   )
 }
 
-export function SnapshotTreeContent({ snapshotData }: { snapshotData: Record<string, SnapshotInfo> }) {
+export function SnapshotTreeContent({ snapshotData, selectedIds, onSelectionChange }: { snapshotData: Record<string, SnapshotInfo>; selectedIds?: string[]; onSelectionChange?: (selectedIds: string[]) => void }) {
   const vmNodes: SnapshotNode[] = []
   const allIds: string[] = []
 
@@ -94,7 +96,7 @@ export function SnapshotTreeContent({ snapshotData }: { snapshotData: Record<str
   }
 
   return (
-    <TreeProvider defaultExpandedIds={allIds} selectable={false} className="h-full">
+    <TreeProvider defaultExpandedIds={allIds} selectable={true} selectedIds={selectedIds} onSelectionChange={onSelectionChange} className="h-full">
       <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg">
         <div className="flex-1 min-h-0 overflow-clip">
           <TreeView className="p-0 h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

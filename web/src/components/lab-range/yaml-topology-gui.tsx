@@ -77,6 +77,7 @@ export function YamlTopologyGui({
   const [proofreadState, setProofreadState] = useState(false)
   const [proofreadError, setProofreadError] = useState<string | null>(null)
   const [alerts, setAlerts] = useState<{ id: number; type: "error" | "success"; message: string }[]>([])
+  const [snapshotSelectedNodeId, setSnapshotSelectedNodeId] = useState<string | null>(null)
 
   const addAlert = (type: "error" | "success", message: string) => {
     const id = Date.now()
@@ -347,7 +348,7 @@ export function YamlTopologyGui({
     {
       id: "snapshots",
       label: "Snapshots",
-      content: <SnapshotListContent snapshotData={snapshotData} />,
+      content: <SnapshotListContent snapshotData={snapshotData} selectedIds={snapshotSelectedNodeId ? [snapshotSelectedNodeId] : []} onSelectionChange={(ids) => setSnapshotSelectedNodeId(ids[0] ?? null)} />,
     },
   ]
 
@@ -497,7 +498,7 @@ export function YamlTopologyGui({
         onTabChange={setActiveLeftTab}
       />
       {showSnapshotPlaceholder ? (
-        <SnapshotRightPanel />
+        <SnapshotRightPanel selectedNodeId={snapshotSelectedNodeId} />
       ) : (
         <TabsFancy
           categories={rightPanelCategories}
