@@ -839,7 +839,6 @@ export function useLabRangeState(onComplete: () => void) {
           powerStatus[vm.name] = vm.poweredOn
         }
       }
-      console.log("[power:pipe] rangeStatus handler — applying power state: %o", powerStatus)
       setRangeVmNames(names)
       setRangeVmPowerStatus(powerStatus)
     })

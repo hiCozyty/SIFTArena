@@ -19,11 +19,12 @@ type VmNode = {
   ip: string
   poweredOn: boolean
   onTogglePower?: (nodeId: string, hostname: string, currentlyOn: boolean) => void
+  protectedHostnames?: Set<string>
 }
 
 function VmNode({ id: nodeId, data }: NodeProps) {
-  const { label, ip, poweredOn, onTogglePower } = data as VmNode
-  const isRouter = nodeId === "router"
+  const { label, ip, poweredOn, onTogglePower, protectedHostnames } = data as VmNode
+  const isProtected = (protectedHostnames && poweredOn && protectedHostnames.has(label.toLowerCase())) || (nodeId === "router" && poweredOn)
 
   const handleTogglePower = useCallback(
     (e: React.MouseEvent) => {
@@ -39,7 +40,7 @@ function VmNode({ id: nodeId, data }: NodeProps) {
       <Handle type="target" position={Position.Top} className="!bg-border" />
       <div className="flex items-center justify-between gap-2 min-w-0">
         <span className="font-medium text-foreground break-words min-w-0">{label}</span>
-        {isRouter && poweredOn ? (
+        {isProtected ? (
           <span className="shrink-0 text-xs font-medium text-emerald-600">On</span>
         ) : (
           <button
@@ -141,9 +142,10 @@ interface VmTopologyProps {
   yamlContent?: string
   powerStatus?: Record<string, boolean>
   onTogglePower?: (nodeId: string, hostname: string, currentlyOn: boolean) => void
+  protectedHostnames?: Set<string>
 }
 
-export function VmTopology({ yamlContent, powerStatus, onTogglePower }: VmTopologyProps) {
+export function VmTopology({ yamlContent, powerStatus, onTogglePower, protectedHostnames }: VmTopologyProps) {
   const parsed = useMemo(() => {
     if (!yamlContent) return null
     return parseTopology(yamlContent)
@@ -165,9 +167,10 @@ export function VmTopology({ yamlContent, powerStatus, onTogglePower }: VmTopolo
         ...node.data,
         poweredOn: matchPowerState((node.data as VmNode).label, powerStatus ?? {}, (node.data as { poweredOn: boolean }).poweredOn),
         onTogglePower,
+        protectedHostnames,
       },
     })),
-  [baseNodes, powerStatus, onTogglePower])
+  [baseNodes, powerStatus, onTogglePower, protectedHostnames])
 
   return (
     <div className="h-full w-full">

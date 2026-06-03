@@ -1,5 +1,6 @@
 import { createWsHandler, addFetcher, addOperation } from "./poller.js"
 import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./ludus/templates.js"
+import { fetchPackerTemplates } from "./ludus/packer-templates.js"
 import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, powerOffVM, powerOnVM, deployCustomVM, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, getVmDefs, listProxmoxVMs, getVMInfo } from "./ludus/range.js"
 import { fetchFocusedCategoriesAndTechniques } from "./caldera/categories.js"
 import { initDatabase, getCustomAbilities, createCustomAbility, updateCustomAbility, deleteCustomAbility } from "./caldera/customAbilities.js"
@@ -47,6 +48,7 @@ const corsHeaders = {
 addFetcher("templatesList", fetchTemplatesWithLog)
 addOperation("templatesList", fetchTemplates)
 addOperation("buildTemplates", buildTemplates)
+addOperation("templatesFromPacker", fetchPackerTemplates)
 addOperation("healthCheck", healthCheck)
 addFetcher("rangeStatus", fetchRangeWithLog)
 addOperation("rangeStatus", fetchRangeWithLog)

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useEffect } from "react"
 import { FilePen, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { vmDefsToYaml } from "@/lib/json2yaml"
@@ -11,6 +11,7 @@ import { TemplateTreeContent } from "@/components/lab-range/template-tree-conten
 import { RangeTreeContent } from "@/components/lab-range/range-tree-content"
 import { SnapshotListContent } from "@/components/lab-range/snapshot-list-content"
 import { SnapshotRightPanel } from "@/components/lab-range/snapshot-right-panel"
+import { TemplateRightPanel, type SelectedTemplateFile } from "@/components/lab-range/template-right-panel"
 import type { SnapshotInfo } from "@/components/lab-range/use-lab-range-state"
 import { LeftPanelTabs } from "@/components/lab-range/left-panel-tabs"
 import {
@@ -24,6 +25,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+
+type PackerTemplate = { dirname: string; templateName: string; files: { name: string; content: string }[] }
 
 type YamlTopologyGuiProps = {
   items?: Item[]
@@ -80,6 +83,8 @@ export function YamlTopologyGui({
   const [proofreadError, setProofreadError] = useState<string | null>(null)
   const [alerts, setAlerts] = useState<{ id: number; type: "error" | "success"; message: string }[]>([])
   const [snapshotSelectedNodeId, setSnapshotSelectedNodeId] = useState<string | null>(null)
+  const [selectedTemplateFile, setSelectedTemplateFile] = useState<SelectedTemplateFile>(null)
+  const [packerFiles, setPackerFiles] = useState<Record<string, { name: string; content: string }[]>>({})
   const [pendingPowerAction, setPendingPowerAction] = useState<{ nodeId: string; hostname: string; action: "on" | "off" } | null>(null)
   const [poweringVm, setPoweringVm] = useState(false)
   const [powerComplete, setPowerComplete] = useState(false)
@@ -89,6 +94,30 @@ export function YamlTopologyGui({
     setAlerts((prev) => [...prev, { id, type, message }])
     setTimeout(() => setAlerts((prev) => prev.filter((a) => a.id !== id)), 5000)
   }
+
+  useEffect(() => {
+    if (activeLeftTab !== "templates") return
+    const fetchPacker = async () => {
+      try {
+        const templates = await executeWsOperation<PackerTemplate[]>({
+          messageType: "templatesFromPacker",
+          sendFn: () => backendWs.send({ type: "templatesFromPacker" }),
+        })
+        const lookup: Record<string, { name: string; content: string }[]> = {}
+        for (const t of templates as PackerTemplate[]) {
+          lookup[t.templateName] = t.files
+        }
+        setPackerFiles(lookup)
+      } catch {}
+    }
+    fetchPacker()
+  }, [activeLeftTab])
+
+  useEffect(() => {
+    if (activeLeftTab !== "templates") {
+      setSelectedTemplateFile(null)
+    }
+  }, [activeLeftTab])
 
   const builtTemplateNames = useMemo(
     () => templateItems.filter((t) => t.subText === "Built").map((t) => t.label),
@@ -327,26 +356,34 @@ export function YamlTopologyGui({
     setCustomVmConfig("#please write your single vm config here\n")
   }
 
+  const protectedHostnames = useMemo(() => {
+    if (!vmDefs) return new Set(["router"])
+    const hostnames = new Set<string>()
+    for (const [key, def] of Object.entries(vmDefs)) {
+      const hostname = String((def as Record<string, unknown>).hostname ?? key).toLowerCase()
+      hostnames.add(hostname)
+    }
+    return hostnames
+  }, [vmDefs])
+
   const handleTogglePower = useCallback((_nodeId: string, hostname: string, currentlyOn: boolean) => {
-    if (_nodeId === "router" && currentlyOn) {
+    if (currentlyOn && (_nodeId === "router" || protectedHostnames.has(hostname.toLowerCase()))) {
       return
     }
     setPowerComplete(false)
     setPendingPowerAction({ nodeId: _nodeId, hostname, action: currentlyOn ? "off" : "on" })
-  }, [])
+  }, [protectedHostnames])
 
   const confirmPowerAction = useCallback(async () => {
     if (!pendingPowerAction) return
     const messageType = pendingPowerAction.action === "on" ? "powerOnVM" : "powerOffVM"
     setPoweringVm(true)
-    console.log("[power:pipe] confirmPowerAction — sending '%s' for vm='%s'", messageType, pendingPowerAction.hostname)
     try {
       await executeWsOperation({
         messageType,
         sendFn: () => backendWs.send({ type: messageType, vm: pendingPowerAction.hostname }),
         ensurePaint: true,
       })
-      console.log("[power:pipe] confirmPowerAction — '%s' resolved, requesting rangeStatus refresh", messageType)
       backendWs.send({ type: "rangeStatus" })
       } catch (err) {
       console.warn("[power:ws] %s failed or timed out", messageType, err)
@@ -361,7 +398,7 @@ export function YamlTopologyGui({
     {
       id: "templates",
       label: "Templates",
-      content: <TemplateTreeContent items={templateItems} />,
+      content: <TemplateTreeContent items={templateItems} selectedFile={selectedTemplateFile} onFileSelect={setSelectedTemplateFile} packerFiles={packerFiles} />,
     },
     {
       id: "range",
@@ -506,11 +543,9 @@ export function YamlTopologyGui({
     {
       id: "topology",
       label: "Topology",
-      content: <VmTopology yamlContent={enrichedYaml} powerStatus={rangeVmPowerStatus} onTogglePower={handleTogglePower} />,
+      content: <VmTopology yamlContent={enrichedYaml} powerStatus={rangeVmPowerStatus} onTogglePower={handleTogglePower} protectedHostnames={protectedHostnames} />,
     },
   ]
-
-  const showSnapshotPlaceholder = activeLeftTab === "snapshots"
 
   return (
     <div className={cn("flex flex-row gap-6 h-full min-h-0", className)}>
@@ -520,8 +555,10 @@ export function YamlTopologyGui({
         activeTab={activeLeftTab}
         onTabChange={setActiveLeftTab}
       />
-      {showSnapshotPlaceholder ? (
+      {activeLeftTab === "snapshots" ? (
         <SnapshotRightPanel selectedNodeId={snapshotSelectedNodeId} snapshotData={snapshotData} />
+      ) : activeLeftTab === "templates" ? (
+        <TemplateRightPanel selectedFile={selectedTemplateFile} />
       ) : (
         <TabsFancy
           categories={rightPanelCategories}

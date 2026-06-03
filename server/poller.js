@@ -52,17 +52,12 @@ export function createWsHandler(ludusUrl, apiKey) {
 
         const handler = operations.get(data.type)
         if (handler) {
-          const isPowerOp = data.type === "powerOffVM" || data.type === "powerOnVM"
-          if (isPowerOp) console.log("[power:pipe] ws-server received '%s' for vm='%s', invoking handler", data.type, data.vm)
-          handler(ludusUrl, apiKey, data, ws)
-            .then(result => {
-              if (isPowerOp) console.log("[power:pipe] ws-server handler done, sending response — type='%s', result=%o", data.type, result)
-              ws.send(JSON.stringify({ type: data.type, result }))
-            })
-            .catch(err => {
-              if (isPowerOp) console.log("[power:pipe] ws-server handler FAILED — type='%s', error='%s'", data.type, err.message)
-              ws.send(JSON.stringify({ type: data.type, error: err.message }))
-            })
+          const result = handler(ludusUrl, apiKey, data, ws)
+          if (result instanceof Promise) {
+            result
+              .then(r => { if (r !== undefined) ws.send(JSON.stringify({ type: data.type, result: r })) })
+              .catch(err => ws.send(JSON.stringify({ type: data.type, error: err.message })))
+          }
         }
       } catch {}
     },
