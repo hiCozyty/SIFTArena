@@ -370,6 +370,54 @@ export async function deleteVM(ludusUrl, apiKey, data) {
   return { deleted: target.name }
 }
 
+export async function powerOffVM(ludusUrl, apiKey, data) {
+  console.log("[power:pipe] powerOffVM start — looking up VM:", data.vm)
+  const range = await apiCall(ludusUrl, apiKey, "/range")
+  const vms = range.VMs ?? []
+  const lower = data.vm?.toLowerCase()
+  const target = vms.find((vm) => vm.name === data.vm || (lower && vm.name?.toLowerCase().includes(lower)))
+  if (!target) throw new Error(`VM not found: ${data.vm}`)
+  console.log("[power:pipe] powerOffVM — found VM '%s', current poweredOn=%s, sending PUT /range/poweroff to ludus", target.name, target.poweredOn)
+  await apiCall(ludusUrl, apiKey, "/range/poweroff", "PUT", { machines: [target.name] })
+  console.log("[power:pipe] powerOffVM — ludus accepted, polling until poweredOn=false")
+  for (let i = 0; i < 30; i++) {
+    await sleep(2000)
+    const updated = await apiCall(ludusUrl, apiKey, "/range")
+    const updatedVm = (updated.VMs ?? []).find((vm) => vm.name === target.name)
+    console.log("[power:pipe] powerOffVM poll #%d — poweredOn=%s", i + 1, updatedVm?.poweredOn)
+    if (updatedVm && !updatedVm.poweredOn) {
+      console.log("[power:pipe] powerOffVM — state changed! poweredOn=false after %d poll(s)", i + 1)
+      break
+    }
+  }
+  console.log("[power:pipe] powerOffVM — returning result { poweredOff: '%s' }", target.name)
+  return { poweredOff: target.name }
+}
+
+export async function powerOnVM(ludusUrl, apiKey, data) {
+  console.log("[power:pipe] powerOnVM start — looking up VM:", data.vm)
+  const range = await apiCall(ludusUrl, apiKey, "/range")
+  const vms = range.VMs ?? []
+  const lower = data.vm?.toLowerCase()
+  const target = vms.find((vm) => vm.name === data.vm || (lower && vm.name?.toLowerCase().includes(lower)))
+  if (!target) throw new Error(`VM not found: ${data.vm}`)
+  console.log("[power:pipe] powerOnVM — found VM '%s', current poweredOn=%s, sending PUT /range/poweron to ludus", target.name, target.poweredOn)
+  await apiCall(ludusUrl, apiKey, "/range/poweron", "PUT", { machines: [target.name] })
+  console.log("[power:pipe] powerOnVM — ludus accepted, polling until poweredOn=true")
+  for (let i = 0; i < 30; i++) {
+    await sleep(2000)
+    const updated = await apiCall(ludusUrl, apiKey, "/range")
+    const updatedVm = (updated.VMs ?? []).find((vm) => vm.name === target.name)
+    console.log("[power:pipe] powerOnVM poll #%d — poweredOn=%s", i + 1, updatedVm?.poweredOn)
+    if (updatedVm && updatedVm.poweredOn) {
+      console.log("[power:pipe] powerOnVM — state changed! poweredOn=true after %d poll(s)", i + 1)
+      break
+    }
+  }
+  console.log("[power:pipe] powerOnVM — returning result { poweredOn: '%s' }", target.name)
+  return { poweredOn: target.name }
+}
+
 function lastOctet(ip) {
   if (typeof ip !== "string") return undefined
   const n = parseInt(ip.split(".").pop(), 10)

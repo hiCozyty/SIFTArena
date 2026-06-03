@@ -201,6 +201,7 @@ export function LabRangeContent({
             onSingleDeploy={state.handleSingleDeploy}
             templateItems={state.templateItems}
             snapshotData={state.snapshotData}
+            rangeVmPowerStatus={state.rangeVmPowerStatus}
           />
         </div>
       </TabContentCard>

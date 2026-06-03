@@ -21,6 +21,7 @@ interface YamlTopologyContentProps {
   onSingleDeploy?: (vmConfig: { hostname: string; yaml: string }) => void
   templateItems?: TemplateItem[]
   snapshotData?: Record<string, SnapshotInfo>
+  rangeVmPowerStatus?: Record<string, boolean>
 }
 
 export function YamlTopologyContent({

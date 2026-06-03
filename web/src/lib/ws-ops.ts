@@ -71,5 +71,5 @@ export async function executeWsOperation<T = unknown>(opts: {
       }
     })
     opts.sendFn()
-  })
+    })
 }

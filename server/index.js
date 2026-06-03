@@ -1,6 +1,6 @@
 import { createWsHandler, addFetcher, addOperation } from "./poller.js"
 import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./ludus/templates.js"
-import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, deployCustomVM, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, getVmDefs, listProxmoxVMs, getVMInfo } from "./ludus/range.js"
+import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, powerOffVM, powerOnVM, deployCustomVM, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, getVmDefs, listProxmoxVMs, getVMInfo } from "./ludus/range.js"
 import { fetchFocusedCategoriesAndTechniques } from "./caldera/categories.js"
 import { initDatabase, getCustomAbilities, createCustomAbility, updateCustomAbility, deleteCustomAbility } from "./caldera/customAbilities.js"
 import { initDatabase as initVmConfigDb, getDeployableVmConfigs, createDeployableVmConfig, updateDeployableVmConfig, deleteDeployableVmConfig } from "./ludus/deployableVmConfigs.js"
@@ -52,6 +52,8 @@ addFetcher("rangeStatus", fetchRangeWithLog)
 addOperation("rangeStatus", fetchRangeWithLog)
 addOperation("deleteRangeVMs", deleteRangeVMs)
 addOperation("deleteVM", deleteVM)
+addOperation("powerOffVM", powerOffVM)
+addOperation("powerOnVM", powerOnVM)
 addOperation("deployVM", deployVM)
 addOperation("deployCustomVM", deployCustomVM)
 addOperation("deployAllBaseVMs", deployAllBaseVMs)

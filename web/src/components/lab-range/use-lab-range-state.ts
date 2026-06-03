@@ -80,6 +80,7 @@ export function useLabRangeState(onComplete: () => void) {
   const [deployingVmHostname, setDeployingVmHostname] = useState<string | null>(null)
   const [customVmConfigs, setCustomVmConfigs] = useState<Record<string, CustomVmConfig>>({})
   const [rangeVmNames, setRangeVmNames] = useState<string[]>([])
+  const [rangeVmPowerStatus, setRangeVmPowerStatus] = useState<Record<string, boolean>>({})
   const [snapshotData, setSnapshotData] = useState<Record<string, SnapshotInfo>>({})
   const onCompleteRef = useRef(onComplete)
   onCompleteRef.current = onComplete
@@ -832,7 +833,15 @@ export function useLabRangeState(onComplete: () => void) {
         }
       }
       const names = result.map((vm) => vm.name)
+      const powerStatus: Record<string, boolean> = {}
+      for (const vm of result) {
+        if (typeof vm.poweredOn === "boolean") {
+          powerStatus[vm.name] = vm.poweredOn
+        }
+      }
+      console.log("[power:pipe] rangeStatus handler — applying power state: %o", powerStatus)
       setRangeVmNames(names)
+      setRangeVmPowerStatus(powerStatus)
     })
     backendWs.send({ type: "subscribe", channel: "rangeStatus" })
     backendWs.send({ type: "rangeStatus" })
@@ -1220,5 +1229,6 @@ export function useLabRangeState(onComplete: () => void) {
     handleSingleDeploy,
     snapshotData,
     refreshSnapshotData,
+    rangeVmPowerStatus,
   }
 }

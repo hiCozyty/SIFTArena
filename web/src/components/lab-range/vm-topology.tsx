@@ -9,7 +9,7 @@ import {
   BackgroundVariant,
   Controls,
 } from "@xyflow/react"
-import { useState, useEffect, useMemo, useCallback } from "react"
+import { useEffect, useMemo, useCallback, useState } from "react"
 import "@xyflow/react/dist/base.css"
 import yaml from "js-yaml"
 import { Power, PowerOff } from "lucide-react"
@@ -18,21 +18,20 @@ type VmNode = {
   label: string
   ip: string
   poweredOn: boolean
-  onTogglePower?: (nodeId: string) => void
+  onTogglePower?: (nodeId: string, hostname: string, currentlyOn: boolean) => void
 }
 
-function VmNode({ data }: NodeProps) {
-  const { label, ip, poweredOn: initialPoweredOn, onTogglePower } = data as VmNode
-  const [poweredOn, setPoweredOn] = useState(initialPoweredOn)
+function VmNode({ id: nodeId, data }: NodeProps) {
+  const { label, ip, poweredOn, onTogglePower } = data as VmNode
+  const isRouter = nodeId === "router"
 
   const handleTogglePower = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
       e.preventDefault()
-      setPoweredOn((prev) => !prev)
-      onTogglePower?.((data as Node<VmNode>).id)
+      onTogglePower?.(nodeId, label, poweredOn)
     },
-    [data, onTogglePower],
+    [onTogglePower, nodeId, label, poweredOn],
   )
 
   return (
@@ -40,20 +39,24 @@ function VmNode({ data }: NodeProps) {
       <Handle type="target" position={Position.Top} className="!bg-border" />
       <div className="flex items-center justify-between gap-2 min-w-0">
         <span className="font-medium text-foreground break-words min-w-0">{label}</span>
-        <button
-          onClick={handleTogglePower}
-          className="shrink-0 flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium transition-colors hover:bg-muted cursor-pointer"
-          title={poweredOn ? "Power off" : "Power on"}
-        >
-          {poweredOn ? (
-            <Power className="size-3.5 text-emerald-600" />
-          ) : (
-            <PowerOff className="size-3.5 text-red-600" />
-          )}
-          <span className={poweredOn ? "text-emerald-600" : "text-red-600"}>
-            {poweredOn ? "On" : "Off"}
-          </span>
-        </button>
+        {isRouter && poweredOn ? (
+          <span className="shrink-0 text-xs font-medium text-emerald-600">On</span>
+        ) : (
+          <button
+            onClick={handleTogglePower}
+            className="shrink-0 flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium transition-colors hover:bg-muted cursor-pointer"
+            title={poweredOn ? "Power off" : "Power on"}
+          >
+            {poweredOn ? (
+              <Power className="size-3.5 text-emerald-600" />
+            ) : (
+              <PowerOff className="size-3.5 text-red-600" />
+            )}
+            <span className={poweredOn ? "text-emerald-600" : "text-red-600"}>
+              {poweredOn ? "On" : "Off"}
+            </span>
+          </button>
+        )}
       </div>
       <span className="text-xs text-muted-foreground font-mono">{ip}</span>
       <Handle
@@ -67,7 +70,7 @@ function VmNode({ data }: NodeProps) {
 
 const nodeTypes = { vmNode: VmNode }
 
-function cleanLabel(raw: string): string {
+export function cleanLabel(raw: string): string {
   return raw.replace(/^\{\{\s*range_id\s*\}\}-/, "")
 }
 
@@ -126,7 +129,21 @@ function parseTopology(yamlContent: string): { nodes: Node[]; edges: Edge[] } | 
   }
 }
 
-export function VmTopology({ yamlContent }: { yamlContent?: string }) {
+function matchPowerState(label: string, powerStatus: Record<string, boolean>, defaultOn: boolean): boolean {
+  const lowerLabel = label.toLowerCase()
+  const matches = Object.keys(powerStatus).filter((name) => name.toLowerCase().includes(lowerLabel))
+  if (matches.length === 0) return defaultOn
+  const bestMatch = matches.reduce((a, b) => (a.length < b.length ? a : b))
+  return !!powerStatus[bestMatch]
+}
+
+interface VmTopologyProps {
+  yamlContent?: string
+  powerStatus?: Record<string, boolean>
+  onTogglePower?: (nodeId: string, hostname: string, currentlyOn: boolean) => void
+}
+
+export function VmTopology({ yamlContent, powerStatus, onTogglePower }: VmTopologyProps) {
   const parsed = useMemo(() => {
     if (!yamlContent) return null
     return parseTopology(yamlContent)
@@ -138,8 +155,19 @@ export function VmTopology({ yamlContent }: { yamlContent?: string }) {
     if (parsed) setLastValid(parsed)
   }, [parsed])
 
-  const nodes = parsed?.nodes ?? lastValid.nodes
+  const baseNodes = parsed?.nodes ?? lastValid.nodes
   const edges = parsed?.edges ?? lastValid.edges
+
+  const nodes = useMemo(() =>
+    baseNodes.map((node) => ({
+      ...node,
+      data: {
+        ...node.data,
+        poweredOn: matchPowerState((node.data as VmNode).label, powerStatus ?? {}, (node.data as { poweredOn: boolean }).poweredOn),
+        onTogglePower,
+      },
+    })),
+  [baseNodes, powerStatus, onTogglePower])
 
   return (
     <div className="h-full w-full">

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useCallback } from "react"
 import { FilePen, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { vmDefsToYaml } from "@/lib/json2yaml"
@@ -43,6 +43,7 @@ type YamlTopologyGuiProps = {
   onSingleDeploy?: (vmConfig: { hostname: string; yaml: string }) => void
   templateItems?: { id: number; label: string; subText: string; icon: string }[]
   snapshotData?: Record<string, SnapshotInfo>
+  rangeVmPowerStatus?: Record<string, boolean>
 }
 
 export function YamlTopologyGui({
@@ -63,6 +64,7 @@ export function YamlTopologyGui({
   onSingleDeploy,
   templateItems = [],
   snapshotData = {},
+  rangeVmPowerStatus = {},
 }: YamlTopologyGuiProps) {
   const [activeLeftTab, setActiveLeftTab] = useState<"templates" | "range" | "snapshots">("range")
   const [selectedRangeNode, setSelectedRangeNode] = useState<string | null>(null)
@@ -78,6 +80,9 @@ export function YamlTopologyGui({
   const [proofreadError, setProofreadError] = useState<string | null>(null)
   const [alerts, setAlerts] = useState<{ id: number; type: "error" | "success"; message: string }[]>([])
   const [snapshotSelectedNodeId, setSnapshotSelectedNodeId] = useState<string | null>(null)
+  const [pendingPowerAction, setPendingPowerAction] = useState<{ nodeId: string; hostname: string; action: "on" | "off" } | null>(null)
+  const [poweringVm, setPoweringVm] = useState(false)
+  const [powerComplete, setPowerComplete] = useState(false)
 
   const addAlert = (type: "error" | "success", message: string) => {
     const id = Date.now()
@@ -322,6 +327,36 @@ export function YamlTopologyGui({
     setCustomVmConfig("#please write your single vm config here\n")
   }
 
+  const handleTogglePower = useCallback((_nodeId: string, hostname: string, currentlyOn: boolean) => {
+    if (_nodeId === "router" && currentlyOn) {
+      return
+    }
+    setPowerComplete(false)
+    setPendingPowerAction({ nodeId: _nodeId, hostname, action: currentlyOn ? "off" : "on" })
+  }, [])
+
+  const confirmPowerAction = useCallback(async () => {
+    if (!pendingPowerAction) return
+    const messageType = pendingPowerAction.action === "on" ? "powerOnVM" : "powerOffVM"
+    setPoweringVm(true)
+    console.log("[power:pipe] confirmPowerAction — sending '%s' for vm='%s'", messageType, pendingPowerAction.hostname)
+    try {
+      await executeWsOperation({
+        messageType,
+        sendFn: () => backendWs.send({ type: messageType, vm: pendingPowerAction.hostname }),
+        ensurePaint: true,
+      })
+      console.log("[power:pipe] confirmPowerAction — '%s' resolved, requesting rangeStatus refresh", messageType)
+      backendWs.send({ type: "rangeStatus" })
+      } catch (err) {
+      console.warn("[power:ws] %s failed or timed out", messageType, err)
+      /* endpoint may not exist yet — server state will reconcile on next rangeStatus */
+    } finally {
+      setPoweringVm(false)
+      setPowerComplete(true)
+    }
+  }, [pendingPowerAction])
+
   const leftPanelTabs: Category[] = [
     {
       id: "templates",
@@ -471,7 +506,7 @@ export function YamlTopologyGui({
     {
       id: "topology",
       label: "Topology",
-      content: <VmTopology yamlContent={enrichedYaml} />,
+      content: <VmTopology yamlContent={enrichedYaml} powerStatus={rangeVmPowerStatus} onTogglePower={handleTogglePower} />,
     },
   ]
 
@@ -522,6 +557,25 @@ export function YamlTopologyGui({
             </Button>
           <Button onClick={() => setPendingDelete(null)} disabled={!deleteComplete}>Close</Button>
         </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={pendingPowerAction !== null} onOpenChange={(open) => { if (!open && !poweringVm) setPendingPowerAction(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{pendingPowerAction?.action === "on" ? "Power On VM" : "Power Off VM"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {powerComplete
+                ? `"${pendingPowerAction?.hostname}" has been powered ${pendingPowerAction?.action === "on" ? "on" : "off"}.`
+                : `Are you sure you want to power ${pendingPowerAction?.action === "on" ? "on" : "off"} "${pendingPowerAction?.hostname}"?`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={poweringVm} onClick={() => setPendingPowerAction(null)}>Cancel</AlertDialogCancel>
+            <Button variant={pendingPowerAction?.action === "on" ? "default" : "destructive"} onClick={confirmPowerAction} disabled={poweringVm || powerComplete}>
+              {poweringVm ? <Loader2 className="h-4 w-4 animate-spin" /> : pendingPowerAction?.action === "on" ? "Power On" : "Power Off"}
+            </Button>
+            <Button onClick={() => setPendingPowerAction(null)} disabled={!powerComplete}>Close</Button>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
