@@ -24,6 +24,7 @@ type ScenarioItem = {
 function AttackerConfigurationUi() {
   const [selected, setSelected] = useState<SelectedItem>({ type: "none" })
   const [activeTab, setActiveTab] = useState("ability")
+  const [writeForm, setWriteForm] = useState({ name: "", description: "", command: "", kaliPrereq: "", winPrereq: "" })
 
   useEffect(() => {
     if (selected.type === "create-ability") {
@@ -44,6 +45,10 @@ function AttackerConfigurationUi() {
       { id: `${selected.type === "ability" ? selected.abilityId : "negative-control"}-${Date.now()}`, name: selected.type === "ability" ? selected.name : "Negative Control", description: selected.type === "ability" ? (selected.description ?? "(no description)") : "An empty ability that does nothing." },
     ])
   }, [selected])
+
+  const handleWriteFormChange = useCallback((field: string, value: string) => {
+    setWriteForm((prev) => ({ ...prev, [field]: value }))
+  }, [])
 
   const displayContent = (() => {
     if (selected.type === "none") {
@@ -94,12 +99,20 @@ function AttackerConfigurationUi() {
                 <Button onClick={() => setScenarioItems([])}>Clear Scenario</Button>
                 <Button disabled={selected.type === "technique" || selected.type === "none" || selected.type === "create-ability"} onClick={handleAddToScenario}>Add to Scenario</Button>
               </div>
+            ) : selected.type === "create-ability" ? (
+              <div className="flex items-center gap-2">
+                <Button disabled={!writeForm.name || !writeForm.description || !writeForm.command}>Test Ability</Button>
+                <Button disabled={!writeForm.name || !writeForm.description || !writeForm.command}>Create Ability</Button>
+              </div>
             ) : (
-              <Button disabled={selected.type === "technique" || selected.type === "none" || selected.type === "create-ability"} onClick={handleAddToScenario}>Add to Scenario</Button>
+              <div className="flex items-center gap-2">
+                <Button disabled={selected.type === "technique" || selected.type === "none"}>Test Ability</Button>
+                <Button disabled={selected.type === "technique" || selected.type === "none"} onClick={handleAddToScenario}>Add to Scenario</Button>
+              </div>
             )}
           </div>
           <TabsContent value="ability" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
-            <AbilityInfoTab content={displayContent} mode={selected.type === "create-ability" ? "write" : "read"} />
+            <AbilityInfoTab content={displayContent} mode={selected.type === "create-ability" ? "write" : "read"} writeForm={writeForm} onWriteFormChange={handleWriteFormChange} />
           </TabsContent>
           <TabsContent value="chat" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
             <AiChatTab variantMessage={variantMessage} variantLabel={selected.type === "ability" ? selected.name : undefined} {...chat} />

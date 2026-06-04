@@ -39,31 +39,33 @@ export interface AbilityInfoTabProps {
     winPrereq: string
   } | null
   mode: "read" | "write"
+  writeForm?: { name: string; description: string; command: string; kaliPrereq: string; winPrereq: string }
+  onWriteFormChange?: (field: string, value: string) => void
 }
 
-export function AbilityInfoTab({ content, mode }: AbilityInfoTabProps) {
+export function AbilityInfoTab({ content, mode, writeForm, onWriteFormChange }: AbilityInfoTabProps) {
   if (mode === "write") {
     return (
       <div className="flex h-full flex-col gap-4 p-4 text-sm overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div>
           <label className="font-bold text-sm">Name</label>
-          <Input className="mt-1 font-mono" placeholder="Ability name" />
+          <Input className="mt-1 font-mono" placeholder="Ability name" value={writeForm?.name ?? ""} onChange={(e) => onWriteFormChange?.("name", e.target.value)} />
         </div>
         <div>
           <label className="font-bold text-sm">Description</label>
-          <textarea className="mt-1 font-mono w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" placeholder="Description" rows={3} />
+          <textarea className="mt-1 font-mono w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" placeholder="Description" rows={3} value={writeForm?.description ?? ""} onChange={(e) => onWriteFormChange?.("description", e.target.value)} />
         </div>
         <div>
           <label className="font-bold text-sm">Command</label>
-          <textarea className="mt-1 font-mono w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" placeholder="Command" rows={3} />
+          <textarea className="mt-1 font-mono w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" placeholder="Command" rows={3} value={writeForm?.command ?? ""} onChange={(e) => onWriteFormChange?.("command", e.target.value)} />
         </div>
         <div className="border-t pt-4">
           <label className="font-bold text-sm">Kali Prerequisites</label>
-          <textarea className="mt-1 font-mono w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" placeholder="(none)" rows={3} />
+          <textarea className="mt-1 font-mono w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" placeholder="(none)" rows={3} value={writeForm?.kaliPrereq ?? ""} onChange={(e) => onWriteFormChange?.("kaliPrereq", e.target.value)} />
         </div>
         <div className="pt-2">
           <label className="font-bold text-sm">Windows Prerequisites</label>
-          <textarea className="mt-1 font-mono w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" placeholder="(none)" rows={3} />
+          <textarea className="mt-1 font-mono w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" placeholder="(none)" rows={3} value={writeForm?.winPrereq ?? ""} onChange={(e) => onWriteFormChange?.("winPrereq", e.target.value)} />
         </div>
       </div>
     )
