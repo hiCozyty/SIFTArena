@@ -76,9 +76,11 @@ export function AiChatTab({ messages, isGenerating, isToolExecuting, error, send
         <div className="h-full overflow-y-auto px-4 pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" ref={containerRef} onScroll={handleScroll}>
           {isEmpty ? (
             <div className="flex h-full flex-col items-center justify-center gap-3">
-            <Button onClick={() => sendMessage(variantMessage)}>
-              {variantLabel ? `Create variant for "${variantLabel}"` : "Create an existing ability variant"}
-            </Button>
+            {variantMessage ? (
+              <Button onClick={() => sendMessage(variantMessage)}>
+                {variantLabel ? `Create variant for "${variantLabel}"` : variantMessage}
+              </Button>
+            ) : null}
               <Button onClick={() => sendMessage("create a new ability")}>
                 Create a new ability
               </Button>

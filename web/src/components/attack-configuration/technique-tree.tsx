@@ -16,14 +16,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { FileText, ChevronsUpDown } from "lucide-react"
+import { FileText, ChevronsUpDown, Plus } from "lucide-react"
 import { useFocusedData, type Technique, type AtomicAbility } from "@/hooks/use-focused-data"
-import { useCallback, useEffect } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Button } from "@/components/ui/button"
 
 export type SelectedItem =
-  | { type: "ability"; tid: string; abilityId: string; name: string; description: string | undefined; command: string; downloadInstructions: string }
+  | { type: "ability"; tid: string; abilityId: string; name: string; description: string | undefined; command: string; kaliPrereq: string; winPrereq: string }
   | { type: "negative-control" }
   | { type: "technique"; tid: string; name: string }
+  | { type: "create-ability" }
   | { type: "none" }
 
 function TreeControls({ allIds }: { allIds: string[] }) {
@@ -55,26 +57,10 @@ function TreeControls({ allIds }: { allIds: string[] }) {
   )
 }
 
-function TechniqueTreeContent({ onSelect, allTechniques }: { onSelect: (item: SelectedItem) => void; allTechniques: { tid: string; tech: Technique }[] }) {
-  const { selectedIds } = useTree()
-
-  useEffect(() => {
-    if (selectedIds.length === 0) {
-      onSelect({ type: "none" })
-    }
-  }, [selectedIds, onSelect])
-
-  const allIds: string[] = []
-  for (const { tid, tech } of allTechniques) {
-    allIds.push(tid)
-    for (const ability of tech.abilities) {
-      allIds.push(`${tid}-${ability.ability_id}`)
-    }
-  }
-
+function TechniqueTreeContent({ onSelect, onCreate, allTechniques }: { onSelect: (item: SelectedItem) => void; onCreate: () => void; allTechniques: { tid: string; tech: Technique }[] }) {
   return (
-    <div className="min-h-0 min-w-0 flex-1 max-w-full">
-      <TreeView className="pl-0 rounded-lg m-2 -ml-[5px] h-[415px] overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="min-h-0 min-w-0 flex-1 max-w-full flex flex-col">
+      <TreeView className="pl-0 rounded-lg m-2 -ml-[5px] flex-1 overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <TreeNode key="negative-control" isLast={allTechniques.length === 0} nodeId="negative-control">
           <TreeNodeTrigger onClick={() => onSelect({ type: "negative-control" })}>
             <TreeIcon icon={<FileText className="h-4 w-4" />} />
@@ -98,7 +84,7 @@ function TechniqueTreeContent({ onSelect, allTechniques }: { onSelect: (item: Se
 
                   return (
                     <TreeNode key={abilityId} isLast={isLastAb} level={1} nodeId={abilityId}>
-                      <TreeNodeTrigger onClick={() => onSelect({ type: "ability", tid, abilityId: ability.ability_id, name: ability.name, description: ability.description, command: ability.executors[0]?.command ?? "(no command)", downloadInstructions: ability.download_instructions ?? "" })}>
+                      <TreeNodeTrigger onClick={() => onSelect({ type: "ability", tid, abilityId: ability.ability_id, name: ability.name, description: ability.description, command: ability.command ?? "(no command)", kaliPrereq: ability.kali_prereq ?? "", winPrereq: ability.win_prereq ?? "" })}>
                         <TreeIcon icon={<FileText className="h-4 w-4" />} />
                         <TreeLabel className="whitespace-normal break-words">{ability.name}</TreeLabel>
                       </TreeNodeTrigger>
@@ -110,16 +96,37 @@ function TechniqueTreeContent({ onSelect, allTechniques }: { onSelect: (item: Se
           )
         })}
       </TreeView>
+      <div className="shrink-0 p-2">
+        <Button className="w-full" onClick={onCreate}>
+          <Plus className="size-4" />
+          Create an ability
+        </Button>
+      </div>
     </div>
   )
 }
 
 export function TechniqueTree({ onSelect }: { onSelect: (item: SelectedItem) => void }) {
   const { status, fetch } = useFocusedData()
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const suppressNoneRef = useRef(false)
 
   useEffect(() => {
     fetch()
   }, [fetch])
+
+  useEffect(() => {
+    if (selectedIds.length === 0 && !suppressNoneRef.current) {
+      onSelect({ type: "none" })
+    }
+    suppressNoneRef.current = false
+  }, [selectedIds, onSelect])
+
+  const handleCreate = useCallback(() => {
+    suppressNoneRef.current = true
+    setSelectedIds([])
+    onSelect({ type: "create-ability" })
+  }, [onSelect])
 
   if (status.type === "loading") {
     return <div className="p-4 text-sm text-muted-foreground">Loading...</div>
@@ -152,12 +159,12 @@ export function TechniqueTree({ onSelect }: { onSelect: (item: SelectedItem) => 
   }
 
   return (
-    <TreeProvider defaultExpandedIds={allIds}>
+    <TreeProvider selectedIds={selectedIds} onSelectionChange={setSelectedIds} defaultExpandedIds={allIds} className="h-full">
       <div className="flex h-full flex-col">
         <div className="shrink-0">
           <TreeControls allIds={allIds} />
         </div>
-        <TechniqueTreeContent onSelect={onSelect} allTechniques={allTechniques} />
+        <TechniqueTreeContent onSelect={onSelect} onCreate={handleCreate} allTechniques={allTechniques} />
       </div>
     </TreeProvider>
   )

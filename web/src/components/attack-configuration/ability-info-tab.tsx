@@ -1,5 +1,6 @@
 import { Check, Copy } from "lucide-react"
 import { useState } from "react"
+import { Input } from "@/components/ui/input"
 
 function CopyCommandBlock({ commands }: { commands: string }) {
   const [copied, setCopied] = useState(false)
@@ -34,11 +35,40 @@ export interface AbilityInfoTabProps {
     abilityId: string
     description: string
     command: string
-    downloadInstructions: string
+    kaliPrereq: string
+    winPrereq: string
   } | null
+  mode: "read" | "write"
 }
 
-export function AbilityInfoTab({ content }: AbilityInfoTabProps) {
+export function AbilityInfoTab({ content, mode }: AbilityInfoTabProps) {
+  if (mode === "write") {
+    return (
+      <div className="flex h-full flex-col gap-4 p-4 text-sm overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div>
+          <label className="font-bold text-sm">Name</label>
+          <Input className="mt-1 font-mono" placeholder="Ability name" />
+        </div>
+        <div>
+          <label className="font-bold text-sm">Description</label>
+          <textarea className="mt-1 font-mono w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" placeholder="Description" rows={3} />
+        </div>
+        <div>
+          <label className="font-bold text-sm">Command</label>
+          <textarea className="mt-1 font-mono w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" placeholder="Command" rows={3} />
+        </div>
+        <div className="border-t pt-4">
+          <label className="font-bold text-sm">Kali Prerequisites</label>
+          <textarea className="mt-1 font-mono w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" placeholder="(none)" rows={3} />
+        </div>
+        <div className="pt-2">
+          <label className="font-bold text-sm">Windows Prerequisites</label>
+          <textarea className="mt-1 font-mono w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" placeholder="(none)" rows={3} />
+        </div>
+      </div>
+    )
+  }
+
   if (content === null) {
     return (
       <div className="flex h-full items-center justify-center p-4 font-mono text-sm text-muted-foreground">
@@ -63,30 +93,24 @@ export function AbilityInfoTab({ content }: AbilityInfoTabProps) {
       <div className="mb-4">
         <span className="font-bold">Command:</span> {content.command}
       </div>
-      {content.downloadInstructions && (
+      {content.kaliPrereq ? (
         <div className="mt-6 border-t pt-4">
-          {(() => {
-            const lines = content.downloadInstructions.split("\n")
-            const titleIndex = lines.findIndex(l => l.includes("Prerequisites (Manual Step Required)"))
-            const payloadIndex = lines.findIndex(l => l.startsWith("Payload:"))
-
-            const warningLines = lines.slice(titleIndex + 1, payloadIndex >= 0 ? payloadIndex : undefined).join("\n").trim()
-            const payloadLine = payloadIndex >= 0 ? lines[payloadIndex] : ""
-            const commands = payloadIndex >= 0 ? lines.slice(payloadIndex + 1).join("\n").trim() : ""
-
-            return (
-              <>
-                <div className="mb-2 font-bold">Prerequisites (Manual Step Required)</div>
-                <p className="mb-3 text-muted-foreground whitespace-pre-wrap">{warningLines}</p>
-                {payloadLine && <p className="mb-2 font-medium">{payloadLine}</p>}
-                {commands && (
-                  <div className="relative mt-3">
-                    <CopyCommandBlock commands={commands} />
-                  </div>
-                )}
-              </>
-            )
-          })()}
+          <div className="mb-2 font-bold">Kali Prerequisites</div>
+          <CopyCommandBlock commands={content.kaliPrereq} />
+        </div>
+      ) : (
+        <div className="mt-6 border-t pt-4 text-muted-foreground">
+          <span className="font-bold">Kali Prerequisites:</span> (none)
+        </div>
+      )}
+      {content.winPrereq ? (
+        <div className="mt-4 pt-2">
+          <div className="mb-2 font-bold">Windows Prerequisites</div>
+          <CopyCommandBlock commands={content.winPrereq} />
+        </div>
+      ) : (
+        <div className="mt-4 pt-2 text-muted-foreground">
+          <span className="font-bold">Windows Prerequisites:</span> (none)
         </div>
       )}
     </div>

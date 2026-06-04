@@ -1,17 +1,5 @@
 import { CalderaIcon } from "@/components/icons/caldera-icon"
 import { Button } from "@/components/ui/button"
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-} from "@/components/ui/carousel"
-import {
-  Dialog,
-  DialogContent,
-  DialogTrigger,
-} from "@/components/ui/dialog"
 import { TabContentCard } from "@/components/shared-ui-primitives/tab-content-card"
 import {
   Tabs,
@@ -20,7 +8,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs"
 import { FileText, MessageCircle, ListChecks, Trash2, ListPlus, Terminal } from "lucide-react"
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { TechniqueTree, type SelectedItem } from "@/components/attack-configuration/technique-tree"
 import { AbilityInfoTab } from "@/components/attack-configuration/ability-info-tab"
 import { AiChatTab } from "@/components/attack-configuration/ai-chat-tab"
@@ -36,6 +24,12 @@ type ScenarioItem = {
 function AttackerConfigurationUi() {
   const [selected, setSelected] = useState<SelectedItem>({ type: "none" })
   const [activeTab, setActiveTab] = useState("ability")
+
+  useEffect(() => {
+    if (selected.type === "create-ability") {
+      setActiveTab("ability")
+    }
+  }, [selected])
   const [scenarioItems, setScenarioItems] = useState<ScenarioItem[]>([])
   const chat = useOpencodeChat()
 
@@ -56,24 +50,27 @@ function AttackerConfigurationUi() {
       return null
     }
     if (selected.type === "negative-control") {
-      return { name: "Negative Control", abilityId: "", description: "An empty ability that does nothing.", command: "(none)", downloadInstructions: "" }
+      return { name: "Negative Control", abilityId: "", description: "An empty ability that does nothing.", command: "(none)", kaliPrereq: "", winPrereq: "" }
     }
-    if (selected.type === "technique") {
+    if (selected.type === "technique" || selected.type === "create-ability") {
       return null
     }
-    return { name: selected.name, abilityId: selected.abilityId, description: selected.description ?? "(no description)", command: selected.command, downloadInstructions: selected.downloadInstructions }
+    return { name: selected.name, abilityId: selected.abilityId, description: selected.description ?? "(no description)", command: selected.command, kaliPrereq: selected.kaliPrereq, winPrereq: selected.winPrereq }
   })()
 
   const variantMessage = (() => {
     if (selected.type === "ability") {
-      return `create an existing ability variant for "${selected.name}"\nDescription: ${selected.description ?? "(no description)"}\nCommand: ${selected.command}\nDownload instructions: ${selected.downloadInstructions || "(none)"}`
+      return `create an existing ability variant for "${selected.name}"\nDescription: ${selected.description ?? "(no description)"}\nCommand: ${selected.command}\nKali prerequisites: ${selected.kaliPrereq || "(none)"}\nWindows prerequisites: ${selected.winPrereq || "(none)"}`
     }
-    return "create an existing ability variant"
+    if (selected.type === "create-ability") {
+      return "Create a new ability"
+    }
+    return ""
   })()
 
   return (
     <div className="h-full rounded-lg flex">
-      <div className="w-[280px] shrink-0">
+      <div className="w-[280px] shrink-0 overflow-hidden h-full">
         <TechniqueTree onSelect={setSelected} />
       </div>
       <div className="w-[500px] min-w-0">
@@ -95,14 +92,14 @@ function AttackerConfigurationUi() {
             ) : activeTab === "scenario" ? (
               <div className="flex items-center gap-2">
                 <Button onClick={() => setScenarioItems([])}>Clear Scenario</Button>
-                <Button disabled={selected.type === "technique" || selected.type === "none"} onClick={handleAddToScenario}>Add to Scenario</Button>
+                <Button disabled={selected.type === "technique" || selected.type === "none" || selected.type === "create-ability"} onClick={handleAddToScenario}>Add to Scenario</Button>
               </div>
             ) : (
-              <Button disabled={selected.type === "technique" || selected.type === "none"} onClick={handleAddToScenario}>Add to Scenario</Button>
+              <Button disabled={selected.type === "technique" || selected.type === "none" || selected.type === "create-ability"} onClick={handleAddToScenario}>Add to Scenario</Button>
             )}
           </div>
           <TabsContent value="ability" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
-            <AbilityInfoTab content={displayContent} />
+            <AbilityInfoTab content={displayContent} mode={selected.type === "create-ability" ? "write" : "read"} />
           </TabsContent>
           <TabsContent value="chat" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
             <AiChatTab variantMessage={variantMessage} variantLabel={selected.type === "ability" ? selected.name : undefined} {...chat} />
@@ -147,11 +144,9 @@ function AttackerConfigurationUi() {
 export function AttackConfiguration({
   completed,
   onComplete,
-  selectedAttackName,
 }: {
   completed: boolean
   onComplete: () => void
-  selectedAttackName?: string
 }) {
   return (
     <TabContentCard className="p-6 flex flex-col min-h-0">
@@ -164,54 +159,7 @@ export function AttackConfiguration({
           <p className="text-muted-foreground text-sm">Select preconfigured attack or create your custom configuration</p>
         </div>
       </div>
-      <p className="text-muted-foreground text-sm shrink-0">
-        {selectedAttackName
-          ? <>Currently selected Attack: <strong>{selectedAttackName}</strong></>
-          : "Please select an attack.."
-        }
-        {!selectedAttackName && (
-          <Dialog>
-            <DialogTrigger asChild>
-              <button className="ml-1 underline cursor-pointer">click here for help</button>
-            </DialogTrigger>
-            <DialogContent className="bg-transparent border-0 shadow-none">
-              <Carousel className="w-full max-w-sm mx-auto">
-                <CarouselContent>
-                  <CarouselItem>
-                    <div className="rounded-4xl bg-muted p-4 text-center shadow-sm">
-                      <h4 className="mb-1 font-semibold">Select an Attack</h4>
-                      <p className="text-sm text-muted-foreground">
-                        Choose a preconfigured attack from the tree on the left, or
-                        build your own using the tabs on the right.
-                      </p>
-                    </div>
-                  </CarouselItem>
-                  <CarouselItem>
-                    <div className="rounded-4xl bg-muted p-4 text-center shadow-sm">
-                      <h4 className="mb-1 font-semibold">Database Attacks</h4>
-                      <p className="text-sm text-muted-foreground">
-                        Target user tables, roles, and credentials. Configure SQL
-                        injection, privilege escalation, and more.
-                      </p>
-                    </div>
-                  </CarouselItem>
-                  <CarouselItem>
-                    <div className="rounded-4xl bg-muted p-4 text-center shadow-sm">
-                      <h4 className="mb-1 font-semibold">API Attacks</h4>
-                      <p className="text-sm text-muted-foreground">
-                        Target authentication endpoints, user management APIs, and
-                        other RESTful services.
-                      </p>
-                    </div>
-                  </CarouselItem>
-                </CarouselContent>
-                <CarouselPrevious className="hidden sm:inline-flex" />
-                <CarouselNext className="hidden sm:inline-flex" />
-              </Carousel>
-            </DialogContent>
-          </Dialog>
-        )}
-      </p>
+
       <div className="mt-4 flex-1 min-h-0">
         <AttackerConfigurationUi />
       </div>

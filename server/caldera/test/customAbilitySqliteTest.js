@@ -41,19 +41,15 @@ function runTests() {
     const created = createCustomAbility({
       name: "Test LSASS Dump",
       description: "Test ability for LSASS memory dump",
-      tactic: "credential-access",
-      technique_id: "T1003.001",
-      technique_name: "OS Credential Dumping: LSASS Memory",
-      executors: [
-        { name: "cmd", platform: "windows", command: "echo test", timeout: 60 },
-      ],
+      command: "echo test",
+      kali_prereq: "",
+      win_prereq: "",
     })
     assert(created.ability_id !== undefined, "has ability_id")
     assert(created.name === "Test LSASS Dump", "name matches")
-    assert(created.plugin === "custom", "plugin is custom")
-    assert(Array.isArray(created.executors), "executors is array")
-    assert(created.executors.length === 1, "has 1 executor")
-    assert(created.executors[0].command === "echo test", "command matches")
+    assert(created.command === "echo test", "command matches")
+    assert(created.kali_prereq === "", "kali_prereq empty")
+    assert(created.win_prereq === "", "win_prereq empty")
 
     // Test 3: Get after create
     console.log("\n3. getCustomAbilities (after create)")
@@ -66,12 +62,9 @@ function runTests() {
     const created2 = createCustomAbility({
       name: "Test Mimikatz",
       description: "Test mimikatz ability",
-      tactic: "credential-access",
-      technique_id: "T1003.001",
-      technique_name: "OS Credential Dumping: LSASS Memory",
-      executors: [
-        { name: "psh", platform: "windows", command: "Invoke-Mimikatz", timeout: 120 },
-      ],
+      command: "Invoke-Mimikatz",
+      kali_prereq: "",
+      win_prereq: "",
     })
     assert(created2.ability_id !== created.ability_id, "different ability_id")
     const afterCreate2 = getCustomAbilities()
@@ -86,18 +79,18 @@ function runTests() {
     assert(updated.name === "Updated LSASS Dump", "name updated")
     assert(updated.description === "Updated description", "description updated")
     assert(updated.ability_id === created.ability_id, "ability_id unchanged")
-    assert(updated.technique_id === "T1003.001", "technique_id unchanged")
+    assert(updated.command === "echo test", "command unchanged")
 
-    // Test 6: Update executors
-    console.log("\n6. updateCustomAbility (executors)")
-    const updatedExec = updateCustomAbility(created.ability_id, {
-      executors: [
-        { name: "psh", platform: "windows", command: "Get-Process", timeout: 30 },
-        { name: "cmd", platform: "windows", command: "tasklist", timeout: 30 },
-      ],
+    // Test 6: Update command and prereqs
+    console.log("\n6. updateCustomAbility (command and prereqs)")
+    const updatedCmd = updateCustomAbility(created.ability_id, {
+      command: "Get-Process lsass",
+      kali_prereq: "apt install tool",
+      win_prereq: "choco install tool",
     })
-    assert(updatedExec.executors.length === 2, "2 executors")
-    assert(updatedExec.executors[0].name === "psh", "first executor is psh")
+    assert(updatedCmd.command === "Get-Process lsass", "command updated")
+    assert(updatedCmd.kali_prereq === "apt install tool", "kali_prereq updated")
+    assert(updatedCmd.win_prereq === "choco install tool", "win_prereq updated")
 
     // Test 7: Update non-existent ability
     console.log("\n7. updateCustomAbility (non-existent)")

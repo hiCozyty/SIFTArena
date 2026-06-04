@@ -53,37 +53,29 @@ const PAYLOAD_DIR = "~/caldera/plugins/atomic/data/atomic-red-team/ExternalPaylo
 
 const PAYLOAD_DOWNLOADS = {
   "procdump.exe": {
-    name: "ProcDump",
-    steps: `mkdir -p ${PAYLOAD_DIR} && \\\nwget -q "https://download.sysinternals.com/files/Procdump.zip" -O /tmp/Procdump.zip && \\\nunzip -o /tmp/Procdump.zip -d /tmp/Procdump && \\\ncp /tmp/Procdump/procdump64.exe ${PAYLOAD_DIR}/procdump.exe && \\\nrm -rf /tmp/Procdump.zip /tmp/Procdump && \\\nsystemctl restart caldera`,
+    kali_steps: `mkdir -p ${PAYLOAD_DIR} && \\\nwget -q "https://download.sysinternals.com/files/Procdump.zip" -O /tmp/Procdump.zip && \\\nunzip -o /tmp/Procdump.zip -d /tmp/Procdump && \\\ncp /tmp/Procdump/procdump64.exe ${PAYLOAD_DIR}/procdump.exe && \\\nrm -rf /tmp/Procdump.zip /tmp/Procdump && \\\nsystemctl restart caldera`,
+    win_steps: "",
   },
   "Outflank-Dumpert.exe": {
-    name: "Outflank Dumpert",
-    steps: `mkdir -p ${PAYLOAD_DIR} && \\\nwget -q "https://github.com/clr2of8/Dumpert/raw/5838c357224cc9bc69618c80c2b5b2d17a394b10/Dumpert/x64/Release/Outflank-Dumpert.exe" -O ${PAYLOAD_DIR}/Outflank-Dumpert.exe && \\\nsystemctl restart caldera`,
+    kali_steps: `mkdir -p ${PAYLOAD_DIR} && \\\nwget -q "https://github.com/clr2of8/Dumpert/raw/5838c357224cc9bc69618c80c2b5b2d17a394b10/Dumpert/x64/Release/Outflank-Dumpert.exe" -O ${PAYLOAD_DIR}/Outflank-Dumpert.exe && \\\nsystemctl restart caldera`,
+    win_steps: "",
   },
   "nanodump.x64.exe": {
-    name: "NanoDump",
-    steps: `mkdir -p ${PAYLOAD_DIR} && \\\nwget -q "https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe" -O ${PAYLOAD_DIR}/nanodump.x64.exe && \\\nsystemctl restart caldera`,
+    kali_steps: `mkdir -p ${PAYLOAD_DIR} && \\\nwget -q "https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe" -O ${PAYLOAD_DIR}/nanodump.x64.exe && \\\nsystemctl restart caldera`,
+    win_steps: "",
   },
   "mimikatz.exe": {
-    name: "Mimikatz",
-    steps: `mkdir -p ${PAYLOAD_DIR}/x64 && \\\nwget -q "https://github.com/gentilkiwi/mimikatz/releases/latest/download/mimikatz_trunk.zip" -O /tmp/mimikatz.zip && \\\nunzip -o /tmp/mimikatz.zip -d /tmp/mimikatz && \\\ncp /tmp/mimikatz/x64/mimikatz.exe ${PAYLOAD_DIR}/x64/mimikatz.exe && \\\nrm -rf /tmp/mimikatz.zip /tmp/mimikatz && \\\nsystemctl restart caldera`,
+    kali_steps: `mkdir -p ${PAYLOAD_DIR}/x64 && \\\nwget -q "https://github.com/gentilkiwi/mimikatz/releases/latest/download/mimikatz_trunk.zip" -O /tmp/mimikatz.zip && \\\nunzip -o /tmp/mimikatz.zip -d /tmp/mimikatz && \\\ncp /tmp/mimikatz/x64/mimikatz.exe ${PAYLOAD_DIR}/x64/mimikatz.exe && \\\nrm -rf /tmp/mimikatz.zip /tmp/mimikatz && \\\nsystemctl restart caldera`,
+    win_steps: "",
   },
   "pypykatz": {
-    name: "pypykatz (Python venv)",
-    steps: `pip3 install pypykatz && \
+    kali_steps: `pip3 install pypykatz && \
 cp -r $(python3 -c "import pypykatz, os; print(os.path.dirname(pypykatz.__file__))") ${PAYLOAD_DIR}/pypykatz && \
-systemctl restart caldera
-
-# Target prerequisite: Python 3 must be installed on the Windows target
-# If not installed, run on target:
-#   invoke-webrequest "https://www.python.org/ftp/python/3.10.4/python-3.10.4-amd64.exe" -outfile "ExternalPayloads\\python_setup.exe"
-#   Start-Process -FilePath "ExternalPayloads\\python_setup.exe" -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0" -Wait`,
+systemctl restart caldera`,
+    win_steps: `invoke-webrequest "https://www.python.org/ftp/python/3.10.4/python-3.10.4-amd64.exe" -outfile "ExternalPayloads\\python_setup.exe"
+Start-Process -FilePath "ExternalPayloads\\python_setup.exe" -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0" -Wait`,
   },
 }
-
-const PREREQ_HEADER = `Prerequisites (Manual Step Required)
-
-This ability requires an external payload that must be manually staged on the Caldera server before execution.`
 
 function extractPayloadFilename(command) {
   const patterns = [
@@ -117,10 +109,20 @@ function enrichPayloads(ability) {
 
   return {
     ...ability,
-    download_instructions: `${PREREQ_HEADER}
+    kali_prereq: info.kali_steps || "",
+    win_prereq: info.win_steps || "",
+  }
+}
 
-Payload: ${info.name}
-${info.steps}`,
+function strip(ability) {
+  const executor = ability.executors?.[0] ?? {}
+  return {
+    ability_id: ability.ability_id,
+    name: ability.name,
+    description: ability.description ?? "",
+    command: executor.command ?? "",
+    kali_prereq: ability.kali_prereq ?? "",
+    win_prereq: ability.win_prereq ?? "",
   }
 }
 
@@ -203,6 +205,15 @@ async function main() {
     }
   }
 
+  // Strip abilities to only needed fields
+  for (const cat of result.categories) {
+    const catTechs = result.techniques[cat]
+    if (!catTechs) continue
+    for (const tid of Object.keys(catTechs)) {
+      catTechs[tid].abilities = catTechs[tid].abilities.map(strip)
+    }
+  }
+
   // Stats
   let totalAbilities = 0
   let totalTechs = 0
@@ -216,7 +227,8 @@ async function main() {
   }
   Bun.write(OUT_FILE, JSON.stringify(result, null, 2))
   const size = (Bun.file(OUT_FILE).size / 1024).toFixed(1)
-  }
+  console.log(`Wrote ${OUT_FILE} (${size} KB, ${totalAbilities} abilities across ${totalTechs} techniques)`)
+}
 
 main().catch(err => {
   console.error("Error:", err.message)
