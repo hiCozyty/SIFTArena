@@ -1,5 +1,6 @@
 import { FOCUS_CATEGORIES, FOCUS_TECHNIQUES } from "./focus.js"
 import focusedTechniques from "./focusedTechniques.json"
+import { getCustomAbilities } from "./customAbilities.js"
 
 export async function fetchCalderaCategories() {
   return {
@@ -21,7 +22,21 @@ export async function fetchFocusedCategoriesAndTechniques() {
         seen.add(ab.ability_id)
         return true
       })
+      for (const ab of catTechs[tid].abilities) {
+        ab.custom = false
+      }
     }
   }
+
+  const customAbilities = getCustomAbilities()
+  if (customAbilities.length > 0 && result.techniques["credential-access"]?.["T1003.001"]) {
+    const existingIds = new Set(result.techniques["credential-access"]["T1003.001"].abilities.map(a => a.ability_id))
+    for (const ab of customAbilities) {
+      if (!existingIds.has(ab.ability_id)) {
+        result.techniques["credential-access"]["T1003.001"].abilities.push(ab)
+      }
+    }
+  }
+
   return result
 }

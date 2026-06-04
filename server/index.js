@@ -3,7 +3,7 @@ import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./ludus/t
 import { fetchPackerTemplates } from "./ludus/packer-templates.js"
 import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, powerOffVM, powerOnVM, deployCustomVM, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, getVmDefs, listProxmoxVMs, getVMInfo } from "./ludus/range.js"
 import { fetchFocusedCategoriesAndTechniques } from "./caldera/categories.js"
-import { initDatabase, getCustomAbilities, createCustomAbility, updateCustomAbility, deleteCustomAbility } from "./caldera/customAbilities.js"
+import { initDatabase, getCustomAbilities, createCustomAbility, updateCustomAbility, deleteCustomAbility, syncToCaldera } from "./caldera/customAbilities.js"
 import { initDatabase as initVmConfigDb, getDeployableVmConfigs, createDeployableVmConfig, updateDeployableVmConfig, deleteDeployableVmConfig } from "./ludus/deployableVmConfigs.js"
 import { createVncProxyHandler, getOrCreateVncSession } from "./ludus/proxmox.js"
 import { createWinrmProxy } from "./ludus/winrm-proxy.js"
@@ -85,6 +85,7 @@ addOperation("deleteDeployableVmConfig", async (_, __, data) => deleteDeployable
 
 initDatabase()
 initVmConfigDb()
+syncToCaldera()
 
 const pollerHandler = createWsHandler(LUDUS_SERVER_URL, LUDUS_API_KEY)
 const vncHandler = createVncProxyHandler()

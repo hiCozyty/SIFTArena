@@ -28,13 +28,13 @@ export type SelectedItem =
   | { type: "create-ability" }
   | { type: "none" }
 
-function TreeControls({ allIds }: { allIds: string[] }) {
+function TreeControls({ allIds, filterMode, onFilterChange }: { allIds: string[]; filterMode: string; onFilterChange: (v: string) => void }) {
   const { expandedIds, setExpandedIds } = useTree()
   const isAllExpanded = allIds.every((id) => expandedIds.has(id))
 
   return (
     <div className="flex items-center gap-2">
-      <Select defaultValue="all">
+      <Select value={filterMode} onValueChange={onFilterChange}>
         <SelectTrigger size="sm" className="w-[180px]">
           <SelectValue />
         </SelectTrigger>
@@ -109,6 +109,7 @@ function TechniqueTreeContent({ onSelect, onCreate, allTechniques }: { onSelect:
 export function TechniqueTree({ onSelect }: { onSelect: (item: SelectedItem) => void }) {
   const { status, fetch } = useFocusedData()
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [filterMode, setFilterMode] = useState("all")
   const suppressNoneRef = useRef(false)
 
   useEffect(() => {
@@ -150,8 +151,18 @@ export function TechniqueTree({ onSelect }: { onSelect: (item: SelectedItem) => 
     }
   }
 
+  const filtered =
+    filterMode === "all"
+      ? allTechniques
+      : allTechniques
+          .map(({ tid, tech }) => ({
+            tid,
+            tech: { ...tech, abilities: tech.abilities.filter(a => a.custom === (filterMode === "non-preconfigured")) },
+          }))
+          .filter(({ tech }) => tech.abilities.length > 0)
+
   const allIds: string[] = []
-  for (const { tid, tech } of allTechniques) {
+  for (const { tid, tech } of filtered) {
     allIds.push(tid)
     for (const ability of tech.abilities) {
       allIds.push(`${tid}-${ability.ability_id}`)
@@ -159,12 +170,12 @@ export function TechniqueTree({ onSelect }: { onSelect: (item: SelectedItem) => 
   }
 
   return (
-    <TreeProvider selectedIds={selectedIds} onSelectionChange={setSelectedIds} defaultExpandedIds={allIds} className="h-full">
+    <TreeProvider key={filterMode} selectedIds={selectedIds} onSelectionChange={setSelectedIds} defaultExpandedIds={allIds} className="h-full">
       <div className="flex h-full flex-col">
         <div className="shrink-0">
-          <TreeControls allIds={allIds} />
+          <TreeControls allIds={allIds} filterMode={filterMode} onFilterChange={setFilterMode} />
         </div>
-        <TechniqueTreeContent onSelect={onSelect} onCreate={handleCreate} allTechniques={allTechniques} />
+        <TechniqueTreeContent onSelect={onSelect} onCreate={handleCreate} allTechniques={filtered} />
       </div>
     </TreeProvider>
   )

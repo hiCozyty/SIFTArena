@@ -1,8 +1,11 @@
 import { Database } from "bun:sqlite"
 import { mkdirSync } from "fs"
 import { join } from "path"
+import { buildAbility } from "./custom.js"
 
 const DB_PATH = join(import.meta.dir, "..", "data", "custom_abilities.db")
+const CALDERA_URL = "http://10.1.99.1:8888"
+const CALDERA_KEY = "ADMIN123"
 
 let db = null
 
@@ -31,6 +34,7 @@ function toAbility(row) {
     command: row.command,
     kali_prereq: row.kali_prereq,
     win_prereq: row.win_prereq,
+    custom: true,
   }
 }
 
@@ -92,4 +96,42 @@ export function updateCustomAbility(abilityId, data) {
 export function deleteCustomAbility(abilityId) {
   const result = db.query("DELETE FROM custom_abilities WHERE ability_id = ?").run(abilityId)
   return { success: result.changes > 0 }
+}
+
+export async function syncToCaldera() {
+  const rows = db.query("SELECT * FROM custom_abilities").all()
+  if (rows.length === 0) {
+    console.log("[syncToCaldera] No custom abilities to sync")
+    return
+  }
+
+  console.log(`[syncToCaldera] Syncing ${rows.length} custom abilities to Caldera...`)
+  let synced = 0
+  let skipped = 0
+  let failed = 0
+
+  for (const row of rows) {
+    try {
+      const res = await fetch(`${CALDERA_URL}/api/v2/abilities/${row.ability_id}`, {
+        method: "PUT",
+        headers: { "KEY": CALDERA_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify(buildAbility(toAbility(row))),
+        signal: AbortSignal.timeout(10000),
+      })
+      if (res.status === 201) {
+        synced++
+      } else if (res.ok) {
+        skipped++
+      } else {
+        const text = await res.text()
+        console.error(`[syncToCaldera] PUT ${row.ability_id} failed (${res.status}): ${text}`)
+        failed++
+      }
+    } catch (err) {
+      console.error(`[syncToCaldera] PUT ${row.ability_id} error:`, err.message)
+      failed++
+    }
+  }
+
+  console.log(`[syncToCaldera] Done: ${synced} synced, ${skipped} skipped, ${failed} failed`)
 }

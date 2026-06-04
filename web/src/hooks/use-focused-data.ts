@@ -8,6 +8,7 @@ export type AtomicAbility = {
   command: string
   kali_prereq: string
   win_prereq: string
+  custom?: boolean
 }
 
 export type Technique = {
