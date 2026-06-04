@@ -41,7 +41,7 @@ export function useFocusedData() {
         unsub()
         return
       }
-      if (data.result) {
+      if (data.type === "getFocusedCategoriesAndTechniques" && data.result) {
         setStatus({ type: "success", data: data.result as FocusedData })
         unsub()
       }

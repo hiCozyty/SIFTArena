@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom"
-import { RiTrophyLine, RiVoiceprintLine } from "@remixicon/react"
+import { RiTrophyLine, RiBookLine } from "@remixicon/react"
 import { LudusIcon } from "@/components/icons/ludus-icon"
 import { CalderaIcon } from "@/components/icons/caldera-icon"
 import { MeshNetworkIcon } from "@/components/icons/game-icons-mesh-network"
@@ -11,7 +11,7 @@ import { Lock } from "lucide-react"
 import { LabRangeContent } from "@/components/lab-range/lab-range-content"
 import { LeaderboardContent } from "@/components/leaderboard/leaderboard-content"
 import { AttackConfiguration } from "@/components/attack-configuration/attack-configuration"
-import { SnrContent } from "@/components/snr/snr-content"
+import { PlaybookContent } from "@/components/playbook/playbook-content"
 import { SiftAgentContent } from "@/components/sift-agent/sift-agent-content"
 import { BenchmarkContent } from "@/components/run-benchmark/benchmark-content"
 import { KnowledgeGraphContent } from "@/components/knowledge-graph/knowledge-graph-content"
@@ -33,7 +33,7 @@ const SECTIONS = [
   "Leaderboard",
   "Lab Range",
   "Attack Configuration",
-  "SnR",
+  "Playbook",
   "SIFT Agent",
   "Run Benchmark",
   "Knowledge Graph",
@@ -43,7 +43,7 @@ const TAB_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Leaderboard: RiTrophyLine,
   "Lab Range": LudusIcon,
   "Attack Configuration": CalderaIcon,
-  SnR: RiVoiceprintLine,
+  Playbook: RiBookLine,
   "SIFT Agent": SiftAgentIcon,
   "Run Benchmark": BrandSpeedtestIcon,
   "Knowledge Graph": MeshNetworkIcon,
@@ -53,7 +53,7 @@ const TAB_PATHS: Record<string, string> = {
   Leaderboard: "/",
   "Lab Range": "/lab-range",
   "Attack Configuration": "/attack-configuration",
-  SnR: "/snr",
+  Playbook: "/playbook",
   "SIFT Agent": "/sift-agent",
   "Run Benchmark": "/run-benchmark",
   "Knowledge Graph": "/knowledge-graph",
@@ -63,7 +63,7 @@ const PATH_TO_TAB: Record<string, string> = {
   "/": "Leaderboard",
   "/lab-range": "Lab Range",
   "/attack-configuration": "Attack Configuration",
-  "/snr": "SnR",
+  "/playbook": "Playbook",
   "/sift-agent": "SIFT Agent",
   "/run-benchmark": "Run Benchmark",
   "/knowledge-graph": "Knowledge Graph",
@@ -71,7 +71,7 @@ const PATH_TO_TAB: Record<string, string> = {
 
 const PREREQUISITES: Record<string, string> = {
   "Attack Configuration": "Lab Range",
-  SnR: "Attack Configuration",
+  Playbook: "Attack Configuration",
   "Run Benchmark": "SIFT Agent",
 }
 
@@ -79,7 +79,7 @@ function isTabAccessible(section: string, state: CompletionState): boolean {
   switch (section) {
     case "Attack Configuration":
       return state.labRangeCompleted
-    case "SnR":
+    case "Playbook":
       return state.attackConfigCompleted
     case "Run Benchmark":
       return state.siftAgentConfigured
@@ -173,8 +173,8 @@ export function LandingTabs({
                   completed={attackConfigCompleted}
                   onComplete={onAttackConfigComplete}
                 />
-              ) : s === "SnR" ? (
-                <SnrContent />
+              ) : s === "Playbook" ? (
+                <PlaybookContent />
               ) : s === "SIFT Agent" ? (
                 <SiftAgentContent
                   configured={siftAgentConfigured}

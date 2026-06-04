@@ -13,7 +13,9 @@ import { TechniqueTree, type SelectedItem } from "@/components/attack-configurat
 import { AbilityInfoTab } from "@/components/attack-configuration/ability-info-tab"
 import { AiChatTab } from "@/components/attack-configuration/ai-chat-tab"
 import { useOpencodeChat } from "@/hooks/use-opencode-chat"
+import { useFocusedData } from "@/hooks/use-focused-data"
 import { Item, ItemContent, ItemMedia, ItemTitle, ItemDescription, ItemActions, ItemGroup } from "@/components/ui/item"
+import * as backendWs from "@/lib/backend-ws"
 
 type ScenarioItem = {
   id: string
@@ -33,6 +35,11 @@ function AttackerConfigurationUi() {
   }, [selected])
   const [scenarioItems, setScenarioItems] = useState<ScenarioItem[]>([])
   const chat = useOpencodeChat()
+  const { status, fetch: fetchTree } = useFocusedData()
+
+  useEffect(() => {
+    fetchTree()
+  }, [fetchTree])
 
   const handleClearChat = useCallback(async () => {
     await chat.resetSession()
@@ -49,6 +56,55 @@ function AttackerConfigurationUi() {
   const handleWriteFormChange = useCallback((field: string, value: string) => {
     setWriteForm((prev) => ({ ...prev, [field]: value }))
   }, [])
+
+  const handleDeleteAbility = useCallback((abilityId: string) => {
+    const payload = {
+      type: "deleteCustomAbility" as const,
+      data: { abilityId },
+    }
+    console.log("[attack-configuration] Sending deleteCustomAbility:", payload)
+
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type !== "deleteCustomAbility") return
+      unsub()
+      if (data.error) {
+        console.error("[attack-configuration] deleteCustomAbility failed:", data.error)
+        return
+      }
+      console.log("[attack-configuration] deleteCustomAbility succeeded, refetching tree...")
+      fetchTree()
+    })
+
+    backendWs.send(payload)
+  }, [fetchTree])
+
+  const handleCreateAbility = useCallback(() => {
+    if (!writeForm.name || !writeForm.description || !writeForm.command) return
+    const payload = {
+      type: "createCustomAbility" as const,
+      data: {
+        name: writeForm.name,
+        description: writeForm.description,
+        command: writeForm.command,
+        kaliPrereq: writeForm.kaliPrereq,
+        winPrereq: writeForm.winPrereq,
+      },
+    }
+    console.log("[attack-configuration] Sending createCustomAbility:", payload)
+
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type !== "createCustomAbility") return
+      unsub()
+      if (data.error) {
+        console.error("[attack-configuration] createCustomAbility failed:", data.error)
+        return
+      }
+      console.log("[attack-configuration] createCustomAbility succeeded, refetching tree...")
+      fetchTree()
+    })
+
+    backendWs.send(payload)
+  }, [writeForm, fetchTree])
 
   const displayContent = (() => {
     if (selected.type === "none") {
@@ -76,7 +132,7 @@ function AttackerConfigurationUi() {
   return (
     <div className="h-full rounded-lg flex">
       <div className="w-[280px] shrink-0 overflow-hidden h-full">
-        <TechniqueTree onSelect={setSelected} />
+        <TechniqueTree onSelect={setSelected} onDelete={handleDeleteAbility} status={status} />
       </div>
       <div className="w-[500px] min-w-0">
         <Tabs value={activeTab} onValueChange={setActiveTab} defaultValue="ability" className="flex h-full flex-col">
@@ -102,7 +158,7 @@ function AttackerConfigurationUi() {
             ) : selected.type === "create-ability" ? (
               <div className="flex items-center gap-2">
                 <Button disabled={!writeForm.name || !writeForm.description || !writeForm.command}>Test Ability</Button>
-                <Button disabled={!writeForm.name || !writeForm.description || !writeForm.command}>Create Ability</Button>
+                <Button disabled={!writeForm.name || !writeForm.description || !writeForm.command} onClick={handleCreateAbility}>Create Ability</Button>
               </div>
             ) : (
               <div className="flex items-center gap-2">

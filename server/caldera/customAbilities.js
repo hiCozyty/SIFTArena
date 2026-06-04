@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite"
 import { mkdirSync } from "fs"
 import { join } from "path"
-import { buildAbility } from "./custom.js"
+import { buildAbility, createAbility, deleteAbility } from "./custom.js"
 
 const DB_PATH = join(import.meta.dir, "..", "data", "custom_abilities.db")
 const CALDERA_URL = "http://10.1.99.1:8888"
@@ -43,7 +43,8 @@ export function getCustomAbilities() {
   return rows.map(toAbility)
 }
 
-export function createCustomAbility(data) {
+export async function createCustomAbility(data) {
+  console.log("[customAbilities] createCustomAbility called with:", { name: data.name, command: data.command })
   const now = new Date().toISOString()
   const abilityId = crypto.randomUUID().replace(/-/g, "")
   const row = db
@@ -61,7 +62,17 @@ export function createCustomAbility(data) {
       now,
       now
     )
-  return toAbility(row)
+  const ability = toAbility(row)
+  console.log("[customAbilities] SQLite insert OK, ability_id:", ability.ability_id)
+
+  try {
+    const calderaResult = await createAbility(ability)
+    console.log("[customAbilities] Caldera POST OK:", JSON.stringify(calderaResult))
+  } catch (err) {
+    console.error("[customAbilities] Caldera POST failed — ability saved to SQLite, will sync on restart:", err.message)
+  }
+
+  return ability
 }
 
 export function updateCustomAbility(abilityId, data) {
@@ -93,7 +104,13 @@ export function updateCustomAbility(abilityId, data) {
   return toAbility(row)
 }
 
-export function deleteCustomAbility(abilityId) {
+export async function deleteCustomAbility(abilityId) {
+  try {
+    await deleteAbility(abilityId)
+    console.log("[customAbilities] Caldera DELETE OK, ability_id:", abilityId)
+  } catch (err) {
+    console.error("[customAbilities] Caldera DELETE failed:", err.message)
+  }
   const result = db.query("DELETE FROM custom_abilities WHERE ability_id = ?").run(abilityId)
   return { success: result.changes > 0 }
 }

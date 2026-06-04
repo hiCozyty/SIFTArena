@@ -81,9 +81,11 @@ export function AiChatTab({ messages, isGenerating, isToolExecuting, error, send
                 {variantLabel ? `Create variant for "${variantLabel}"` : variantMessage}
               </Button>
             ) : null}
-              <Button onClick={() => sendMessage("create a new ability")}>
-                Create a new ability
-              </Button>
+              {variantMessage !== "Create a new ability" && (
+                <Button onClick={() => sendMessage("create a new ability")}>
+                  Create a new ability
+                </Button>
+              )}
             </div>
           ) : (
             <MessageList

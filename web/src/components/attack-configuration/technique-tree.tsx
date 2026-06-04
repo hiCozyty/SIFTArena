@@ -16,8 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { FileText, ChevronsUpDown, Plus } from "lucide-react"
-import { useFocusedData, type Technique, type AtomicAbility } from "@/hooks/use-focused-data"
+import { FileText, ChevronsUpDown, Plus, Trash2 } from "lucide-react"
+import { type Technique, type AtomicAbility, type FocusedDataStatus } from "@/hooks/use-focused-data"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 
@@ -57,7 +57,7 @@ function TreeControls({ allIds, filterMode, onFilterChange }: { allIds: string[]
   )
 }
 
-function TechniqueTreeContent({ onSelect, onCreate, allTechniques }: { onSelect: (item: SelectedItem) => void; onCreate: () => void; allTechniques: { tid: string; tech: Technique }[] }) {
+function TechniqueTreeContent({ onSelect, onCreate, onDelete, allTechniques }: { onSelect: (item: SelectedItem) => void; onCreate: () => void; onDelete?: (abilityId: string) => void; allTechniques: { tid: string; tech: Technique }[] }) {
   return (
     <div className="min-h-0 min-w-0 flex-1 max-w-full flex flex-col">
       <TreeView className="pl-0 rounded-lg m-2 -ml-[5px] flex-1 overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -87,6 +87,15 @@ function TechniqueTreeContent({ onSelect, onCreate, allTechniques }: { onSelect:
                       <TreeNodeTrigger onClick={() => onSelect({ type: "ability", tid, abilityId: ability.ability_id, name: ability.name, description: ability.description, command: ability.command ?? "(no command)", kaliPrereq: ability.kali_prereq ?? "", winPrereq: ability.win_prereq ?? "" })}>
                         <TreeIcon icon={<FileText className="h-4 w-4" />} />
                         <TreeLabel className="whitespace-normal break-words">{ability.name}</TreeLabel>
+                        {ability.custom && onDelete && (
+                          <button
+                            type="button"
+                            className="ml-auto flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                            onClick={(e) => { e.stopPropagation(); onDelete(ability.ability_id) }}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        )}
                       </TreeNodeTrigger>
                     </TreeNode>
                   )
@@ -106,15 +115,10 @@ function TechniqueTreeContent({ onSelect, onCreate, allTechniques }: { onSelect:
   )
 }
 
-export function TechniqueTree({ onSelect }: { onSelect: (item: SelectedItem) => void }) {
-  const { status, fetch } = useFocusedData()
+export function TechniqueTree({ onSelect, onDelete, status }: { onSelect: (item: SelectedItem) => void; onDelete?: (abilityId: string) => void; status: FocusedDataStatus }) {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [filterMode, setFilterMode] = useState("all")
   const suppressNoneRef = useRef(false)
-
-  useEffect(() => {
-    fetch()
-  }, [fetch])
 
   useEffect(() => {
     if (selectedIds.length === 0 && !suppressNoneRef.current) {
@@ -175,7 +179,7 @@ export function TechniqueTree({ onSelect }: { onSelect: (item: SelectedItem) => 
         <div className="shrink-0">
           <TreeControls allIds={allIds} filterMode={filterMode} onFilterChange={setFilterMode} />
         </div>
-        <TechniqueTreeContent onSelect={onSelect} onCreate={handleCreate} allTechniques={filtered} />
+        <TechniqueTreeContent onSelect={onSelect} onCreate={handleCreate} onDelete={onDelete} allTechniques={filtered} />
       </div>
     </TreeProvider>
   )
