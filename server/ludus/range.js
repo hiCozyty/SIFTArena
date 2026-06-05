@@ -840,6 +840,10 @@ export async function runAnsibleScript(ludusUrl, apiKey, data, ws) {
 
   const stderrText = (await new Response(proc.stderr).text()).trim()
   if (stderrText) console.error(`[ansible stderr] ${stderrText}`)
+  if (proc.exitCode !== 0) {
+    console.error(`[ansible FAILED] exit code ${proc.exitCode}`)
+    console.error(fullOutput)
+  }
 
   const lines = fullOutput.split("\n")
   const recapIdx = lines.findIndex(l => l.includes("PLAY RECAP"))

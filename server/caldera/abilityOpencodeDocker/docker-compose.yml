@@ -1,10 +1,24 @@
 services:
-  opencode-sandbox:
+  opencode-ability:
     build: .
     ports:
       - "3111:3111"
     env_file: ../../../.env
+    working_dir: /workspace/abilityGeneration
     volumes:
-      - ./opencode.json:/workspace/opencode.json
-      - ./AGENTS.md:/workspace/AGENTS.md
+      - ./abilityGeneration/opencode.json:/workspace/abilityGeneration/opencode.json
+      - ./abilityGeneration/AGENTS.md:/workspace/abilityGeneration/AGENTS.md
     restart: unless-stopped
+    command: ["opencode", "serve", "--port", "3111", "--hostname", "0.0.0.0"]
+
+  opencode-background:
+    build: .
+    ports:
+      - "3112:3112"
+    env_file: ../../../.env
+    working_dir: /workspace/backgroundLogs
+    volumes:
+      - ./backgroundLogs/opencode.json:/workspace/backgroundLogs/opencode.json
+      - ./backgroundLogs/AGENTS.md:/workspace/backgroundLogs/AGENTS.md
+    restart: unless-stopped
+    command: ["opencode", "serve", "--port", "3112", "--hostname", "0.0.0.0"]

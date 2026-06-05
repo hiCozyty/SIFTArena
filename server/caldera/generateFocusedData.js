@@ -49,26 +49,31 @@ function build() {
   }
 }
 
-const PAYLOAD_DIR = "~/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads"
+const PAYLOAD_DIR = "$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads"
 
 const PAYLOAD_DOWNLOADS = {
   "procdump.exe": {
+    dest: `${PAYLOAD_DIR}/procdump.exe`,
     kali_steps: `mkdir -p ${PAYLOAD_DIR} && \\\nwget -q "https://download.sysinternals.com/files/Procdump.zip" -O /tmp/Procdump.zip && \\\nunzip -o /tmp/Procdump.zip -d /tmp/Procdump && \\\ncp /tmp/Procdump/procdump64.exe ${PAYLOAD_DIR}/procdump.exe && \\\nrm -rf /tmp/Procdump.zip /tmp/Procdump && \\\nsystemctl restart caldera`,
     win_steps: "",
   },
   "Outflank-Dumpert.exe": {
+    dest: `${PAYLOAD_DIR}/Outflank-Dumpert.exe`,
     kali_steps: `mkdir -p ${PAYLOAD_DIR} && \\\nwget -q "https://github.com/clr2of8/Dumpert/raw/5838c357224cc9bc69618c80c2b5b2d17a394b10/Dumpert/x64/Release/Outflank-Dumpert.exe" -O ${PAYLOAD_DIR}/Outflank-Dumpert.exe && \\\nsystemctl restart caldera`,
     win_steps: "",
   },
   "nanodump.x64.exe": {
+    dest: `${PAYLOAD_DIR}/nanodump.x64.exe`,
     kali_steps: `mkdir -p ${PAYLOAD_DIR} && \\\nwget -q "https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe" -O ${PAYLOAD_DIR}/nanodump.x64.exe && \\\nsystemctl restart caldera`,
     win_steps: "",
   },
   "mimikatz.exe": {
+    dest: `${PAYLOAD_DIR}/x64/mimikatz.exe`,
     kali_steps: `mkdir -p ${PAYLOAD_DIR}/x64 && \\\nwget -q "https://github.com/gentilkiwi/mimikatz/releases/latest/download/mimikatz_trunk.zip" -O /tmp/mimikatz.zip && \\\nunzip -o /tmp/mimikatz.zip -d /tmp/mimikatz && \\\ncp /tmp/mimikatz/x64/mimikatz.exe ${PAYLOAD_DIR}/x64/mimikatz.exe && \\\nrm -rf /tmp/mimikatz.zip /tmp/mimikatz && \\\nsystemctl restart caldera`,
     win_steps: "",
   },
   "pypykatz": {
+    dest: `${PAYLOAD_DIR}/pypykatz`,
     kali_steps: `pip3 install pypykatz && \
 cp -r $(python3 -c "import pypykatz, os; print(os.path.dirname(pypykatz.__file__))") ${PAYLOAD_DIR}/pypykatz && \
 systemctl restart caldera`,
@@ -107,10 +112,16 @@ function enrichPayloads(ability) {
   const info = PAYLOAD_DOWNLOADS[filename] || PAYLOAD_DOWNLOADS[Object.keys(PAYLOAD_DOWNLOADS).find(k => filename.includes(k))]
   if (!info) return ability
 
+  const kaliSteps = info.kali_steps
+    ? `if [ -f "${info.dest}" ]; then echo "ALREADY_PRESENT: ${info.dest}"; else ${info.kali_steps}; fi`
+    : ""
+  const winSteps = info.win_steps
+    ? `if (Test-Path "${info.dest}") { Write-Host "ALREADY_PRESENT: ${info.dest}" } else { ${info.win_steps} }`
+    : ""
   return {
     ...ability,
-    kali_prereq: info.kali_steps || "",
-    win_prereq: info.win_steps || "",
+    kali_prereq: kaliSteps,
+    win_prereq: winSteps,
   }
 }
 
@@ -121,7 +132,7 @@ function strip(ability) {
     name: ability.name,
     description: ability.description ?? "",
     command: executor.command ?? "",
-    kali_prereq: ability.kali_prereq ?? "",
+    kali_prereq: (ability.kali_prereq ?? "").replace(/\bsystemctl\b/g, "sudo systemctl"),
     win_prereq: ability.win_prereq ?? "",
   }
 }

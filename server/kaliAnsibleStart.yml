@@ -187,6 +187,16 @@
       environment: "{{ caldera_env }}"
       when: not ui_built_stat.stat.exists
 
+    # ── sudoers for caldera service management ─────────────────────────────────
+    - name: Allow kali to manage caldera service without password
+      lineinfile:
+        path: /etc/sudoers.d/kali-caldera
+        line: "kali ALL=(ALL) NOPASSWD: /usr/bin/systemctl * caldera*, /usr/bin/journalctl -u caldera*"
+        create: yes
+        mode: '0440'
+        validate: visudo -cf %s
+      become: yes
+
     # ── systemd service ────────────────────────────────────────────────────────
     - name: Check Caldera service and active state
       shell: |

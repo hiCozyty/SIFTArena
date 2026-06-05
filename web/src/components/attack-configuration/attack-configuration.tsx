@@ -7,14 +7,22 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs"
-import { FileText, MessageCircle, ListChecks, Trash2, ListPlus, Terminal } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { FileText, MessageCircle, ListChecks, Trash2, ListPlus, Terminal, Loader2, CheckCircle2, XCircle, Circle } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { TechniqueTree, type SelectedItem } from "@/components/attack-configuration/technique-tree"
 import { AbilityInfoTab } from "@/components/attack-configuration/ability-info-tab"
 import { AiChatTab } from "@/components/attack-configuration/ai-chat-tab"
 import { useOpencodeChat } from "@/hooks/use-opencode-chat"
 import { useFocusedData } from "@/hooks/use-focused-data"
 import { Item, ItemContent, ItemMedia, ItemTitle, ItemDescription, ItemActions, ItemGroup } from "@/components/ui/item"
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import * as backendWs from "@/lib/backend-ws"
 
 type ScenarioItem = {
@@ -36,6 +44,16 @@ function AttackerConfigurationUi() {
   const [scenarioItems, setScenarioItems] = useState<ScenarioItem[]>([])
   const chat = useOpencodeChat()
   const { status, fetch: fetchTree } = useFocusedData()
+  const [testDialogOpen, setTestDialogOpen] = useState(false)
+  const [testSteps, setTestSteps] = useState<Array<{ label: string; status: "pending" | "running" | "success" | "error"; message: string }>>([])
+  const [testComplete, setTestComplete] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [testSteps])
 
   useEffect(() => {
     fetchTree()
@@ -106,6 +124,57 @@ function AttackerConfigurationUi() {
     backendWs.send(payload)
   }, [writeForm, fetchTree])
 
+  const handleTestAbility = useCallback(() => {
+    console.log("[client] Test Ability button clicked")
+    setTestSteps([
+      { label: "VM Power", status: "pending", message: "" },
+      { label: "CLI Access", status: "pending", message: "" },
+    ])
+    setTestComplete(false)
+    setTestDialogOpen(true)
+
+    const abilityData = selected.type === "create-ability"
+      ? { mode: "create", name: writeForm.name, description: writeForm.description, command: writeForm.command, kaliPrereq: writeForm.kaliPrereq, winPrereq: writeForm.winPrereq }
+      : selected.type === "ability"
+        ? { mode: "existing", abilityId: selected.abilityId, name: selected.name, description: selected.description, command: selected.command, kaliPrereq: selected.kaliPrereq, winPrereq: selected.winPrereq }
+        : {}
+
+    console.log("[client] Sending testAbility WS message:", JSON.stringify(abilityData))
+
+    backendWs.subscribe((data: Record<string, unknown>) => {
+      if (data.type !== "testAbilityStatus") return
+      const { step, status, message } = data as { step: string; status: string; message: string }
+      console.log(`[client] Received status update — step=${step} status=${status} message="${message}"`)
+      const stepLabelMap: Record<string, string> = {
+        powerCheck: "VM Power",
+        cliCheck: "CLI Access",
+        prereqInstall: "Prerequisites",
+        agentDeploy: "Agent Deploy",
+        agentWait: "Agent Check-in",
+        adversaryCreate: "Adversary Create",
+        operationCreate: "Operation Create",
+        operationPoll: "Operation Run",
+        reportFetch: "Report",
+        cleanup: "Cleanup",
+      }
+      setTestSteps((prev) => {
+        const next = [...prev]
+        const label = stepLabelMap[step] || step
+        const existingIdx = next.findIndex(s => s.label === label)
+        if (step === "complete") {
+          setTestComplete(true)
+        } else if (existingIdx >= 0) {
+          next[existingIdx] = { label, status: status as never, message }
+        } else {
+          next.push({ label, status: status as never, message })
+        }
+        return next
+      })
+    })
+
+    backendWs.send({ type: "testAbility", data: abilityData })
+  }, [selected, writeForm])
+
   const displayContent = (() => {
     if (selected.type === "none") {
       return null
@@ -130,11 +199,11 @@ function AttackerConfigurationUi() {
   })()
 
   return (
-    <div className="h-full rounded-lg flex">
+    <div className="h-full rounded-lg flex outline outline-2 outline-yellow-400">
       <div className="w-[280px] shrink-0 overflow-hidden h-full">
         <TechniqueTree onSelect={setSelected} onDelete={handleDeleteAbility} status={status} />
       </div>
-      <div className="w-[500px] min-w-0">
+      <div className="flex-1 min-w-0">
         <Tabs value={activeTab} onValueChange={setActiveTab} defaultValue="ability" className="flex h-full flex-col">
           <div className="flex shrink-0 items-center justify-between px-4 py-2">
             <TabsList>
@@ -155,14 +224,13 @@ function AttackerConfigurationUi() {
                 <Button onClick={() => setScenarioItems([])}>Clear Scenario</Button>
                 <Button disabled={selected.type === "technique" || selected.type === "none" || selected.type === "create-ability"} onClick={handleAddToScenario}>Add to Scenario</Button>
               </div>
-            ) : selected.type === "create-ability" ? (
+            ) :             selected.type === "create-ability" ? (
               <div className="flex items-center gap-2">
-                <Button disabled={!writeForm.name || !writeForm.description || !writeForm.command}>Test Ability</Button>
                 <Button disabled={!writeForm.name || !writeForm.description || !writeForm.command} onClick={handleCreateAbility}>Create Ability</Button>
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <Button disabled={selected.type === "technique" || selected.type === "none"}>Test Ability</Button>
+                <Button disabled={selected.type !== "ability"} onClick={handleTestAbility}>Test Ability</Button>
                 <Button disabled={selected.type === "technique" || selected.type === "none"} onClick={handleAddToScenario}>Add to Scenario</Button>
               </div>
             )}
@@ -206,6 +274,40 @@ function AttackerConfigurationUi() {
           </TabsContent>
         </Tabs>
       </div>
+      <AlertDialog open={testDialogOpen} onOpenChange={(open) => { if (!open) setTestDialogOpen(false) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Test Ability</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selected.type === "create-ability"
+                ? `Testing: ${writeForm.name || "(unnamed)"}`
+                : selected.type === "ability"
+                  ? `Testing: ${selected.name}`
+                  : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div ref={scrollRef} className="space-y-3 py-2 max-h-[132px] overflow-y-auto [scrollbar-width:thin]">
+            {testSteps.map((step, i) => (
+              <div key={i} className="flex items-start gap-3">
+                {step.status === "running"
+                  ? <Loader2 className="size-4 animate-spin text-primary mt-0.5 shrink-0" />
+                  : step.status === "success"
+                    ? <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
+                    : step.status === "error"
+                      ? <XCircle className="size-4 text-red-500 mt-0.5 shrink-0" />
+                      : <Circle className="size-4 text-muted-foreground/40 mt-0.5 shrink-0" />}
+                <div>
+                  <p className="text-sm font-medium">{step.label}</p>
+                  {step.message && <p className="text-xs text-muted-foreground">{step.message}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <AlertDialogFooter>
+            <Button onClick={() => setTestDialogOpen(false)} disabled={!testComplete}>Close</Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { fetchPackerTemplates } from "./ludus/packer-templates.js"
 import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, powerOffVM, powerOnVM, deployCustomVM, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, getVmDefs, listProxmoxVMs, getVMInfo } from "./ludus/range.js"
 import { fetchFocusedCategoriesAndTechniques } from "./caldera/categories.js"
 import { initDatabase, getCustomAbilities, createCustomAbility, updateCustomAbility, deleteCustomAbility, syncToCaldera } from "./caldera/customAbilities.js"
+import { testAbility } from "./caldera/testAbility.js"
 import { initDatabase as initVmConfigDb, getDeployableVmConfigs, createDeployableVmConfig, updateDeployableVmConfig, deleteDeployableVmConfig } from "./ludus/deployableVmConfigs.js"
 import { createVncProxyHandler, getOrCreateVncSession } from "./ludus/proxmox.js"
 import { createWinrmProxy } from "./ludus/winrm-proxy.js"
@@ -77,6 +78,7 @@ addOperation("getCustomAbilities", async () => getCustomAbilities())
 addOperation("createCustomAbility", async (_, __, data) => createCustomAbility(data.data))
 addOperation("updateCustomAbility", async (_, __, data) => updateCustomAbility(data.data.abilityId, data.data.data))
 addOperation("deleteCustomAbility", async (_, __, data) => deleteCustomAbility(data.data.abilityId))
+addOperation("testAbility", testAbility)
 
 addOperation("getDeployableVmConfigs", async () => getDeployableVmConfigs())
 addOperation("createDeployableVmConfig", async (_, __, data) => createDeployableVmConfig(data.data))

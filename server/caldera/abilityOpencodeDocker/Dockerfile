@@ -19,6 +19,6 @@ RUN useradd -m -s /bin/bash sandbox && \
 USER sandbox
 WORKDIR /workspace
 
-EXPOSE 3111
+RUN mkdir -p /workspace/abilityGeneration /workspace/backgroundLogs
 
-CMD ["opencode", "serve", "--port", "3111", "--hostname", "0.0.0.0"]
+EXPOSE 3111 3112
