@@ -1,0 +1,53 @@
+---
+- name: Disable LSA Protection on Windows hosts
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check current RunAsPPL value
+      ansible.windows.win_reg_stat:
+        path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+        name: RunAsPPL
+      register: runasppl_state
+
+    - name: Check current RunAsPPLBoot value
+      ansible.windows.win_reg_stat:
+        path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+        name: RunAsPPLBoot
+      register: runaspplboot_state
+
+    - name: Set reboot required flag
+      ansible.builtin.set_fact:
+        lsa_reboot_required: false
+
+    - name: Disable RunAsPPL
+      ansible.windows.win_regedit:
+        path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+        name: RunAsPPL
+        data: 0
+        type: dword
+      register: runasppl_result
+      when: runasppl_state.exists and runasppl_state.value | int != 0
+
+    - name: Mark reboot needed if RunAsPPL changed
+      ansible.builtin.set_fact:
+        lsa_reboot_required: true
+      when: runasppl_result is changed
+
+    - name: Disable RunAsPPLBoot
+      ansible.windows.win_regedit:
+        path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+        name: RunAsPPLBoot
+        data: 0
+        type: dword
+      register: runaspplboot_result
+      when: runaspplboot_state.exists and runaspplboot_state.value | int != 0
+
+    - name: Mark reboot needed if RunAsPPLBoot changed
+      ansible.builtin.set_fact:
+        lsa_reboot_required: true
+      when: runaspplboot_result is changed
+
+    - name: Reboot to apply LSA changes
+      ansible.windows.win_reboot:
+        reboot_timeout: 300
+      when: lsa_reboot_required

@@ -44,7 +44,6 @@ export function getCustomAbilities() {
 }
 
 export async function createCustomAbility(data) {
-  console.log("[customAbilities] createCustomAbility called with:", { name: data.name, command: data.command })
   const now = new Date().toISOString()
   const abilityId = crypto.randomUUID().replace(/-/g, "")
   const row = db
@@ -63,12 +62,9 @@ export async function createCustomAbility(data) {
       now
     )
   const ability = toAbility(row)
-  console.log("[customAbilities] SQLite insert OK, ability_id:", ability.ability_id)
-
   try {
     const calderaResult = await createAbility(ability)
-    console.log("[customAbilities] Caldera POST OK:", JSON.stringify(calderaResult))
-  } catch (err) {
+    } catch (err) {
     console.error("[customAbilities] Caldera POST failed — ability saved to SQLite, will sync on restart:", err.message)
   }
 
@@ -107,8 +103,7 @@ export function updateCustomAbility(abilityId, data) {
 export async function deleteCustomAbility(abilityId) {
   try {
     await deleteAbility(abilityId)
-    console.log("[customAbilities] Caldera DELETE OK, ability_id:", abilityId)
-  } catch (err) {
+    } catch (err) {
     console.error("[customAbilities] Caldera DELETE failed:", err.message)
   }
   const result = db.query("DELETE FROM custom_abilities WHERE ability_id = ?").run(abilityId)
@@ -118,11 +113,9 @@ export async function deleteCustomAbility(abilityId) {
 export async function syncToCaldera() {
   const rows = db.query("SELECT * FROM custom_abilities").all()
   if (rows.length === 0) {
-    console.log("[syncToCaldera] No custom abilities to sync")
     return
   }
 
-  console.log(`[syncToCaldera] Syncing ${rows.length} custom abilities to Caldera...`)
   let synced = 0
   let skipped = 0
   let failed = 0
@@ -150,5 +143,4 @@ export async function syncToCaldera() {
     }
   }
 
-  console.log(`[syncToCaldera] Done: ${synced} synced, ${skipped} skipped, ${failed} failed`)
-}
+  }

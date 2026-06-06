@@ -238,8 +238,7 @@ async function main() {
   }
   Bun.write(OUT_FILE, JSON.stringify(result, null, 2))
   const size = (Bun.file(OUT_FILE).size / 1024).toFixed(1)
-  console.log(`Wrote ${OUT_FILE} (${size} KB, ${totalAbilities} abilities across ${totalTechs} techniques)`)
-}
+  }
 
 main().catch(err => {
   console.error("Error:", err.message)

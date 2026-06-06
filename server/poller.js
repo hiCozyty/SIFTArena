@@ -52,7 +52,6 @@ export function createWsHandler(ludusUrl, apiKey) {
 
         const handler = operations.get(data.type)
         if (handler) {
-          console.log(`[ws] dispatching message type="${data.type}" to handler`)
           const result = handler(ludusUrl, apiKey, data, ws)
           if (result instanceof Promise) {
             result

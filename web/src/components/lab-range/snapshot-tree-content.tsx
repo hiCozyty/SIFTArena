@@ -76,16 +76,16 @@ export function SnapshotTreeContent({ snapshotData, selectedIds, onSelectionChan
   for (const [vmName, info] of Object.entries(snapshotData)) {
     const vmId = vmName
     const snapNodes = buildSnapshotTree(vmName, info.snapshots)
-    allIds.push(vmId)
 
-    if (snapNodes.length > 0) {
-      for (const n of snapNodes) {
-        const collectIds = (node: SnapshotNode) => {
-          allIds.push(node.id)
-          node.children?.forEach(collectIds)
-        }
-        collectIds(n)
+    if (snapNodes.length === 0) continue
+
+    allIds.push(vmId)
+    for (const n of snapNodes) {
+      const collectIds = (node: SnapshotNode) => {
+        allIds.push(node.id)
+        node.children?.forEach(collectIds)
       }
+      collectIds(n)
     }
 
     vmNodes.push({

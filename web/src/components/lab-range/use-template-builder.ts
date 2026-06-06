@@ -7,6 +7,7 @@ export const REQUIRED_TEMPLATES = [
   "debian-11-x64-server-template",
   "kali-x64-desktop-template",
   "win11-22h2-x64-enterprise-template",
+  "win2022-server-x64-template",
 ]
 
 function isReallyBuilt(t: { built: boolean; status: string }): boolean {

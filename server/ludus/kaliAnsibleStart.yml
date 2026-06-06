@@ -222,6 +222,14 @@
       when: not ui_built_stat.stat.exists
       notify: restart caldera
 
+    - name: Restore conf files overwritten by build process
+      shell: git checkout -- conf/payloads.yml conf/agents.yml conf/default.yml
+      args:
+        chdir: "{{ caldera_dir }}"
+      become: yes
+      become_user: "{{ caldera_user }}"
+      environment: "{{ caldera_env }}"
+
     # systemd service
     - name: Check Caldera service and active state
       shell: |

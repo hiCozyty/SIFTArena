@@ -80,8 +80,6 @@ function AttackerConfigurationUi() {
       type: "deleteCustomAbility" as const,
       data: { abilityId },
     }
-    console.log("[attack-configuration] Sending deleteCustomAbility:", payload)
-
     const unsub = backendWs.subscribe((data) => {
       if (data.type !== "deleteCustomAbility") return
       unsub()
@@ -89,7 +87,6 @@ function AttackerConfigurationUi() {
         console.error("[attack-configuration] deleteCustomAbility failed:", data.error)
         return
       }
-      console.log("[attack-configuration] deleteCustomAbility succeeded, refetching tree...")
       fetchTree()
     })
 
@@ -108,8 +105,6 @@ function AttackerConfigurationUi() {
         winPrereq: writeForm.winPrereq,
       },
     }
-    console.log("[attack-configuration] Sending createCustomAbility:", payload)
-
     const unsub = backendWs.subscribe((data) => {
       if (data.type !== "createCustomAbility") return
       unsub()
@@ -117,7 +112,6 @@ function AttackerConfigurationUi() {
         console.error("[attack-configuration] createCustomAbility failed:", data.error)
         return
       }
-      console.log("[attack-configuration] createCustomAbility succeeded, refetching tree...")
       fetchTree()
     })
 
@@ -125,7 +119,6 @@ function AttackerConfigurationUi() {
   }, [writeForm, fetchTree])
 
   const handleTestAbility = useCallback(() => {
-    console.log("[client] Test Ability button clicked")
     setTestSteps([
       { label: "VM Power", status: "pending", message: "" },
       { label: "CLI Access", status: "pending", message: "" },
@@ -139,12 +132,9 @@ function AttackerConfigurationUi() {
         ? { mode: "existing", abilityId: selected.abilityId, name: selected.name, description: selected.description, command: selected.command, kaliPrereq: selected.kaliPrereq, winPrereq: selected.winPrereq }
         : {}
 
-    console.log("[client] Sending testAbility WS message:", JSON.stringify(abilityData))
-
     backendWs.subscribe((data: Record<string, unknown>) => {
       if (data.type !== "testAbilityStatus") return
       const { step, status, message } = data as { step: string; status: string; message: string }
-      console.log(`[client] Received status update — step=${step} status=${status} message="${message}"`)
       const stepLabelMap: Record<string, string> = {
         powerCheck: "VM Power",
         cliCheck: "CLI Access",

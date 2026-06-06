@@ -3,7 +3,8 @@ import { $ } from "bun"
 const VM_DEFS = {
   "router":       { template: "debian-11-x64-server-template", hostname: "router", vm_name: "{{ range_id }}-router-debian11-x64", ram_gb: 2, cpus: 2 },
   "attacker-kali": { template: "kali-x64-desktop-template", hostname: "attacker-kali", vm_name: "{{ range_id }}-attacker-kali", vlan: 99, ip_last_octet: 1, ram_gb: 4, cpus: 2, linux: true },
-  "win11-22h2":   { template: "win11-22h2-x64-enterprise-template", hostname: "WIN11-22H2", vm_name: "{{ range_id }}-win11-22h2", vlan: 99, ip_last_octet: 24, ram_gb: 4, cpus: 2, windows: { sysprep: false } },
+  "win11-22h2":   { template: "win11-22h2-x64-enterprise-template", hostname: "WIN11-22H2", vm_name: "{{ range_id }}-win11-22h2", vlan: 99, ip_last_octet: 24, ram_gb: 4, cpus: 2, windows: { sysprep: false }, domain: { fqdn: "ludus.network", role: "member" } },
+  "dc01":         { template: "win2022-server-x64-template", hostname: "DC01", vm_name: "{{ range_id }}-dc01", vlan: 99, ip_last_octet: 10, ram_gb: 4, cpus: 2, windows: { sysprep: false, gpos: ["disable_defender"] }, domain: { fqdn: "ludus.network", role: "primary-dc" } },
 }
 
 function generateYaml(vmName, ipLastOctet) {
@@ -19,12 +20,21 @@ function generateYaml(vmName, ipLastOctet) {
     cpus: ${d.cpus}
 `
   if (d.linux) {
-    yaml += `    linux: true
-`
+    yaml += `    linux: true\n`
   } else if (d.windows) {
-    yaml += `    windows:
-      sysprep: false
-`
+    yaml += `    windows:\n`
+    yaml += `      sysprep: ${d.windows.sysprep ?? false}\n`
+    if (d.windows.gpos && d.windows.gpos.length > 0) {
+      yaml += `      gpos:\n`
+      for (const gpo of d.windows.gpos) {
+        yaml += `        - ${gpo}\n`
+      }
+    }
+  }
+  if (d.domain) {
+    yaml += `    domain:\n`
+    yaml += `      fqdn: ${d.domain.fqdn}\n`
+    yaml += `      role: ${d.domain.role}\n`
   }
   return yaml
 }
@@ -128,7 +138,18 @@ export async function updateRangeConfig(ludusUrl, apiKey, data) {
       .map(([key, d]) => {
         let entry = `  - vm_name: "{{ range_id }}-${key}"\n    hostname: ${d.hostname}\n    template: ${d.template}\n    vlan: ${d.vlan}\n    ip_last_octet: ${d.ip_last_octet}\n    ram_gb: ${d.ram_gb}\n    cpus: ${d.cpus}`
         if (d.linux) entry += `\n    linux: true`
-        if (d.windows) entry += `\n    windows:\n      sysprep: false`
+        if (d.windows) {
+          entry += `\n    windows:\n      sysprep: ${d.windows.sysprep ?? false}`
+          if (d.windows.gpos && d.windows.gpos.length > 0) {
+            entry += `\n      gpos:`
+            for (const gpo of d.windows.gpos) {
+              entry += `\n        - ${gpo}`
+            }
+          }
+        }
+        if (d.domain) {
+          entry += `\n    domain:\n      fqdn: ${d.domain.fqdn}\n      role: ${d.domain.role}`
+        }
         return entry
       })
       .join("\n")
@@ -171,8 +192,11 @@ async function snapshotExists(ludusUrl, apiKey, proxmoxID, rangeId, snapshotName
     const qs = `rangeID=${rangeId}&vmids=${proxmoxID}`
     const data = await apiCall(ludusUrl, apiKey, `/snapshots/list?${qs}`)
     const snapshots = data?.snapshots || data || []
-    return snapshots.some(s => s.name === snapshotName || s.snapname === snapshotName)
-  } catch {
+    const found = snapshots.some(s => s.name === snapshotName || s.snapname === snapshotName)
+    console.log(`[snapshotExists] proxmoxID=${proxmoxID}, snapshot=${snapshotName}: found=${found}, snapshotCount=${snapshots.length}`)
+    return found
+  } catch (err) {
+    console.log(`[snapshotExists] ERROR for proxmoxID=${proxmoxID}, snapshot=${snapshotName}:`, err.message)
     return false
   }
 }
@@ -507,7 +531,7 @@ export async function deployAllBaseVMs(ludusUrl, apiKey, data) {
   const userKey = (process.env.LUDUS_USER_API_KEY || apiKey).trim()
   
   if (!data?.skipConfigGeneration) {
-    const vmNames = data?.vms ?? ["attacker-kali", "win11-22h2"]
+    const vmNames = data?.vms ?? ["attacker-kali", "dc01", "win11-22h2"]
     const r = VM_DEFS.router
     let yaml = `router:
   vm_name: "${r.vm_name}"
@@ -531,7 +555,19 @@ ludus:
       if (d.linux) {
         yaml += `    linux: true\n`
       } else if (d.windows) {
-        yaml += `    windows:\n      sysprep: false\n`
+        yaml += `    windows:\n`
+        yaml += `      sysprep: ${d.windows.sysprep ?? false}\n`
+        if (d.windows.gpos && d.windows.gpos.length > 0) {
+          yaml += `      gpos:\n`
+          for (const gpo of d.windows.gpos) {
+            yaml += `        - ${gpo}\n`
+          }
+        }
+      }
+      if (d.domain) {
+        yaml += `    domain:\n`
+        yaml += `      fqdn: ${d.domain.fqdn}\n`
+        yaml += `      role: ${d.domain.role}\n`
       }
     }
     await setRangeConfig(ludusUrl, userKey, yaml)
@@ -552,7 +588,10 @@ export async function prepareGoldenImage(ludusUrl, apiKey, data) {
 
   let entries = []
   if (data?.vmNames && Array.isArray(data.vmNames)) {
-    const targetVMs = vms.filter(v => data.vmNames.includes(v.name))
+    const targetVMs = vms.filter(v => {
+      const stripped = v.name?.replace(new RegExp(`^${rangeId}-`), "")
+      return data.vmNames.includes(v.name) || data.vmNames.includes(stripped)
+    })
     entries = targetVMs.map(vm => ({
       label: vm.name?.replace(new RegExp(`^${rangeId}-`), "") || vm.name,
       vm,
@@ -579,10 +618,14 @@ export async function prepareGoldenImage(ludusUrl, apiKey, data) {
 
   const prepared = []
 
+  console.log(`[prepareGoldenImage] entries:`, entries.map(e => ({ label: e.label, vm: e.vm?.name, proxmoxID: e.vm?.proxmoxID })))
+  console.log(`[prepareGoldenImage] overwrite:`, data?.overwrite, `vmNames:`, data?.vmNames)
+
   const snapshotChecks = data?.overwrite ? [] : await Promise.all(
     entries.map(async ({ label, vm }) => {
       if (!vm) return { label, exists: null }
       const exists = await snapshotExists(ludusUrl, apiKey, vm.proxmoxID, rangeId, snapshotName)
+      console.log(`[prepareGoldenImage] snapshotExists check: label=${label}, vm=${vm.name}, proxmoxID=${vm.proxmoxID}, snapshot=${snapshotName}, exists=${exists}`)
       return { label, exists }
     })
   )
@@ -597,12 +640,15 @@ export async function prepareGoldenImage(ludusUrl, apiKey, data) {
       if (!data?.overwrite) {
         const check = snapshotChecks.find(s => s.label === label)
         const alreadyExists = check?.exists
+        console.log(`[prepareGoldenImage] processing ${label}: alreadyExists=${alreadyExists}`)
         if (alreadyExists) {
           const knownIp = vm.ip && vm.ip !== "null" ? vm.ip : null
           prepared.push({ label, vm: vm.name, ip: knownIp, snapshot: snapshotName, created: false })
           continue
         }
       }
+
+      console.log(`[prepareGoldenImage] will create snapshot for ${label} (vm=${vm.name})`)
 
       const ip = vm.ip && vm.ip !== "null" ? vm.ip : await waitForVMIP(ludusUrl, apiKey, vm.name)
 

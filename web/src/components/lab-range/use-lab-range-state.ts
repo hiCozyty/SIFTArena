@@ -14,6 +14,7 @@ export const REQUIRED_TEMPLATES = [
   "debian-11-x64-server-template",
   "kali-x64-desktop-template",
   "win11-22h2-x64-enterprise-template",
+  "win2022-server-x64-template",
 ]
 
 const GOLDEN_IMAGE_VMS = [
@@ -35,7 +36,7 @@ function isReallyBuilt(t: { built: boolean; status: string }): boolean {
   return t.built && t.status !== "not_built" && t.status !== "building"
 }
 
-const EXPECTED_VMS = ["router-debian11-x64", "attacker-kali", "win11-22h2"]
+const EXPECTED_VMS = ["router-debian11-x64", "attacker-kali", "win11-22h2", "dc01"]
 
 function parsePlayRecap(playRecap: string[], expectedVms?: string[]): boolean {
   const vms = expectedVms ?? EXPECTED_VMS
@@ -296,20 +297,23 @@ export function useLabRangeState(onComplete: () => void) {
     const playRecapPassStartRef: { current: number } = { current: 0 }
     const proxmoxVMsRef: { current: string[] } = { current: [] }
     const rangeStatusReceivedRef: { current: boolean } = { current: false }
+    const rangeStatusResultRef: { current: { name: string; poweredOn?: boolean }[] } = { current: [] }
 
     const VM_LABELS: Record<string, string> = {
       router: "router-debian11-x64",
       kali: "attacker-kali",
       windows: "win11-22h2",
+      dc: "dc01",
     }
 
     const VM_NODE_IDS: Record<string, string> = {
       router: "check-vms",
       kali: "deploy-kali",
       windows: "deploy-windows",
+      dc: "deploy-dc",
     }
 
-    const VM_ORDER = ["router", "kali", "windows"]
+    const VM_ORDER = ["router", "dc", "kali", "windows"]
 
     if (mode === "reset") {
       setTimelineItems((prev) => {
@@ -326,6 +330,91 @@ export function useLabRangeState(onComplete: () => void) {
     }
 
     const unsub = backendWs.subscribe((data) => {
+      const runVmCheck = () => {
+        if (phaseRef.current !== "check") return
+
+        const rangeVMs = rangeStatusResultRef.current
+        const pxVMs = proxmoxVMsRef.current
+        const routerFound = rangeVMs.some((vm) => vm.name.endsWith("router-debian11-x64")) || pxVMs.some((n) => n.endsWith("router-debian11-x64"))
+        const kaliFound = rangeVMs.some((vm) => vm.name.endsWith("attacker-kali")) || pxVMs.some((n) => n.endsWith("attacker-kali"))
+        const dcFound = rangeVMs.some((vm) => vm.name.endsWith("dc01")) || pxVMs.some((n) => n.endsWith("dc01"))
+        const windowsFound = rangeVMs.some((vm) => vm.name.endsWith("win11-22h2")) || pxVMs.some((n) => n.endsWith("win11-22h2"))
+
+        if (routerFound && kaliFound && dcFound && windowsFound) {
+          setTimelineItems((prev) =>
+            prev.map((item) =>
+              item.id === "check-vms"
+                ? { ...item, title: "router-debian11-x64 is already deployed", description: "", status: "built" }
+                : item
+            )
+          )
+          setTimeout(() => {
+            setTimelineItems((prev) => {
+              if (prev.some(item => item.id === "deploy-kali")) {
+                return prev.map((item) =>
+                  item.id === "deploy-kali"
+                    ? { ...item, title: "attacker-kali is already deployed", description: "", status: "built" }
+                    : item
+                )
+              }
+              return [...prev, { id: "deploy-kali", title: "attacker-kali is already deployed", description: "", status: "built" }]
+            })
+          }, 200)
+          setTimeout(() => {
+            setTimelineItems((prev) => {
+              if (prev.some(item => item.id === "deploy-dc")) {
+                return prev.map((item) =>
+                  item.id === "deploy-dc"
+                    ? { ...item, title: "dc01 is already deployed", description: "", status: "built" }
+                    : item
+                )
+              }
+              return [...prev, { id: "deploy-dc", title: "dc01 is already deployed", description: "", status: "built" }]
+            })
+          }, 400)
+          setTimeout(() => {
+            setTimelineItems((prev) => {
+              if (prev.some(item => item.id === "deploy-windows")) {
+                return prev.map((item) =>
+                  item.id === "deploy-windows"
+                    ? { ...item, title: "win11-22h2 is already deployed", description: "", status: "built" }
+                    : item
+                )
+              }
+              return [...prev, { id: "deploy-windows", title: "win11-22h2 is already deployed", description: "", status: "built" }]
+            })
+          }, 600)
+          setTimeout(() => {
+            setTimelineItems((prev) => {
+              if (prev.some(item => item.id === "caldera-setup")) {
+                return prev.map((item) =>
+                  item.id === "caldera-setup"
+                    ? { ...item, title: "Installing ansible script on attacker-kali", description: "Checking Caldera status...", status: "building" }
+                    : item
+                )
+              }
+              return [...prev, { id: "caldera-setup", title: "Installing ansible script on attacker-kali", description: "Checking Caldera status...", status: "building" }]
+            })
+            setCalderaActive(true)
+            backendWs.send({ type: "checkCaldera", label: "kali" })
+          }, 800)
+          setDeployActive(false)
+          setDeploymentStatus("Deployed")
+          unsub()
+          return
+        }
+
+        phaseRef.current = "deleting"
+        setTimelineItems((prev) =>
+          prev.map((item) =>
+            item.id === "check-vms"
+              ? { ...item, title: "Cleaning up existing VMs", description: "deleting before redeploy...", status: "building" }
+              : item
+          )
+        )
+        backendWs.send({ type: "deleteRangeVMs", all: true })
+      }
+
       if (mode === "reset" && data.type === "deleteRangeVMs" && phaseRef.current === "deleting") {
         phaseRef.current = "deploying"
         seenVMsRef.current = new Set()
@@ -346,6 +435,7 @@ export function useLabRangeState(onComplete: () => void) {
         if (phaseRef.current !== "deleting") return
         phaseRef.current = "deploying"
         seenVMsRef.current = new Set()
+        playRecapRef.current = null
         if (mode === "reset") {
           setTimelineItems((prev) => [
             ...prev.map((item) =>
@@ -445,81 +535,17 @@ export function useLabRangeState(onComplete: () => void) {
         }
       }
 
+      rangeStatusResultRef.current = result
+
       const proxmoxVMs = proxmoxVMsRef.current
       const routerFound = result.find((vm) => vm.name.endsWith("router-debian11-x64")) || proxmoxVMs.some((n) => n.endsWith("router-debian11-x64"))
       const kaliFound = result.find((vm) => vm.name.endsWith("attacker-kali")) || proxmoxVMs.some((n) => n.endsWith("attacker-kali"))
+      const dcFound = result.find((vm) => vm.name.endsWith("dc01")) || proxmoxVMs.some((n) => n.endsWith("dc01"))
       const windowsFound = result.find((vm) => vm.name.endsWith("win11-22h2")) || proxmoxVMs.some((n) => n.endsWith("win11-22h2"))
 
       const latestLog = data.latestLog as string | undefined
       const playRecap = data.playRecap as string[] | null | undefined
       if (phaseRef.current === "deploying") playRecapRef.current = playRecap || null
-
-      const runVmCheck = () => {
-        if (phaseRef.current !== "check") return
-
-        if (routerFound && kaliFound && windowsFound) {
-          setTimelineItems((prev) =>
-            prev.map((item) =>
-              item.id === "check-vms"
-                ? { ...item, title: "router-debian11-x64 is already deployed", description: "", status: "built" }
-                : item
-            )
-          )
-          setTimeout(() => {
-            setTimelineItems((prev) => {
-              if (prev.some(item => item.id === "deploy-kali")) {
-                return prev.map((item) =>
-                  item.id === "deploy-kali"
-                    ? { ...item, title: "attacker-kali is already deployed", description: "", status: "built" }
-                    : item
-                )
-              }
-              return [...prev, { id: "deploy-kali", title: "attacker-kali is already deployed", description: "", status: "built" }]
-            })
-          }, 200)
-          setTimeout(() => {
-            setTimelineItems((prev) => {
-              if (prev.some(item => item.id === "deploy-windows")) {
-                return prev.map((item) =>
-                  item.id === "deploy-windows"
-                    ? { ...item, title: "win11-22h2 is already deployed", description: "", status: "built" }
-                    : item
-                )
-              }
-              return [...prev, { id: "deploy-windows", title: "win11-22h2 is already deployed", description: "", status: "built" }]
-            })
-          }, 400)
-          setTimeout(() => {
-            setTimelineItems((prev) => {
-              if (prev.some(item => item.id === "caldera-setup")) {
-                return prev.map((item) =>
-                  item.id === "caldera-setup"
-                    ? { ...item, title: "Installing ansible script on attacker-kali", description: "Checking Caldera status...", status: "building" }
-                    : item
-                )
-              }
-              return [...prev, { id: "caldera-setup", title: "Installing ansible script on attacker-kali", description: "Checking Caldera status...", status: "building" }]
-            })
-            setCalderaActive(true)
-            backendWs.send({ type: "checkCaldera", label: "kali" })
-          }, 600)
-          setDeployActive(false)
-          setDeploymentStatus("Deployed")
-          unsub()
-          return
-        }
-
-        setTimelineItems((prev) =>
-          prev.map((item) =>
-            item.id === "check-vms"
-              ? { ...item, title: "VM check inconclusive — halted for analysis", description: `Ludus API: ${result.map(v => v.name).join(", ") || "empty"} | qm list: ${proxmoxVMs.join(", ") || "empty"}`, status: "error" }
-              : item
-          )
-        )
-        setDeployActive(false)
-        setDeploymentStatus("Halted")
-        unsub()
-      }
 
       if (mode === "auto" && phaseRef.current === "check") {
         rangeStatusReceivedRef.current = true
@@ -542,7 +568,7 @@ export function useLabRangeState(onComplete: () => void) {
         }
 
         if (playRecapRef.current) {
-          const expected = ["router-debian11-x64", "attacker-kali", "win11-22h2"]
+          const expected = ["router-debian11-x64", "attacker-kali", "win11-22h2", "dc01"]
           const allOk = expected.every((suffix) => {
             const line = playRecapRef.current!.find((l) => l.includes(suffix))
             if (!line) return false
@@ -641,6 +667,7 @@ export function useLabRangeState(onComplete: () => void) {
       const vmPresence: Record<string, boolean> = {
         router: !!routerFound,
         kali: !!kaliFound,
+        dc: !!dcFound,
         windows: !!windowsFound,
       }
 
@@ -702,7 +729,7 @@ export function useLabRangeState(onComplete: () => void) {
       }
 
       if (playRecapRef.current) {
-        const expected = ["router-debian11-x64", "attacker-kali", "win11-22h2"]
+        const expected = ["router-debian11-x64", "attacker-kali", "win11-22h2", "dc01"]
         const allOk = expected.every((suffix) => {
           const line = playRecapRef.current!.find((l) => l.includes(suffix))
           if (!line) return false
@@ -714,6 +741,7 @@ export function useLabRangeState(onComplete: () => void) {
         const nodeLabels: Record<string, string> = {
           "check-vms": "router-debian11-x64",
           "deploy-kali": "attacker-kali",
+          "deploy-dc": "dc01",
           "deploy-windows": "win11-22h2",
         }
         setTimelineItems((prev) => {
@@ -726,6 +754,9 @@ export function useLabRangeState(onComplete: () => void) {
           })
           if (!updated.some(item => item.id === "deploy-kali")) {
             updated = [...updated, { id: "deploy-kali", title: "Finished deploying attacker-kali", description: allOk ? "" : "completed with errors", status: allOk ? "built" : "error" }]
+          }
+          if (!updated.some(item => item.id === "deploy-dc")) {
+            updated = [...updated, { id: "deploy-dc", title: "Finished deploying dc01", description: allOk ? "" : "completed with errors", status: allOk ? "built" : "error" }]
           }
           if (!updated.some(item => item.id === "deploy-windows")) {
             updated = [...updated, { id: "deploy-windows", title: "Finished deploying win11-22h2", description: allOk ? "" : "completed with errors", status: allOk ? "built" : "error" }]
@@ -968,11 +999,11 @@ export function useLabRangeState(onComplete: () => void) {
                 ? { ...item, description: "Caldera already installed", status: "built" }
                 : item
             ),
-            { id: "golden-image", title: `Preparing golden image for ${GOLDEN_IMAGE_VMS[0].vm}`, description: `Creating snapshot if golden image does not exist for ${GOLDEN_IMAGE_VMS[0].vm}...`, status: "building" },
+            { id: "golden-image", title: `Preparing golden image for ${GOLDEN_IMAGE_VMS.map(v => v.vm).join(" and ")}`, description: `Creating snapshots...`, status: "building" },
           ])
           setCalderaActive(false)
           setGoldenImageActive(true)
-          backendWs.send({ type: "prepareGoldenImage" })
+          backendWs.send({ type: "prepareGoldenImage", vmNames: GOLDEN_IMAGE_VMS.map(v => v.vm) })
           unsub()
         } else {
           setTimelineItems((prev) =>
@@ -1025,11 +1056,11 @@ export function useLabRangeState(onComplete: () => void) {
                 ? { ...item, description: "Caldera installed successfully", status: "built" }
                 : item
             ),
-            { id: "golden-image", title: `Preparing golden image for ${GOLDEN_IMAGE_VMS[0].vm}`, description: `Creating snapshot if golden image does not exist for ${GOLDEN_IMAGE_VMS[0].vm}...`, status: "building" },
+            { id: "golden-image", title: `Preparing golden image for ${GOLDEN_IMAGE_VMS.map(v => v.vm).join(" and ")}`, description: `Creating snapshots...`, status: "building" },
           ])
           setCalderaActive(false)
           setGoldenImageActive(true)
-          backendWs.send({ type: "prepareGoldenImage" })
+          backendWs.send({ type: "prepareGoldenImage", vmNames: GOLDEN_IMAGE_VMS.map(v => v.vm) })
           unsub()
         } else {
           const recapLines = ansible?.playRecap ?? []
@@ -1060,7 +1091,9 @@ export function useLabRangeState(onComplete: () => void) {
     const unsub = backendWs.subscribe((data) => {
       if (data.type !== "prepareGoldenImage") return
 
-      const prepared = (data.result?.prepared ?? []) as GoldenImageResult[]
+      const prepared = ((data.result?.prepared ?? []) as GoldenImageResult[]).filter(
+        (p) => !p.vm?.toLowerCase().includes("dc"),
+      )
 
       if (prepared.length === 0) {
         setGoldenImageActive(false)
