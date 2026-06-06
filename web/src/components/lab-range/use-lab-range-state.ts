@@ -60,6 +60,7 @@ export function useLabRangeState(onComplete: () => void) {
   const [deployActive, setDeployActive] = useState(false)
   const [calderaActive, setCalderaActive] = useState(false)
   const [goldenImageActive, setGoldenImageActive] = useState(false)
+  const [lsaDisableActive, setCalderaActive2] = useState(false)
   const [deploymentStatus, setDeploymentStatus] = useState<DeploymentStatus>("Not Deployed")
   const [isDeploying, setIsDeploying] = useState(false)
   const [systemInfo, setSystemInfo] = useState<{ totalCpu: number; totalRam: number } | null>(null)
@@ -999,11 +1000,11 @@ export function useLabRangeState(onComplete: () => void) {
                 ? { ...item, description: "Caldera already installed", status: "built" }
                 : item
             ),
-            { id: "golden-image", title: `Preparing golden image for ${GOLDEN_IMAGE_VMS.map(v => v.vm).join(" and ")}`, description: `Creating snapshots...`, status: "building" },
+            { id: "win11-lsa-disable", title: "Disabling LSA Protection on win11-22h2", description: "Checking LSA protection status...", status: "building" },
           ])
           setCalderaActive(false)
-          setGoldenImageActive(true)
-          backendWs.send({ type: "prepareGoldenImage", vmNames: GOLDEN_IMAGE_VMS.map(v => v.vm) })
+          setCalderaActive2(true)
+          backendWs.send({ type: "checkLsaProtection", label: "win11-22h2" })
           unsub()
         } else {
           setTimelineItems((prev) =>
@@ -1056,11 +1057,11 @@ export function useLabRangeState(onComplete: () => void) {
                 ? { ...item, description: "Caldera installed successfully", status: "built" }
                 : item
             ),
-            { id: "golden-image", title: `Preparing golden image for ${GOLDEN_IMAGE_VMS.map(v => v.vm).join(" and ")}`, description: `Creating snapshots...`, status: "building" },
+            { id: "win11-lsa-disable", title: "Disabling LSA Protection on win11-22h2", description: "Checking LSA protection status...", status: "building" },
           ])
           setCalderaActive(false)
-          setGoldenImageActive(true)
-          backendWs.send({ type: "prepareGoldenImage", vmNames: GOLDEN_IMAGE_VMS.map(v => v.vm) })
+          setCalderaActive2(true)
+          backendWs.send({ type: "checkLsaProtection", label: "win11-22h2" })
           unsub()
         } else {
           const recapLines = ansible?.playRecap ?? []
@@ -1083,6 +1084,106 @@ export function useLabRangeState(onComplete: () => void) {
 
     return () => { unsub() }
   }, [status.type, calderaActive])
+
+  useEffect(() => {
+    if (status.type !== "ok") return
+    if (!lsaDisableActive) return
+
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type === "checkLsaProtection") {
+        const error = data.error as string | undefined
+        const result = data.result as { lsaDisabled?: boolean } | undefined
+        if (!error && result?.lsaDisabled) {
+          setTimelineItems((prev) => [
+            ...prev.map((item) =>
+              item.id === "win11-lsa-disable"
+                ? { ...item, description: "LSA Protection already disabled", status: "built" }
+                : item
+            ),
+            { id: "golden-image", title: `Preparing golden image for ${GOLDEN_IMAGE_VMS.map(v => v.vm).join(" and ")}`, description: `Creating snapshots...`, status: "building" },
+          ])
+          setCalderaActive2(false)
+          setGoldenImageActive(true)
+          backendWs.send({ type: "prepareGoldenImage", vmNames: GOLDEN_IMAGE_VMS.map(v => v.vm) })
+          unsub()
+        } else {
+          setTimelineItems((prev) =>
+            prev.map((item) =>
+              item.id === "win11-lsa-disable"
+                ? { ...item, description: "Running ansible playbook..." }
+                : item
+            )
+          )
+          backendWs.send({ type: "runAnsibleScript", label: "win11-22h2", playbook: "./server/ludus/win11-22h2-lsa-ppl-disable.yml" })
+        }
+        return
+      }
+
+      if (data.type === "ansibleLog" && data.line) {
+        calderaLogRef.current = data.line as string
+        setTimelineItems((prev) =>
+          prev.map((item) =>
+            item.id === "win11-lsa-disable"
+              ? { ...item, description: data.line as string }
+              : item
+          )
+        )
+        return
+      }
+
+      if (data.type === "runAnsibleScript") {
+        const error = data.error as string | undefined
+        if (error) {
+          setTimelineItems((prev) =>
+            prev.map((item) =>
+              item.id === "win11-lsa-disable"
+                ? { ...item, description: error, status: "error" }
+                : item
+            )
+          )
+          setCalderaActive2(false)
+          setDeployActive(false)
+          setDeploymentStatus("Error")
+          setIsDeploying(false)
+          unsub()
+          return
+        }
+        const result = data.result as { ansible?: { success?: boolean; playRecap?: string[] } } | undefined
+        const ansible = result?.ansible
+        if (ansible?.success) {
+          setTimelineItems((prev) => [
+            ...prev.map((item) =>
+              item.id === "win11-lsa-disable"
+                ? { ...item, description: "LSA Protection disabled", status: "built" }
+                : item
+            ),
+            { id: "golden-image", title: `Preparing golden image for ${GOLDEN_IMAGE_VMS.map(v => v.vm).join(" and ")}`, description: `Creating snapshots...`, status: "building" },
+          ])
+          setCalderaActive2(false)
+          setGoldenImageActive(true)
+          backendWs.send({ type: "prepareGoldenImage", vmNames: GOLDEN_IMAGE_VMS.map(v => v.vm) })
+          unsub()
+        } else {
+          const recapLines = ansible?.playRecap ?? []
+          const description = recapLines.length > 0 ? recapLines.join(" ") : "Ansible playbook failed"
+          setTimelineItems((prev) =>
+            prev.map((item) =>
+              item.id === "win11-lsa-disable"
+                ? { ...item, description, status: "error" }
+                : item
+            )
+          )
+          setCalderaActive2(false)
+          setDeployActive(false)
+          setDeploymentStatus("Error")
+          setIsDeploying(false)
+          unsub()
+        }
+      }
+    })
+
+    return () => { unsub() }
+  }, [status.type, lsaDisableActive])
 
   useEffect(() => {
     if (status.type !== "ok") return

@@ -193,10 +193,8 @@ async function snapshotExists(ludusUrl, apiKey, proxmoxID, rangeId, snapshotName
     const data = await apiCall(ludusUrl, apiKey, `/snapshots/list?${qs}`)
     const snapshots = data?.snapshots || data || []
     const found = snapshots.some(s => s.name === snapshotName || s.snapname === snapshotName)
-    console.log(`[snapshotExists] proxmoxID=${proxmoxID}, snapshot=${snapshotName}: found=${found}, snapshotCount=${snapshots.length}`)
     return found
   } catch (err) {
-    console.log(`[snapshotExists] ERROR for proxmoxID=${proxmoxID}, snapshot=${snapshotName}:`, err.message)
     return false
   }
 }
@@ -618,14 +616,10 @@ export async function prepareGoldenImage(ludusUrl, apiKey, data) {
 
   const prepared = []
 
-  console.log(`[prepareGoldenImage] entries:`, entries.map(e => ({ label: e.label, vm: e.vm?.name, proxmoxID: e.vm?.proxmoxID })))
-  console.log(`[prepareGoldenImage] overwrite:`, data?.overwrite, `vmNames:`, data?.vmNames)
-
   const snapshotChecks = data?.overwrite ? [] : await Promise.all(
     entries.map(async ({ label, vm }) => {
       if (!vm) return { label, exists: null }
       const exists = await snapshotExists(ludusUrl, apiKey, vm.proxmoxID, rangeId, snapshotName)
-      console.log(`[prepareGoldenImage] snapshotExists check: label=${label}, vm=${vm.name}, proxmoxID=${vm.proxmoxID}, snapshot=${snapshotName}, exists=${exists}`)
       return { label, exists }
     })
   )
@@ -640,15 +634,12 @@ export async function prepareGoldenImage(ludusUrl, apiKey, data) {
       if (!data?.overwrite) {
         const check = snapshotChecks.find(s => s.label === label)
         const alreadyExists = check?.exists
-        console.log(`[prepareGoldenImage] processing ${label}: alreadyExists=${alreadyExists}`)
         if (alreadyExists) {
           const knownIp = vm.ip && vm.ip !== "null" ? vm.ip : null
           prepared.push({ label, vm: vm.name, ip: knownIp, snapshot: snapshotName, created: false })
           continue
         }
       }
-
-      console.log(`[prepareGoldenImage] will create snapshot for ${label} (vm=${vm.name})`)
 
       const ip = vm.ip && vm.ip !== "null" ? vm.ip : await waitForVMIP(ludusUrl, apiKey, vm.name)
 
@@ -924,6 +915,44 @@ export async function checkCaldera(ludusUrl, apiKey, data, ws) {
     return { calderaInstalled: result.trim() === "active" }
   } catch {
     return { calderaInstalled: false }
+  }
+}
+
+export async function checkLsaProtection(ludusUrl, apiKey, data, ws) {
+  const { label } = data
+  if (!label) throw new Error("label is required")
+
+  const range = await apiCall(ludusUrl, apiKey, "/range")
+  const vm = findVM(range.VMs ?? [], label)
+  const ip = vm.ip && vm.ip !== "null" ? vm.ip : await waitForVMIP(ludusUrl, apiKey, vm.name)
+
+  const psCmd = `$val = (Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name RunAsPPL -ErrorAction SilentlyContinue).RunAsPPL; if ($val -and $val -ne 0) { Write-Output 'ENABLED' } else { Write-Output 'DISABLED' }`
+  const psCmdSafe = psCmd.replace(/'/g, "\\'")
+
+  console.log("[checkLsaProtection] label:", label, "vm:", vm?.name, "ip:", ip)
+  console.log("[checkLsaProtection] psCmd:", psCmd)
+
+  try {
+    const py = `
+import winrm
+s = winrm.Session('${ip}', auth=('localuser', 'password'), transport='ssl', server_cert_validation='ignore')
+r = s.run_cmd('powershell -Command "${psCmdSafe}"')
+print(r.std_out.decode().strip())
+exit(r.status_code)
+`
+    const result = await $`uv run python -c ${py}`.nothrow().quiet()
+    console.log("[checkLsaProtection] winrm exitCode:", result.exitCode)
+    console.log("[checkLsaProtection] winrm stdout:", result.stdout.toString())
+    if (result.exitCode !== 0) {
+      console.log("[checkLsaProtection] winrm stderr:", result.stderr.toString())
+      return { lsaDisabled: false, winrmFailed: true }
+    }
+    const lsaDisabled = result.stdout.toString().trim() === "DISABLED"
+    console.log("[checkLsaProtection] lsaDisabled:", lsaDisabled)
+    return { lsaDisabled }
+  } catch (err) {
+    console.log("[checkLsaProtection] exception:", err)
+    return { lsaDisabled: false, winrmFailed: true }
   }
 }
 

