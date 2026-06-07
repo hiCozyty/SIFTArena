@@ -18,7 +18,6 @@ export function initDatabase() {
       name TEXT NOT NULL,
       description TEXT DEFAULT '',
       command TEXT NOT NULL,
-      kali_prereq TEXT DEFAULT '',
       win_prereq TEXT DEFAULT '',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -32,7 +31,6 @@ function toAbility(row) {
     name: row.name,
     description: row.description,
     command: row.command,
-    kali_prereq: row.kali_prereq,
     win_prereq: row.win_prereq,
     custom: true,
   }
@@ -48,15 +46,14 @@ export async function createCustomAbility(data) {
   const abilityId = crypto.randomUUID().replace(/-/g, "")
   const row = db
     .query(
-      `INSERT INTO custom_abilities (ability_id, name, description, command, kali_prereq, win_prereq, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`
+      `INSERT INTO custom_abilities (ability_id, name, description, command, win_prereq, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *`
     )
     .get(
       abilityId,
       data.name,
       data.description || "",
       data.command,
-      data.kali_prereq || "",
       data.win_prereq || "",
       now,
       now
@@ -79,7 +76,6 @@ export function updateCustomAbility(abilityId, data) {
   if (data.name !== undefined) { fields.push("name = ?"); values.push(data.name) }
   if (data.description !== undefined) { fields.push("description = ?"); values.push(data.description) }
   if (data.command !== undefined) { fields.push("command = ?"); values.push(data.command) }
-  if (data.kali_prereq !== undefined) { fields.push("kali_prereq = ?"); values.push(data.kali_prereq) }
   if (data.win_prereq !== undefined) { fields.push("win_prereq = ?"); values.push(data.win_prereq) }
 
   if (fields.length === 0) {

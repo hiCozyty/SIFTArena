@@ -241,13 +241,6 @@ async function testFullPipeline() {
   const group = `test-${Date.now()}`
   const taskName = `CalderaSandcat-${group}`
 
-  // pypykatz is a Python tool that reads LSASS process memory live (no dump file).
-  // kali_prereq: installs pypykatz on Kali, copies to ExternalPayloads, restarts Caldera.
-  // win_prereq: installs Python 3.10.4 on Windows (needed because pypykatz is Python-based).
-  // Command has PathToAtomicsFolder reference — replaced with pip install + pypykatz invocation.
-
-  const kaliPrereq = `if [ -f "$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz" ]; then echo "ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz"; else pip3 install --break-system-packages pypykatz && cp -r $(python3 -c "import pypykatz, os; print(os.path.dirname(pypykatz.__file__))") $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz && sudo systemctl restart caldera; fi`
-
   let agentPaw = null
 
   try {
@@ -270,28 +263,8 @@ async function testFullPipeline() {
     } catch {}
     console.log("    => clean")
 
-    // ── Step 2: Install prereqs on Kali (pypykatz via pip3 + Caldera restart) ──
-    console.log("\n  [2/6] Running kali prereq (pip3 install pypykatz + Caldera restart)...")
-    console.log("    => Checking if pypykatz is already installed...")
-    const prereqResult = await sshRun(KALI_IP, "kali", "kali", kaliPrereq)
-    console.log(`    => ${prereqResult.slice(0, 200)}`)
-    if (!prereqResult.includes("ALREADY_PRESENT")) {
-      console.log("    => Fresh install — Caldera was restarted, waiting to come back (120s timeout)...")
-      const start = Date.now()
-      while (Date.now() - start < 120000) {
-        try {
-          await calderaRest("POST", { index: "agents" })
-          console.log(`    => Caldera ready after ${Math.round((Date.now() - start) / 1000)}s`)
-          break
-        } catch {}
-        await new Promise(r => setTimeout(r, 1000))
-      }
-    } else {
-      console.log("    => pypykatz already present, skipping install")
-    }
-
-    // ── Step 3: Install Python on Windows (win_prereq) ──
-    console.log("\n  [3/6] Checking Python on Windows (required for pypykatz)...")
+    // ── Step 2: Install Python on Windows (win_prereq) ──
+    console.log("\n  [2/6] Checking Python on Windows (required for pypykatz)...")
     let pythonOk = false
     try {
       const pyCheck = await winrmRun(WIN11_IP, "localuser", "password",
@@ -493,9 +466,7 @@ async function testMissingFunctions() {
     "getOperationReport(opId)",
     "deleteOperation(opId)",
     "deleteAdversary(advId)",
-    "normalizePrereq(script)",
     "normalizeWinPrereq(script)",
-    "installKaliPrereq(ip, script)",
     "installWinPrereq(ip, script)",
     "sendStatus(ws, step, status, msg)",
   ]
@@ -536,9 +507,8 @@ async function main() {
   console.log(`  Prereq generation in: server/caldera/generateFocusedData.js`)
   console.log(`  Caldera systemd service (root): server/kaliAnsibleStart.yml`)
   console.log(`\n  Pypykatz ability specifics:`)
-  console.log(`    - Python-based LSASS credential reader — reads process memory live (no dump file)`)
-  console.log(`    - kali_prereq: pip3 install pypykatz, copies to ExternalPayloads, restarts Caldera`)
-  console.log(`    - win_prereq: downloads + installs Python 3.10.4 silently on Windows target`)
+    console.log(`    - Python-based LSASS credential reader — reads process memory live (no dump file)`)
+    console.log(`    - win_prereq: downloads + installs Python 3.10.4 silently on Windows target`)
   console.log(`    - pypykatz installed on Windows via WinRM (pip install) before sandcat deploy`)
   console.log(`    - Command: python -m pypykatz live lsa > C:\\Users\\Public\\pypykatz_out.txt 2>&1`)
   console.log(`    - Output redirected to file because cmd executor drops Python stdout/stderr`)

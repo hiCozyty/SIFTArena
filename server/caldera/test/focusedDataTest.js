@@ -140,9 +140,9 @@ async function main() {
             console.log(`\n${tid} - ${t.technique_name}`)
             for (const a of t.abilities) {
               total++
-              if (a.kali_prereq || a.win_prereq) {
+              if (a.win_prereq) {
                 enriched++
-                console.log(`  ENRICHED | ${a.ability_id.slice(0, 8)} | ${a.name} | kali=${a.kali_prereq ? "yes" : "no"} win=${a.win_prereq ? "yes" : "no"}`)
+                console.log(`  ENRICHED | ${a.ability_id.slice(0, 8)} | ${a.name} | win=${a.win_prereq ? "yes" : "no"}`)
               } else {
                 notNeeded++
                 const hasPayloads = a.executors?.some(e => (e.payloads || []).length > 0)

@@ -49,7 +49,6 @@ async function runTests(ws) {
     name: "Test LSASS Dump",
     description: "Test ability for LSASS memory dump",
     command: "echo test",
-    kali_prereq: "",
     win_prereq: "",
   }
 
@@ -84,11 +83,10 @@ async function runTests(ws) {
   console.log("\n5. updateCustomAbility (command and prereqs)")
   const updatedCmd = await sendAndWait(ws, { type: "updateCustomAbility", data: {
     abilityId: created.result.ability_id,
-    data: { command: "Get-Process lsass", kali_prereq: "apt install tool", win_prereq: "choco install tool" },
+    data: { command: "Get-Process lsass", win_prereq: "choco install tool" },
   }})
   assert(!updatedCmd.error, "no error")
   assert(updatedCmd.result.command === "Get-Process lsass", "command updated")
-  assert(updatedCmd.result.kali_prereq === "apt install tool", "kali_prereq updated")
   assert(updatedCmd.result.win_prereq === "choco install tool", "win_prereq updated")
 
   console.log("\n6. deleteCustomAbility")

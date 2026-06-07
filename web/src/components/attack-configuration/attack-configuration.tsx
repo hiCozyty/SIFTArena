@@ -34,7 +34,7 @@ type ScenarioItem = {
 function AttackerConfigurationUi() {
   const [selected, setSelected] = useState<SelectedItem>({ type: "none" })
   const [activeTab, setActiveTab] = useState("ability")
-  const [writeForm, setWriteForm] = useState({ name: "", description: "", command: "", kaliPrereq: "", winPrereq: "" })
+  const [writeForm, setWriteForm] = useState({ name: "", description: "", command: "", winPrereq: "" })
 
   useEffect(() => {
     if (selected.type === "create-ability") {
@@ -101,7 +101,6 @@ function AttackerConfigurationUi() {
         name: writeForm.name,
         description: writeForm.description,
         command: writeForm.command,
-        kaliPrereq: writeForm.kaliPrereq,
         winPrereq: writeForm.winPrereq,
       },
     }
@@ -127,9 +126,9 @@ function AttackerConfigurationUi() {
     setTestDialogOpen(true)
 
     const abilityData = selected.type === "create-ability"
-      ? { mode: "create", name: writeForm.name, description: writeForm.description, command: writeForm.command, kaliPrereq: writeForm.kaliPrereq, winPrereq: writeForm.winPrereq }
+      ? { mode: "create", name: writeForm.name, description: writeForm.description, command: writeForm.command, winPrereq: writeForm.winPrereq }
       : selected.type === "ability"
-        ? { mode: "existing", abilityId: selected.abilityId, name: selected.name, description: selected.description, command: selected.command, kaliPrereq: selected.kaliPrereq, winPrereq: selected.winPrereq }
+        ? { mode: "existing", abilityId: selected.abilityId, name: selected.name, description: selected.description, command: selected.command, winPrereq: selected.winPrereq }
         : {}
 
     backendWs.subscribe((data: Record<string, unknown>) => {
@@ -170,17 +169,17 @@ function AttackerConfigurationUi() {
       return null
     }
     if (selected.type === "negative-control") {
-      return { name: "Negative Control", abilityId: "", description: "An empty ability that does nothing.", command: "(none)", kaliPrereq: "", winPrereq: "" }
+      return { name: "Negative Control", abilityId: "", description: "An empty ability that does nothing.", command: "(none)", winPrereq: "" }
     }
     if (selected.type === "technique" || selected.type === "create-ability") {
       return null
     }
-    return { name: selected.name, abilityId: selected.abilityId, description: selected.description ?? "(no description)", command: selected.command, kaliPrereq: selected.kaliPrereq, winPrereq: selected.winPrereq }
+    return { name: selected.name, abilityId: selected.abilityId, description: selected.description ?? "(no description)", command: selected.command, winPrereq: selected.winPrereq }
   })()
 
   const variantMessage = (() => {
     if (selected.type === "ability") {
-      return `create an existing ability variant for "${selected.name}"\nDescription: ${selected.description ?? "(no description)"}\nCommand: ${selected.command}\nKali prerequisites: ${selected.kaliPrereq || "(none)"}\nWindows prerequisites: ${selected.winPrereq || "(none)"}`
+      return `create an existing ability variant for "${selected.name}"\nDescription: ${selected.description ?? "(no description)"}\nCommand: ${selected.command}`
     }
     if (selected.type === "create-ability") {
       return "Create a new ability"

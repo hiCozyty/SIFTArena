@@ -386,7 +386,7 @@ async function main() {
   console.log(`\n  ${pass} passed, ${fail} failed`)
   console.log(`\n  Ability: Dump LSASS with createdump.exe from .Net v5`)
   console.log(`  Ability ID: 8e01631039faf6a9a84df376bf9ad0f1`)
-  console.log(`  No kali prereq, win_prereq installs .NET 5.0.17 runtime (provides createdump.exe)`)
+  console.log(`  win_prereq installs .NET 5.0.17 runtime (provides createdump.exe)`)
   console.log(`  Dump output: C:\\Windows\\Temp\\dotnet-lsass.dmp`)
 }
 

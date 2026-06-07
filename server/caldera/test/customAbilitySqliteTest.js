@@ -42,13 +42,11 @@ function runTests() {
       name: "Test LSASS Dump",
       description: "Test ability for LSASS memory dump",
       command: "echo test",
-      kali_prereq: "",
       win_prereq: "",
     })
     assert(created.ability_id !== undefined, "has ability_id")
     assert(created.name === "Test LSASS Dump", "name matches")
     assert(created.command === "echo test", "command matches")
-    assert(created.kali_prereq === "", "kali_prereq empty")
     assert(created.win_prereq === "", "win_prereq empty")
 
     // Test 3: Get after create
@@ -63,7 +61,6 @@ function runTests() {
       name: "Test Mimikatz",
       description: "Test mimikatz ability",
       command: "Invoke-Mimikatz",
-      kali_prereq: "",
       win_prereq: "",
     })
     assert(created2.ability_id !== created.ability_id, "different ability_id")
@@ -85,11 +82,9 @@ function runTests() {
     console.log("\n6. updateCustomAbility (command and prereqs)")
     const updatedCmd = updateCustomAbility(created.ability_id, {
       command: "Get-Process lsass",
-      kali_prereq: "apt install tool",
       win_prereq: "choco install tool",
     })
     assert(updatedCmd.command === "Get-Process lsass", "command updated")
-    assert(updatedCmd.kali_prereq === "apt install tool", "kali_prereq updated")
     assert(updatedCmd.win_prereq === "choco install tool", "win_prereq updated")
 
     // Test 7: Update non-existent ability

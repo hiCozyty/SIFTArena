@@ -35,11 +35,10 @@ export interface AbilityInfoTabProps {
     abilityId: string
     description: string
     command: string
-    kaliPrereq: string
     winPrereq: string
   } | null
   mode: "read" | "write"
-  writeForm?: { name: string; description: string; command: string; kaliPrereq: string; winPrereq: string }
+  writeForm?: { name: string; description: string; command: string; winPrereq: string }
   onWriteFormChange?: (field: string, value: string) => void
 }
 
@@ -60,10 +59,6 @@ export function AbilityInfoTab({ content, mode, writeForm, onWriteFormChange }: 
           <textarea className="mt-1 font-mono w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" placeholder="Command" rows={3} value={writeForm?.command ?? ""} onChange={(e) => onWriteFormChange?.("command", e.target.value)} />
         </div>
         <div className="border-t pt-4">
-          <label className="font-bold text-sm">Kali Prerequisites</label>
-          <textarea className="mt-1 font-mono w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" placeholder="(none)" rows={3} value={writeForm?.kaliPrereq ?? ""} onChange={(e) => onWriteFormChange?.("kaliPrereq", e.target.value)} />
-        </div>
-        <div className="pt-2">
           <label className="font-bold text-sm">Windows Prerequisites</label>
           <textarea className="mt-1 font-mono w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" placeholder="(none)" rows={3} value={writeForm?.winPrereq ?? ""} onChange={(e) => onWriteFormChange?.("winPrereq", e.target.value)} />
         </div>
@@ -95,23 +90,13 @@ export function AbilityInfoTab({ content, mode, writeForm, onWriteFormChange }: 
       <div className="mb-4">
         <span className="font-bold">Command:</span> {content.command}
       </div>
-      {content.kaliPrereq ? (
-        <div className="mt-6 border-t pt-4">
-          <div className="mb-2 font-bold">Kali Prerequisites</div>
-          <CopyCommandBlock commands={content.kaliPrereq} />
-        </div>
-      ) : (
-        <div className="mt-6 border-t pt-4 text-muted-foreground">
-          <span className="font-bold">Kali Prerequisites:</span> (none)
-        </div>
-      )}
       {content.winPrereq ? (
-        <div className="mt-4 pt-2">
+        <div className="mt-6 border-t pt-4">
           <div className="mb-2 font-bold">Windows Prerequisites</div>
           <CopyCommandBlock commands={content.winPrereq} />
         </div>
       ) : (
-        <div className="mt-4 pt-2 text-muted-foreground">
+        <div className="mt-6 border-t pt-4 text-muted-foreground">
           <span className="font-bold">Windows Prerequisites:</span> (none)
         </div>
       )}

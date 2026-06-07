@@ -6,7 +6,6 @@ export type AtomicAbility = {
   name: string
   description?: string
   command: string
-  kali_prereq: string
   win_prereq: string
   custom?: boolean
 }

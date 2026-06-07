@@ -244,7 +244,7 @@ async function testFullPipeline() {
 
     console.log(`\n  [4/5] Exploiting agent with ability (Procdump from Sysinternals)...`)
     console.log(`    => Downloads Procdump.zip via BITS, extracts, dumps lsass memory`)
-    console.log(`    => No kali_prereq, no win_prereq — all dependencies fetched at runtime`)
+    console.log(`    => No win_prereq — all dependencies fetched at runtime`)
 
     const exploitResult = await calderaApi("POST", "/plugin/access/exploit", { paw: agentPaw, ability_id: abilityId, obfuscator: "plain-text" })
     console.log(`    => /plugin/access/exploit result: ${JSON.stringify(exploitResult).slice(0, 200)}`)
@@ -340,7 +340,7 @@ async function main() {
   console.log(`\n  ${pass} passed, ${fail} failed`)
   console.log(`\n  Ability: Leverage Procdump for lsass memory`)
   console.log(`  Ability ID: 0ef4cc7b-611c-4237-b20b-db36b6906554`)
-  console.log(`  No kali_prereq, no win_prereq — downloads Procdump.zip from Sysinternals at runtime`)
+  console.log(`  No win_prereq — downloads Procdump.zip from Sysinternals at runtime`)
   console.log(`  Dump output: lsass.exe_*.dmp in C:\\Windows\\system32 (SYSTEM working dir)`)
 }
 

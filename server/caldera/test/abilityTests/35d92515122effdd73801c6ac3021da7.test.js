@@ -392,9 +392,7 @@ async function testMissingFunctions() {
     "getOperationReport(opId)",
     "deleteOperation(opId)",
     "deleteAdversary(advId)",
-    "normalizePrereq(script)",
     "normalizeWinPrereq(script)",
-    "installKaliPrereq(ip, script)",
     "installWinPrereq(ip, script)",
     "sendStatus(ws, step, status, msg)",
   ]
@@ -436,7 +434,7 @@ async function main() {
   console.log(`  Caldera systemd service (root): server/kaliAnsibleStart.yml`)
   console.log(`\n  Comsvcs ability specifics:`)
   console.log(`    - Uses built-in Windows DLLs (comsvcs.dll via rundll32.exe) — no external payload`)
-  console.log(`    - No kali_prereq or win_prereq — all dependencies are OS-native`)
+  console.log(`    - No win_prereq — all dependencies are OS-native`)
   console.log(`    - No command modification needed — no PathToAtomicsFolder references`)
   console.log(`    - Dump file: C:\\Windows\\Temp\\lsass-comsvcs.dmp (SYSTEM's $env:TEMP)`)
 }

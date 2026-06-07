@@ -22,7 +22,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 
 export type SelectedItem =
-  | { type: "ability"; tid: string; abilityId: string; name: string; description: string | undefined; command: string; kaliPrereq: string; winPrereq: string }
+  | { type: "ability"; tid: string; abilityId: string; name: string; description: string | undefined; command: string; winPrereq: string }
   | { type: "negative-control" }
   | { type: "technique"; tid: string; name: string }
   | { type: "create-ability" }
@@ -84,7 +84,7 @@ function TechniqueTreeContent({ onSelect, onCreate, onDelete, allTechniques }: {
 
                   return (
                     <TreeNode key={abilityId} isLast={isLastAb} level={1} nodeId={abilityId}>
-                      <TreeNodeTrigger onClick={() => onSelect({ type: "ability", tid, abilityId: ability.ability_id, name: ability.name, description: ability.description, command: ability.command ?? "(no command)", kaliPrereq: ability.kali_prereq ?? "", winPrereq: ability.win_prereq ?? "" })}>
+                      <TreeNodeTrigger onClick={() => onSelect({ type: "ability", tid, abilityId: ability.ability_id, name: ability.name, description: ability.description, command: ability.command ?? "(no command)", winPrereq: ability.win_prereq ?? "" })}>
                         <TreeIcon icon={<FileText className="h-4 w-4" />} />
                         <TreeLabel className="whitespace-normal break-words">{ability.name}</TreeLabel>
                         {ability.custom && onDelete && (
