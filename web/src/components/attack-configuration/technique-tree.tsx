@@ -91,7 +91,7 @@ function TechniqueTreeContent({ onSelect, onCreate, onDelete, allTechniques }: {
                           <button
                             type="button"
                             className="ml-auto flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                            onClick={(e) => { e.stopPropagation(); onDelete(ability.ability_id) }}
+                            onClick={(e) => { e.stopPropagation();  onDelete(ability.ability_id) }}
                           >
                             <Trash2 className="size-3.5" />
                           </button>

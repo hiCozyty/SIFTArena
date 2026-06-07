@@ -7,14 +7,15 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs"
-import { FileText, MessageCircle, ListChecks, Trash2, ListPlus, Terminal, Loader2, CheckCircle2, XCircle, Circle } from "lucide-react"
+import { FileText, MessageCircle, ListChecks, Loader2, CheckCircle2, XCircle, Circle } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { TechniqueTree, type SelectedItem } from "@/components/attack-configuration/technique-tree"
 import { AbilityInfoTab } from "@/components/attack-configuration/ability-info-tab"
 import { AiChatTab } from "@/components/attack-configuration/ai-chat-tab"
+import { ScenarioTab, type ScenarioItem } from "@/components/attack-configuration/scenario-tab"
 import { useOpencodeChat } from "@/hooks/use-opencode-chat"
 import { useFocusedData } from "@/hooks/use-focused-data"
-import { Item, ItemContent, ItemMedia, ItemTitle, ItemDescription, ItemActions, ItemGroup } from "@/components/ui/item"
+
 import {
   AlertDialog,
   AlertDialogContent,
@@ -24,12 +25,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import * as backendWs from "@/lib/backend-ws"
-
-type ScenarioItem = {
-  id: string
-  name: string
-  description: string
-}
 
 function AttackerConfigurationUi() {
   const [selected, setSelected] = useState<SelectedItem>({ type: "none" })
@@ -231,35 +226,7 @@ function AttackerConfigurationUi() {
             <AiChatTab variantMessage={variantMessage} variantLabel={selected.type === "ability" ? selected.name : undefined} {...chat} />
           </TabsContent>
           <TabsContent value="scenario" className="flex-1 min-h-0 flex flex-col rounded-4xl bg-muted shadow-sm p-4">
-            {scenarioItems.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">
-                <ListPlus className="size-12 opacity-50" />
-                <p className="text-sm">Please select an ability on the left and add to scenario</p>
-              </div>
-            ) : (
-              <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <ItemGroup>
-                  {scenarioItems.map((item) => (
-                    <Item key={item.id}>
-                      <ItemMedia>
-                        <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                          <Terminal className="size-5 text-primary" />
-                        </div>
-                      </ItemMedia>
-                      <ItemContent>
-                        <ItemTitle>{item.name}</ItemTitle>
-                        <ItemDescription>{item.description}</ItemDescription>
-                      </ItemContent>
-                      <ItemActions>
-                        <Button variant="ghost" size="icon" onClick={() => setScenarioItems((prev) => prev.filter((i) => i.id !== item.id))}>
-                          <Trash2 className="size-4 text-muted-foreground hover:text-destructive" />
-                        </Button>
-                      </ItemActions>
-                    </Item>
-                  ))}
-                </ItemGroup>
-              </div>
-            )}
+            <ScenarioTab scenarioItems={scenarioItems} setScenarioItems={setScenarioItems} />
           </TabsContent>
         </Tabs>
       </div>

@@ -929,9 +929,6 @@ export async function checkLsaProtection(ludusUrl, apiKey, data, ws) {
   const psCmd = `$val = (Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name RunAsPPL -ErrorAction SilentlyContinue).RunAsPPL; if ($val -and $val -ne 0) { Write-Output 'ENABLED' } else { Write-Output 'DISABLED' }`
   const psCmdSafe = psCmd.replace(/'/g, "\\'")
 
-  console.log("[checkLsaProtection] label:", label, "vm:", vm?.name, "ip:", ip)
-  console.log("[checkLsaProtection] psCmd:", psCmd)
-
   try {
     const py = `
 import winrm
@@ -941,17 +938,12 @@ print(r.std_out.decode().strip())
 exit(r.status_code)
 `
     const result = await $`uv run python -c ${py}`.nothrow().quiet()
-    console.log("[checkLsaProtection] winrm exitCode:", result.exitCode)
-    console.log("[checkLsaProtection] winrm stdout:", result.stdout.toString())
     if (result.exitCode !== 0) {
-      console.log("[checkLsaProtection] winrm stderr:", result.stderr.toString())
       return { lsaDisabled: false, winrmFailed: true }
     }
     const lsaDisabled = result.stdout.toString().trim() === "DISABLED"
-    console.log("[checkLsaProtection] lsaDisabled:", lsaDisabled)
     return { lsaDisabled }
   } catch (err) {
-    console.log("[checkLsaProtection] exception:", err)
     return { lsaDisabled: false, winrmFailed: true }
   }
 }

@@ -208,6 +208,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   }
 
   if (parts && parts.length > 0) {
+    if (!isUser) {
+      }
     return parts.map((part, index) => {
       if (part.type === "text") {
         return (

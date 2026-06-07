@@ -1,5 +1,7 @@
 .env
-AGENTS.md
+web/AGENTS.md
+server/AGENTS.md
+
 
 # Bun.js / Node.js
 node_modules/

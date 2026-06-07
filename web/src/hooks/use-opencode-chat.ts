@@ -95,6 +95,9 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
             continue
           }
 
+          if (props.part) {
+            }
+
           if ((event.type as string) === "message.part.updated" && props.part?.id) {
             const partId = props.part.id
             const genCheck = !!(activeGenerationIdRef.current && activeAssistantMessageIdRef.current)
@@ -264,6 +267,10 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
     activeGenerationIdRef.current = null
     const parts = Array.from(partsRef.current.values())
     const toolInvocations = Array.from(toolInvocationsRef.current.values())
+    for (const [id, p] of partsRef.current) {
+      }
+    for (const [id, inv] of toolInvocationsRef.current) {
+      }
     const rawTextContent = parts.filter((p) => p.type === "text").map((p) => p.content).join("")
     const textContent = stripEchoedInput(rawTextContent)
     const reasoningContent = parts.filter((p) => p.type === "reasoning").map((p) => p.content).join("")
@@ -323,6 +330,7 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
     async (content: string) => {
       const currentSessionId = activeSessionIdRef.current
       if (!clientRef.current || !currentSessionId) {
+        console.error("[opencode] sendMessage: not connected (no client or session)")
         setError("Not connected")
         return
       }
@@ -368,11 +376,12 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
           },
           signal: promptAbortRef.current.signal,
         })
-      } catch (err) {
+        } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           finalizeMessage()
           return
         }
+        console.error("[opencode] promptAsync error:", err instanceof Error ? err.message : err)
         setError(err instanceof Error ? err.message : "Prompt failed")
         setIsGenerating(false)
         setIsToolExecuting(false)

@@ -38,7 +38,8 @@ function toAbility(row) {
 
 export function getCustomAbilities() {
   const rows = db.query("SELECT * FROM custom_abilities ORDER BY created_at DESC").all()
-  return rows.map(toAbility)
+  const abilities = rows.map(toAbility)
+  return abilities
 }
 
 export async function createCustomAbility(data) {
@@ -54,7 +55,7 @@ export async function createCustomAbility(data) {
       data.name,
       data.description || "",
       data.command,
-      data.win_prereq || "",
+      data.winPrereq || "",
       now,
       now
     )
@@ -76,7 +77,7 @@ export function updateCustomAbility(abilityId, data) {
   if (data.name !== undefined) { fields.push("name = ?"); values.push(data.name) }
   if (data.description !== undefined) { fields.push("description = ?"); values.push(data.description) }
   if (data.command !== undefined) { fields.push("command = ?"); values.push(data.command) }
-  if (data.win_prereq !== undefined) { fields.push("win_prereq = ?"); values.push(data.win_prereq) }
+  if (data.winPrereq !== undefined) { fields.push("win_prereq = ?"); values.push(data.winPrereq) }
 
   if (fields.length === 0) {
     const existing = db.query("SELECT * FROM custom_abilities WHERE ability_id = ?").get(abilityId)

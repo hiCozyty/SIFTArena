@@ -41,7 +41,9 @@ export function useFocusedData() {
         return
       }
       if (data.type === "getFocusedCategoriesAndTechniques" && data.result) {
-        setStatus({ type: "success", data: data.result as FocusedData })
+        const result = data.result as FocusedData
+        const t1003 = result.techniques?.["credential-access"]?.["T1003.001"]
+        setStatus({ type: "success", data: result })
         unsub()
       }
     })

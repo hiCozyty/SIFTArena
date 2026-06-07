@@ -11,7 +11,7 @@ export async function fetchCalderaCategories() {
 }
 
 export async function fetchFocusedCategoriesAndTechniques() {
-  const result = { ...focusedTechniques }
+  const result = structuredClone(focusedTechniques)
   for (const cat of result.categories) {
     const catTechs = result.techniques[cat]
     if (!catTechs) continue
@@ -28,6 +28,7 @@ export async function fetchFocusedCategoriesAndTechniques() {
     }
   }
 
+  const jsonAbilityIds = result.techniques["credential-access"]?.["T1003.001"]?.abilities?.map(a => a.ability_id) ?? []
   const customAbilities = getCustomAbilities()
   if (customAbilities.length > 0 && result.techniques["credential-access"]?.["T1003.001"]) {
     const existingIds = new Set(result.techniques["credential-access"]["T1003.001"].abilities.map(a => a.ability_id))
@@ -38,5 +39,6 @@ export async function fetchFocusedCategoriesAndTechniques() {
     }
   }
 
+  const merged = result.techniques["credential-access"]?.["T1003.001"]?.abilities ?? []
   return result
 }

