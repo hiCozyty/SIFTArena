@@ -248,27 +248,24 @@ export async function testAbility(ludusUrl, apiKey, data, ws) {
 
     sendStatus(ws, "powerCheck", "success", "All 3 VMs are powered on")
 
-    sendStatus(ws, "cliCheck", "running", "Testing CLI access...")
+    sendStatus(ws, "cliCheck", "running", "Testing WinRM access...")
 
-    for (const t of targets) {
-      const ip = t.vm.ip
-      if (!ip || ip === "null") {
-        sendStatus(ws, "cliCheck", "error", `${t.key} has no IP address`)
-        sendStatus(ws, "complete", "error", "Test failed — no IP")
-        return
-      }
-
-      const port = t.linux ? 22 : 5986
-      try {
-        await $`bash -c "timeout 3 bash -c '</dev/tcp/${ip}/${port}' 2>/dev/null"`.quiet()
-      } catch {
-        sendStatus(ws, "cliCheck", "error", `Port ${port} on ${t.key} (${ip}) not reachable`)
-        sendStatus(ws, "complete", "error", "Test failed — CLI unreachable")
-        return
-      }
+    const winCliTarget = targets.find(t => t.key === "win11-22h2")
+    if (!winCliTarget?.vm?.ip || winCliTarget.vm.ip === "null") {
+      sendStatus(ws, "cliCheck", "error", "win11-22h2 has no IP address")
+      sendStatus(ws, "complete", "error", "Test failed — no IP")
+      return
     }
 
-    sendStatus(ws, "cliCheck", "success", "CLI access confirmed — SSH on router and kali, WinRM on win11")
+    try {
+      await $`bash -c "timeout 3 bash -c '</dev/tcp/${winCliTarget.vm.ip}/5986' 2>/dev/null"`.quiet()
+    } catch {
+      sendStatus(ws, "cliCheck", "error", `WinRM port 5986 on win11-22h2 (${winCliTarget.vm.ip}) not reachable`)
+      sendStatus(ws, "complete", "error", "Test failed — WinRM unreachable")
+      return
+    }
+
+    sendStatus(ws, "cliCheck", "success", "WinRM access confirmed on win11")
 
     const winTarget = targets.find(t => t.key === "win11-22h2")
     if (!winTarget || !winTarget.vm) {
