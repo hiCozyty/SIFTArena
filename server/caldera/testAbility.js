@@ -90,7 +90,8 @@ function normalizeWinPrereq(script) {
 async function installWinPrereq(ip, script) {
   if (!script) return
   const cmd = normalizeWinPrereq(script)
-  await winrmRun(ip, "localuser", "password", `powershell -Command "${cmd}"`)
+  const escaped = cmd.replace(/"/g, '\\"')
+  await winrmRun(ip, "localuser", "password", `powershell -Command "${escaped}"`)
 }
 
 async function getCalderaAgents() {
@@ -307,7 +308,7 @@ export async function testAbility(ludusUrl, apiKey, data, ws) {
     sendStatus(ws, "abilityExploit", "running", `Exploiting agent with ability "${name}"...`)
     const result = await exploitAbility(agent.paw, abilityId, command)
     const factsCount = result?.facts?.length || 0
-    sendStatus(ws, "abilityExploit", "success", `Ability executed — ${factsCount} facts collected`)
+    sendStatus(ws, "abilityExploit", "success", `Ability executed successfully`)
 
     sendStatus(ws, "cleanup", "running", "Cleaning up agent, process, and scheduled task...")
     try { await calderaRest("DELETE", { index: "agents", paw: agent.paw }) } catch {}
@@ -319,7 +320,7 @@ export async function testAbility(ludusUrl, apiKey, data, ws) {
       `powershell -Command "Unregister-ScheduledTask -TaskName 'CalderaSandcat-${group}' -Confirm:\$false -ErrorAction SilentlyContinue; Write-Host 'TASK_CLEANED'"`)
     sendStatus(ws, "cleanup", "success", "Cleaned up agent, process, and scheduled task")
 
-    sendStatus(ws, "complete", "success", `Ability "${name}" tested successfully — ${factsCount} facts`)
+    sendStatus(ws, "complete", "success", `Ability "${name}" tested successfully`)
   } catch (err) {
     console.log(`[server] testAbility caught error: ${err.message}`)
     sendStatus(ws, "cleanup", "running", "Cleaning up on error...")

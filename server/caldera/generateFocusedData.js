@@ -15,6 +15,7 @@ const EXCLUDE_ABILITY_IDS = new Set([
   "7049e3ec-b822-4fdf-a4ac-18190f9b66d1", // Powerkatz (Staged) — deprecated on Win11
   "baac2c6d-4652-4b7e-ab0a-f1bf246edd12", // Run PowerKatz — deprecated on Win11
   "82dcefb5c3512d73bf2248cb0127c4ae", // Powershell Mimikatz — deprecated on Win11
+  "7e8ccbe3de961012b6464485829e87a4", // has a dependency on pre-existing lsass.dmp file
 ])
 
 async function fetchAbilities() {
