@@ -6,6 +6,8 @@ export function AppLayout() {
   const [labRangeCompleted, setLabRangeCompleted] = useState(false)
   const [attackConfigCompleted, setAttackConfigCompleted] = useState(false)
   const [siftAgentConfigured, setSiftAgentConfigured] = useState(false)
+  const [hasPlaybooks, setHasPlaybooks] = useState(false)
+  const [playbookCompleted, setPlaybookCompleted] = useState(false)
 
   return (
     <>
@@ -13,10 +15,13 @@ export function AppLayout() {
         labRangeCompleted={labRangeCompleted}
         attackConfigCompleted={attackConfigCompleted}
         siftAgentConfigured={siftAgentConfigured}
+        hasPlaybooks={hasPlaybooks}
+        playbookCompleted={playbookCompleted}
         onLabRangeComplete={() => setLabRangeCompleted(true)}
-        onLabRangeReset={() => setLabRangeCompleted(false)}
         onAttackConfigComplete={(v) => setAttackConfigCompleted(v)}
         onSiftAgentConfigured={() => setSiftAgentConfigured(true)}
+        onHasPlaybooks={setHasPlaybooks}
+        onPlaybookComplete={() => setPlaybookCompleted(true)}
       />
       <BottomDock />
     </>

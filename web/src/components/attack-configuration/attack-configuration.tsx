@@ -69,6 +69,7 @@ function AttackerConfigurationUi({
       ...prev,
       { id: `${selected.type === "ability" ? selected.abilityId : "negative-control"}-${Date.now()}`, name: selected.type === "ability" ? selected.name : "Negative Control", description: selected.type === "ability" ? (selected.description ?? "(no description)") : "An empty ability that does nothing." },
     ])
+    setActiveTab("scenario")
   }, [selected])
 
   const handleWriteFormChange = useCallback((field: string, value: string) => {

@@ -21,12 +21,16 @@ interface CompletionState {
   labRangeCompleted: boolean
   attackConfigCompleted: boolean
   siftAgentConfigured: boolean
+  hasPlaybooks: boolean
+  playbookCompleted: boolean
 }
 
 interface LandingTabsProps extends CompletionState {
   onLabRangeComplete: () => void
   onAttackConfigComplete: (completed: boolean) => void
   onSiftAgentConfigured: () => void
+  onHasPlaybooks: (hasPlaybooks: boolean) => void
+  onPlaybookComplete: () => void
 }
 
 const SECTIONS = [
@@ -80,9 +84,9 @@ function isTabAccessible(section: string, state: CompletionState): boolean {
     case "Attack Configuration":
       return state.labRangeCompleted
     case "Playbook":
-      return state.attackConfigCompleted
+      return state.hasPlaybooks || state.attackConfigCompleted
     case "Run Benchmark":
-      return state.siftAgentConfigured
+      return state.playbookCompleted && state.siftAgentConfigured
     default:
       return true
   }
@@ -95,9 +99,13 @@ function getPrerequisite(section: string): string | undefined {
 function LockedContent({
   section,
   prerequisite,
+  playbookCompleted,
+  siftAgentConfigured,
 }: {
   section: string
   prerequisite: string
+  playbookCompleted: boolean
+  siftAgentConfigured: boolean
 }) {
   const navigate = useNavigate()
   const targetPath = TAB_PATHS[prerequisite]
@@ -107,14 +115,33 @@ function LockedContent({
       <Lock className="mb-4 size-12 text-muted-foreground" />
       <h3 className="mb-2 text-lg font-semibold">{section} is locked</h3>
       <p className="mb-6 text-sm text-muted-foreground">
-        {prerequisite === "Attack Configuration"
+        {section === "Run Benchmark" && !playbookCompleted && !siftAgentConfigured
+          ? <>Complete <strong>Playbook</strong> and <strong>SIFT Agent</strong> setup first to unlock this section.</>
+          : section === "Run Benchmark" && !playbookCompleted
+          ? <>Complete <strong>Playbook</strong> setup first to unlock this section.</>
+          : section === "Run Benchmark" && !siftAgentConfigured
+          ? <>Complete <strong>SIFT Agent</strong> setup first to unlock this section.</>
+          : prerequisite === "Attack Configuration"
           ? <>Please add an ability to the scenario in the <strong>Attack Configuration</strong> to unlock this section.</>
           : <>Complete <strong>{prerequisite}</strong> setup first to unlock this section.</>
         }
       </p>
-      <Button onClick={() => navigate(targetPath, { replace: true })}>
-        Go to {prerequisite}
-      </Button>
+      <div className="flex items-center gap-2">
+        {section === "Run Benchmark" && !playbookCompleted ? (
+          <Button onClick={() => navigate(TAB_PATHS["Playbook"], { replace: true })}>
+            Go to Playbook
+          </Button>
+        ) : null}
+        {section === "Run Benchmark" && !siftAgentConfigured ? (
+          <Button onClick={() => navigate(TAB_PATHS["SIFT Agent"], { replace: true })}>
+            Go to SIFT Agent
+          </Button>
+        ) : section !== "Run Benchmark" ? (
+          <Button onClick={() => navigate(targetPath, { replace: true })}>
+            Go to {prerequisite}
+          </Button>
+        ) : null}
+      </div>
     </TabContentCard>
   )
 }
@@ -123,9 +150,13 @@ export function LandingTabs({
   labRangeCompleted,
   attackConfigCompleted,
   siftAgentConfigured,
+  hasPlaybooks,
+  playbookCompleted,
   onLabRangeComplete,
   onAttackConfigComplete,
   onSiftAgentConfigured,
+  onHasPlaybooks,
+  onPlaybookComplete,
 }: LandingTabsProps) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -134,6 +165,8 @@ export function LandingTabs({
     labRangeCompleted,
     attackConfigCompleted,
     siftAgentConfigured,
+    hasPlaybooks,
+    playbookCompleted,
   }
 
   const activeTab = PATH_TO_TAB[location.pathname] ?? SECTIONS[0]
@@ -163,7 +196,7 @@ export function LandingTabs({
           return (
             <TabsContent key={s} value={s} forceMount>
               {!unlocked && prerequisite ? (
-                <LockedContent section={s} prerequisite={prerequisite} />
+                <LockedContent section={s} prerequisite={prerequisite} playbookCompleted={playbookCompleted} siftAgentConfigured={siftAgentConfigured} />
               ) : s === "Leaderboard" ? (
                 <LeaderboardContent />
               ) : s === "Lab Range" ? (
@@ -176,7 +209,10 @@ export function LandingTabs({
                   onComplete={onAttackConfigComplete}
                 />
               ) : s === "Playbook" ? (
-                <PlaybookContent />
+                <PlaybookContent
+                  onHasPlaybooks={onHasPlaybooks}
+                  onComplete={onPlaybookComplete}
+                />
               ) : s === "SIFT Agent" ? (
                 <SiftAgentContent
                   configured={siftAgentConfigured}
