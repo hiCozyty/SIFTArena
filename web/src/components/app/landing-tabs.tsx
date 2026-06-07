@@ -25,7 +25,7 @@ interface CompletionState {
 
 interface LandingTabsProps extends CompletionState {
   onLabRangeComplete: () => void
-  onAttackConfigComplete: () => void
+  onAttackConfigComplete: (completed: boolean) => void
   onSiftAgentConfigured: () => void
 }
 
@@ -107,7 +107,10 @@ function LockedContent({
       <Lock className="mb-4 size-12 text-muted-foreground" />
       <h3 className="mb-2 text-lg font-semibold">{section} is locked</h3>
       <p className="mb-6 text-sm text-muted-foreground">
-        Complete <strong>{prerequisite}</strong> setup first to unlock this section.
+        {prerequisite === "Attack Configuration"
+          ? <>Please add an ability to the scenario in the <strong>Attack Configuration</strong> to unlock this section.</>
+          : <>Complete <strong>{prerequisite}</strong> setup first to unlock this section.</>
+        }
       </p>
       <Button onClick={() => navigate(targetPath, { replace: true })}>
         Go to {prerequisite}
@@ -170,7 +173,6 @@ export function LandingTabs({
                 />
               ) : s === "Attack Configuration" ? (
                 <AttackConfiguration
-                  completed={attackConfigCompleted}
                   onComplete={onAttackConfigComplete}
                 />
               ) : s === "Playbook" ? (

@@ -26,7 +26,13 @@ import {
 } from "@/components/ui/alert-dialog"
 import * as backendWs from "@/lib/backend-ws"
 
-function AttackerConfigurationUi() {
+function AttackerConfigurationUi({
+  scenarioItems,
+  setScenarioItems,
+}: {
+  scenarioItems: ScenarioItem[]
+  setScenarioItems: React.Dispatch<React.SetStateAction<ScenarioItem[]>>
+}) {
   const [selected, setSelected] = useState<SelectedItem>({ type: "none" })
   const [activeTab, setActiveTab] = useState("ability")
   const [writeForm, setWriteForm] = useState({ name: "", description: "", command: "", winPrereq: "" })
@@ -36,7 +42,6 @@ function AttackerConfigurationUi() {
       setActiveTab("ability")
     }
   }, [selected])
-  const [scenarioItems, setScenarioItems] = useState<ScenarioItem[]>([])
   const chat = useOpencodeChat()
   const { status, fetch: fetchTree } = useFocusedData()
   const [testDialogOpen, setTestDialogOpen] = useState(false)
@@ -183,7 +188,7 @@ function AttackerConfigurationUi() {
   })()
 
   return (
-    <div className="h-full rounded-lg flex outline outline-2 outline-yellow-400">
+    <div className="h-full rounded-lg flex">
       <div className="w-[280px] shrink-0 overflow-hidden h-full">
         <TechniqueTree onSelect={setSelected} onDelete={handleDeleteAbility} status={status} />
       </div>
@@ -269,12 +274,16 @@ function AttackerConfigurationUi() {
 }
 
 export function AttackConfiguration({
-  completed,
   onComplete,
 }: {
-  completed: boolean
-  onComplete: () => void
+  onComplete: (completed: boolean) => void
 }) {
+  const [scenarioItems, setScenarioItems] = useState<ScenarioItem[]>([])
+
+  useEffect(() => {
+    onComplete(scenarioItems.length > 0)
+  }, [scenarioItems.length, onComplete])
+
   return (
     <TabContentCard className="p-6 flex flex-col min-h-0">
       <div className="mb-4 flex items-center gap-3 shrink-0">
@@ -288,14 +297,7 @@ export function AttackConfiguration({
       </div>
 
       <div className="mt-4 flex-1 min-h-0">
-        <AttackerConfigurationUi />
-      </div>
-      <div className="mt-4 shrink-0">
-        {completed ? (
-          <p className="text-sm text-green-600">✓ Attack Configuration completed</p>
-        ) : (
-          <Button onClick={onComplete}>Complete Attack Configuration</Button>
-        )}
+        <AttackerConfigurationUi scenarioItems={scenarioItems} setScenarioItems={setScenarioItems} />
       </div>
     </TabContentCard>
   )
