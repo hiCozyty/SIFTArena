@@ -76,7 +76,7 @@ function AttackerConfigurationUi({
     if (selected.type !== "ability" && selected.type !== "negative-control") return
     setScenarioItems((prev) => [
       ...prev,
-      { id: `${selected.type === "ability" ? selected.abilityId : "negative-control"}-${Date.now()}`, name: selected.type === "ability" ? selected.name : "Negative Control", description: selected.type === "ability" ? (selected.description ?? "(no description)") : "An empty ability that does nothing." },
+      { id: `${selected.type === "ability" ? selected.abilityId : "negative-control"}-${Date.now()}`, abilityId: selected.type === "ability" ? selected.abilityId : "negative-control", name: selected.type === "ability" ? selected.name : "Negative Control", description: selected.type === "ability" ? (selected.description ?? "(no description)") : "An empty ability that does nothing.", command: selected.type === "ability" ? selected.command : "", winPrereq: selected.type === "ability" ? selected.winPrereq : "" },
     ])
     setActiveTab("scenario")
   }, [selected])

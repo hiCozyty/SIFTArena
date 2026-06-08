@@ -13,6 +13,25 @@ import { Trash2, CircleAlert } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
+function AbilityTooltip({ description, command, winPrereq }: { description?: string; command?: string; winPrereq?: string }) {
+  const hasContent = description || command || winPrereq
+  if (!hasContent) return null
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger>
+          <CircleAlert className="size-3.5 text-muted-foreground shrink-0" />
+        </TooltipTrigger>
+        <TooltipContent className="flex-col items-start gap-0 max-w-xs whitespace-normal break-words">
+          {description && <p className="break-all"><span className="font-semibold">Description: </span>{description}</p>}
+          {command && <p className="break-all"><span className="font-semibold">Command: </span>{command}</p>}
+          {winPrereq && <p className="break-all"><span className="font-semibold">WinPrereq: </span>{winPrereq}</p>}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
 export function PlaybookTimelineTab({
   currentPlaybookData,
   scenarioItems,
@@ -96,18 +115,7 @@ export function PlaybookTimelineTab({
                       <TableCell className="whitespace-normal break-words">
                         <div className="flex items-center gap-1.5">
                           <span>{item.name}</span>
-                          {item.description && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <CircleAlert className="size-3.5 text-muted-foreground shrink-0" />
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {item.description}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
+                          <AbilityTooltip description={item.description} command={item.command} winPrereq={item.winPrereq} />
                         </div>
                       </TableCell>
                     </TableRow>,
@@ -201,18 +209,11 @@ export function PlaybookTimelineTab({
                       <TableCell className="whitespace-normal break-words">
                         <div className="flex items-center gap-1.5">
                           <span>{String(e.name)}</span>
-                          {e.description && String(e.description) && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <CircleAlert className="size-3.5 text-muted-foreground shrink-0" />
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {String(e.description)}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
+                          <AbilityTooltip
+                            description={typeof e.description === "string" ? e.description : undefined}
+                            command={typeof e.command === "string" ? e.command : undefined}
+                            winPrereq={typeof e.winPrereq === "string" ? e.winPrereq : undefined}
+                          />
                         </div>
                       </TableCell>
                     </TableRow>

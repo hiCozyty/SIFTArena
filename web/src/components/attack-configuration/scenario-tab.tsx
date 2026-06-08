@@ -4,8 +4,11 @@ import { Trash2, ListPlus } from "lucide-react"
 
 export type ScenarioItem = {
   id: string
+  abilityId: string
   name: string
   description: string
+  command: string
+  winPrereq: string
 }
 
 type ScenarioTabProps = {

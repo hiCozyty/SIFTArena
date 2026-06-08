@@ -113,7 +113,7 @@ export function PlaybookContent({
       const noiseData = assignedNoises[noiseSlotKey]
       return [
         noiseData ? { name: noiseData.name, command: noiseData.command } : {},
-        { id: item.id, name: item.name, description: item.description },
+        { id: item.id, name: item.name, description: item.description, command: item.command, winPrereq: item.winPrereq },
       ]
     })
     const endSlotKey = `timeline-${scenarioItems.length}`
@@ -210,6 +210,31 @@ export function PlaybookContent({
     }
   }, [fetchPlaybooks])
 
+  const handleImportPlaybook = useCallback(async (data: Record<string, unknown>) => {
+    const name = typeof data.name === "string" ? data.name.trim() : ""
+    if (!name) {
+      console.error("[playbook] importPlaybook: no name in imported data")
+      return
+    }
+    try {
+      await executeWsOperation({
+        messageType: "createPlaybook",
+        sendFn: () => backendWs.send({
+          type: "createPlaybook",
+          data: {
+            name,
+            timelineEvents: Array.isArray(data.timelineEvents) ? data.timelineEvents : [],
+            persistentBgCommands: Array.isArray(data.persistentBgCommands) ? data.persistentBgCommands : [{}],
+            settings: data.settings ?? {},
+          },
+        }),
+      })
+      await fetchPlaybooks()
+    } catch (err) {
+      console.error("[playbook] importPlaybook failed:", err)
+    }
+  }, [fetchPlaybooks])
+
   const handleConfirmNoiseSelection = useCallback(() => {
     if (pendingSlotKey && selectedNoiseData) {
       setAssignedNoises(prev => ({ ...prev, [pendingSlotKey]: { name: selectedNoiseData.name, command: selectedNoiseData.command } }))
@@ -269,7 +294,7 @@ export function PlaybookContent({
       </div>
       <div className="mt-4 flex-1 min-h-0 rounded-lg flex gap-4">
         <div className="w-[200px] shrink-0 overflow-hidden h-full">
-          <PlaybookTree onSelectNoise={handleSelectNoise} noises={noises} onDeleteNoise={handleDeleteNoise} leftTab={leftTab} onLeftTabChange={handleLeftTabChange} playbooks={playbooks} onSelectedNoiseChange={setSelectedNoise} hideAddNoiseButton={showConfirmButton} onSelectedPlaybookChange={setPendingPlaybook} onDeletePlaybook={handleDeletePlaybook} />
+          <PlaybookTree onSelectNoise={handleSelectNoise} noises={noises} onDeleteNoise={handleDeleteNoise} leftTab={leftTab} onLeftTabChange={handleLeftTabChange} playbooks={playbooks} onSelectedNoiseChange={setSelectedNoise} hideAddNoiseButton={showConfirmButton} onSelectedPlaybookChange={setPendingPlaybook} onDeletePlaybook={handleDeletePlaybook} onImportPlaybook={handleImportPlaybook} />
         </div>
         <div className="flex-1 min-w-0">
           {isCreatingNoise ? (
@@ -280,7 +305,7 @@ export function PlaybookContent({
                   <Button variant="outline" onClick={() => { setNoiseSelected({ type: "none" }); setShowConfirmButton(false) }}>
                     Cancel
                   </Button>
-                  <Button disabled={!noiseForm.name || !noiseForm.command} onClick={handleCreateNoise}>
+                  <Button disabled={!noiseForm.name || !noiseForm.command || noises.some(n => n.name === noiseForm.name)} onClick={handleCreateNoise}>
                     Create Noise Template
                   </Button>
                 </div>
@@ -295,6 +320,9 @@ export function PlaybookContent({
                       value={noiseForm.name}
                       onChange={(e) => handleNoiseFormChange("name", e.target.value)}
                     />
+                    {noiseForm.name && noises.some(n => n.name === noiseForm.name) && (
+                      <p className="text-sm text-destructive mt-1">A noise template with this name already exists.</p>
+                    )}
                   </div>
                   <div>
                     <label className="font-bold text-sm">Description</label>
@@ -404,9 +432,12 @@ export function PlaybookContent({
             value={playbookName}
             onChange={(e) => setPlaybookName(e.target.value)}
           />
+          {playbookName.trim() && playbooks.some(p => p.name === playbookName.trim()) && (
+            <p className="text-sm text-destructive">A playbook with this name already exists.</p>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction disabled={!playbookName.trim()} onClick={handleConfirmSave}>
+            <AlertDialogAction disabled={!playbookName.trim() || playbooks.some(p => p.name === playbookName.trim())} onClick={handleConfirmSave}>
               Save
             </AlertDialogAction>
           </AlertDialogFooter>
