@@ -1,4 +1,7 @@
 import { useLocation, useNavigate } from "react-router-dom"
+import { useEffect } from "react"
+import { executeWsOperation } from "@/lib/ws-ops"
+import * as backendWs from "@/lib/backend-ws"
 import { RiTrophyLine, RiBookLine } from "@remixicon/react"
 import { LudusIcon } from "@/components/icons/ludus-icon"
 import { CalderaIcon } from "@/components/icons/caldera-icon"
@@ -12,6 +15,7 @@ import { LabRangeContent } from "@/components/lab-range/lab-range-content"
 import { LeaderboardContent } from "@/components/leaderboard/leaderboard-content"
 import { AttackConfiguration } from "@/components/attack-configuration/attack-configuration"
 import { PlaybookContent } from "@/components/playbook/playbook-content"
+import type { ScenarioItem } from "@/components/attack-configuration/scenario-tab"
 import { SiftAgentContent } from "@/components/sift-agent/sift-agent-content"
 import { BenchmarkContent } from "@/components/run-benchmark/benchmark-content"
 import { KnowledgeGraphContent } from "@/components/knowledge-graph/knowledge-graph-content"
@@ -26,11 +30,14 @@ interface CompletionState {
 }
 
 interface LandingTabsProps extends CompletionState {
+  scenarioItems: ScenarioItem[]
   onLabRangeComplete: () => void
   onAttackConfigComplete: (completed: boolean) => void
   onSiftAgentConfigured: () => void
   onHasPlaybooks: (hasPlaybooks: boolean) => void
   onPlaybookComplete: () => void
+  onSelectNoise: () => void
+  onScenarioItemsChange: React.Dispatch<React.SetStateAction<ScenarioItem[]>>
 }
 
 const SECTIONS = [
@@ -101,14 +108,28 @@ function LockedContent({
   prerequisite,
   playbookCompleted,
   siftAgentConfigured,
+  onHasPlaybooks,
 }: {
   section: string
   prerequisite: string
   playbookCompleted: boolean
   siftAgentConfigured: boolean
+  onHasPlaybooks: (hasPlaybooks: boolean) => void
 }) {
   const navigate = useNavigate()
   const targetPath = TAB_PATHS[prerequisite]
+
+  useEffect(() => {
+    if (section !== "Playbook") return
+    executeWsOperation<Array<{ name: string }>>({
+      messageType: "getPlaybooks",
+      sendFn: () => backendWs.send({ type: "getPlaybooks" }),
+    }).then((result) => {
+      onHasPlaybooks(result.length > 0)
+    }).catch((err) => {
+      console.error("[landing-tabs] getPlaybooks from LockedContent failed:", err)
+    })
+  }, [section, onHasPlaybooks])
 
   return (
     <TabContentCard className="py-16 flex flex-col items-center justify-center">
@@ -152,11 +173,14 @@ export function LandingTabs({
   siftAgentConfigured,
   hasPlaybooks,
   playbookCompleted,
+  scenarioItems,
   onLabRangeComplete,
   onAttackConfigComplete,
   onSiftAgentConfigured,
   onHasPlaybooks,
   onPlaybookComplete,
+  onSelectNoise,
+  onScenarioItemsChange,
 }: LandingTabsProps) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -196,7 +220,7 @@ export function LandingTabs({
           return (
             <TabsContent key={s} value={s} forceMount>
               {!unlocked && prerequisite ? (
-                <LockedContent section={s} prerequisite={prerequisite} playbookCompleted={playbookCompleted} siftAgentConfigured={siftAgentConfigured} />
+                <LockedContent section={s} prerequisite={prerequisite} playbookCompleted={playbookCompleted} siftAgentConfigured={siftAgentConfigured} onHasPlaybooks={onHasPlaybooks} />
               ) : s === "Leaderboard" ? (
                 <LeaderboardContent />
               ) : s === "Lab Range" ? (
@@ -206,12 +230,16 @@ export function LandingTabs({
                 />
               ) : s === "Attack Configuration" ? (
                 <AttackConfiguration
+                  scenarioItems={scenarioItems}
+                  setScenarioItems={onScenarioItemsChange}
                   onComplete={onAttackConfigComplete}
                 />
               ) : s === "Playbook" ? (
                 <PlaybookContent
+                  scenarioItems={scenarioItems}
                   onHasPlaybooks={onHasPlaybooks}
                   onComplete={onPlaybookComplete}
+                  onSelectNoise={onSelectNoise}
                 />
               ) : s === "SIFT Agent" ? (
                 <SiftAgentContent

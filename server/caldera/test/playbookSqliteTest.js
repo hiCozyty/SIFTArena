@@ -40,20 +40,18 @@ function runTests() {
     const created = createPlaybook({
       name: "Initial Access",
       timelineEvents: ["ability-001", "ability-002"],
-      persistentBgIntervalTime: 30,
-      persistentBgCommand: "whoami /all",
-      timelineBgEvents: [{ before: "cmd1", after: "cmd2" }],
+      persistentBgCommands: ["whoami /all"],
+      settings: { interval: 30 },
     })
     assert(created.name === "Initial Access", "name matches")
     assert(Array.isArray(created.timelineEvents), "timelineEvents is array")
     assert(created.timelineEvents.length === 2, "timelineEvents has 2 items")
     assert(created.timelineEvents[0] === "ability-001", "timelineEvents[0] matches")
-    assert(created.persistentBgIntervalTime === 30, "persistentBgIntervalTime matches")
-    assert(created.persistentBgCommand === "whoami /all", "persistentBgCommand matches")
-    assert(Array.isArray(created.timelineBgEvents), "timelineBgEvents is array")
-    assert(created.timelineBgEvents.length === 1, "timelineBgEvents has 1 item")
-    assert(created.timelineBgEvents[0].before === "cmd1", "timelineBgEvents[0].before matches")
-    assert(created.timelineBgEvents[0].after === "cmd2", "timelineBgEvents[0].after matches")
+    assert(Array.isArray(created.persistentBgCommands), "persistentBgCommands is array")
+    assert(created.persistentBgCommands.length === 1, "persistentBgCommands has 1 item")
+    assert(created.persistentBgCommands[0] === "whoami /all", "persistentBgCommands[0] matches")
+    assert(typeof created.settings === "object", "settings is object")
+    assert(created.settings.interval === 30, "settings.interval matches")
 
     // Test 3: Get after create
     console.log("\n3. getPlaybooks (after create)")
@@ -66,15 +64,14 @@ function runTests() {
     const created2 = createPlaybook({
       name: "Credential Dump",
       timelineEvents: ["ability-003"],
-      persistentBgIntervalTime: 60,
-      persistentBgCommand: "",
-      timelineBgEvents: [],
+      persistentBgCommands: [],
+      settings: {},
     })
     assert(created2.name === "Credential Dump", "name matches")
     assert(created2.timelineEvents.length === 1, "timelineEvents has 1 item")
-    assert(created2.persistentBgIntervalTime === 60, "persistentBgIntervalTime matches")
-    assert(created2.persistentBgCommand === "", "persistentBgCommand empty")
-    assert(created2.timelineBgEvents.length === 0, "timelineBgEvents empty array")
+    assert(Array.isArray(created2.persistentBgCommands), "persistentBgCommands is array")
+    assert(created2.persistentBgCommands.length === 0, "persistentBgCommands empty")
+    assert(typeof created2.settings === "object", "settings is object")
     const afterCreate2 = getPlaybooks()
     assert(afterCreate2.length === 2, "has 2 playbooks")
 
@@ -90,28 +87,26 @@ function runTests() {
     // Test 6: Update playbook (partial)
     console.log("\n6. updatePlaybook (partial)")
     const updated = updatePlaybook("Initial Access", {
-      persistentBgIntervalTime: 120,
-      persistentBgCommand: "netstat -ano",
+      settings: { interval: 120 },
+      persistentBgCommands: ["netstat -ano"],
     })
     assert(updated.name === "Initial Access", "name unchanged")
-    assert(updated.persistentBgIntervalTime === 120, "persistentBgIntervalTime updated")
-    assert(updated.persistentBgCommand === "netstat -ano", "persistentBgCommand updated")
+    assert(updated.settings.interval === 120, "settings updated")
+    assert(Array.isArray(updated.persistentBgCommands), "persistentBgCommands is array")
+    assert(updated.persistentBgCommands[0] === "netstat -ano", "persistentBgCommands updated")
     assert(updated.timelineEvents.length === 2, "timelineEvents unchanged")
 
-    // Test 7: Update playbook (timeline arrays)
-    console.log("\n7. updatePlaybook (timeline arrays)")
+    // Test 7: Update playbook (timeline events)
+    console.log("\n7. updatePlaybook (timeline events)")
     const updated2 = updatePlaybook("Initial Access", {
-      timelineEvents: ["ability-004"],
-      timelineBgEvents: [{ before: "pre", after: "post" }, { before: "pre2", after: "post2" }],
+      timelineEvents: ["ability-004", "ability-005"],
     })
-    assert(updated2.timelineEvents.length === 1, "timelineEvents updated")
+    assert(updated2.timelineEvents.length === 2, "timelineEvents updated")
     assert(updated2.timelineEvents[0] === "ability-004", "timelineEvents[0] updated")
-    assert(updated2.timelineBgEvents.length === 2, "timelineBgEvents has 2 items")
-    assert(updated2.timelineBgEvents[1].after === "post2", "timelineBgEvents[1].after matches")
 
     // Test 8: Update non-existent playbook
     console.log("\n8. updatePlaybook (non-existent)")
-    const notFound = updatePlaybook("Nope", { persistentBgCommand: "x" })
+    const notFound = updatePlaybook("Nope", { persistentBgCommands: ["x"] })
     assert(notFound === null, "returns null")
 
     // Test 9: Update with no fields

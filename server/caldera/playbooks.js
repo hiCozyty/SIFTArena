@@ -13,9 +13,8 @@ export function initDatabase() {
     CREATE TABLE IF NOT EXISTS playbooks (
       name TEXT PRIMARY KEY,
       timeline_events TEXT DEFAULT '[]',
-      persistent_bg_interval_time INTEGER DEFAULT 0,
-      persistent_bg_command TEXT DEFAULT '',
-      timeline_bg_events TEXT DEFAULT '[]'
+      persistent_bg_commands TEXT DEFAULT '[]',
+      settings TEXT DEFAULT '{}'
     )
   `)
 }
@@ -24,9 +23,8 @@ function toPlaybook(row) {
   return {
     name: row.name,
     timelineEvents: JSON.parse(row.timeline_events),
-    persistentBgIntervalTime: row.persistent_bg_interval_time,
-    persistentBgCommand: row.persistent_bg_command,
-    timelineBgEvents: JSON.parse(row.timeline_bg_events),
+    persistentBgCommands: JSON.parse(row.persistent_bg_commands),
+    settings: JSON.parse(row.settings),
   }
 }
 
@@ -38,15 +36,14 @@ export function getPlaybooks() {
 export function createPlaybook(data) {
   const row = db
     .query(
-      `INSERT INTO playbooks (name, timeline_events, persistent_bg_interval_time, persistent_bg_command, timeline_bg_events)
-       VALUES (?, ?, ?, ?, ?) RETURNING *`
+      `INSERT INTO playbooks (name, timeline_events, persistent_bg_commands, settings)
+       VALUES (?, ?, ?, ?) RETURNING *`
     )
     .get(
       data.name,
       JSON.stringify(data.timelineEvents ?? []),
-      data.persistentBgIntervalTime ?? 0,
-      data.persistentBgCommand ?? "",
-      JSON.stringify(data.timelineBgEvents ?? [])
+      JSON.stringify(data.persistentBgCommands ?? []),
+      JSON.stringify(data.settings ?? {})
     )
   return toPlaybook(row)
 }
@@ -56,9 +53,8 @@ export function updatePlaybook(name, data) {
   const values = []
 
   if (data.timelineEvents !== undefined) { fields.push("timeline_events = ?"); values.push(JSON.stringify(data.timelineEvents)) }
-  if (data.persistentBgIntervalTime !== undefined) { fields.push("persistent_bg_interval_time = ?"); values.push(data.persistentBgIntervalTime) }
-  if (data.persistentBgCommand !== undefined) { fields.push("persistent_bg_command = ?"); values.push(data.persistentBgCommand) }
-  if (data.timelineBgEvents !== undefined) { fields.push("timeline_bg_events = ?"); values.push(JSON.stringify(data.timelineBgEvents)) }
+  if (data.persistentBgCommands !== undefined) { fields.push("persistent_bg_commands = ?"); values.push(JSON.stringify(data.persistentBgCommands)) }
+  if (data.settings !== undefined) { fields.push("settings = ?"); values.push(JSON.stringify(data.settings)) }
 
   if (fields.length === 0) {
     const existing = db.query("SELECT * FROM playbooks WHERE name = ?").get(name)

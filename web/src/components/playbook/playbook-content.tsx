@@ -1,81 +1,350 @@
 import { RiBookLine } from "@remixicon/react"
 import { TabContentCard } from "@/components/shared-ui-primitives/tab-content-card"
-import { PlaybookTree, type PlaybookEntry } from "@/components/playbook/playbook-tree"
+import { PlaybookTree } from "@/components/playbook/playbook-tree"
 import { PlaybookTimelineTab } from "@/components/playbook/playbook-timeline-tab"
 import { PlaybookChatTab } from "@/components/playbook/playbook-chat-tab"
 import { PlaybookSettingsTab } from "@/components/playbook/playbook-settings-tab"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import type { ScenarioItem } from "@/components/attack-configuration/scenario-tab"
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs"
-import { GitBranch, MessageCircle, Settings, CheckCircle2 } from "lucide-react"
-import { useState } from "react"
+import { GitBranch, MessageCircle, Settings, Plus, NotebookPen } from "lucide-react"
+import { useState, useCallback, useEffect } from "react"
+import type { NoiseSelected } from "@/components/playbook/noise-tree"
+import { executeWsOperation } from "@/lib/ws-ops"
+import * as backendWs from "@/lib/backend-ws"
+
+export type PlaybookData = {
+  name: string
+  timelineEvents: Array<Record<string, unknown>>
+  persistentBgCommands: Array<Record<string, unknown>>
+  settings: Record<string, unknown>
+}
 
 export function PlaybookContent({
+  scenarioItems,
   onHasPlaybooks,
   onComplete,
+  onSelectNoise,
 }: {
+  scenarioItems: ScenarioItem[]
   onHasPlaybooks: (hasPlaybooks: boolean) => void
   onComplete: () => void
+  onSelectNoise: () => void
 }) {
-  const [playbooks, setPlaybooks] = useState<PlaybookEntry[]>([])
   const [activeTab, setActiveTab] = useState("timeline")
+  const [noiseSelected, setNoiseSelected] = useState<NoiseSelected>({ type: "none" })
+  const [noiseForm, setNoiseForm] = useState({ name: "", command: "" })
+  const [noises, setNoises] = useState<Array<{ name: string; command: string }>>([])
+  const [leftTab, setLeftTab] = useState("playbook")
+  const [showNameDialog, setShowNameDialog] = useState(false)
+  const [playbookName, setPlaybookName] = useState("")
+  const [playbooks, setPlaybooks] = useState<PlaybookData[]>([])
+  const [showConfirmButton, setShowConfirmButton] = useState(false)
+  const [selectedNoise, setSelectedNoise] = useState<string | null>(null)
+  const [selectedPlaybook, setSelectedPlaybook] = useState<string | null>(null)
+  const [pendingPlaybook, setPendingPlaybook] = useState<string | null>(null)
 
-  const handleAddPlaybook = () => {
-    const next = [...playbooks, { id: `playbook-${Date.now()}`, name: "New Playbook", abilities: [] }]
-    setPlaybooks(next)
-    onHasPlaybooks(next.length > 0)
-  }
+  const currentPlaybookData = playbooks.find(p => p.name === pendingPlaybook) ?? null
+
+  const fetchNoises = useCallback(async () => {
+    console.log("[playbook] fetchNoises: sending getNoises")
+    try {
+      const result = await executeWsOperation<Array<{ name: string; command: string }>>({
+        messageType: "getNoises",
+        sendFn: () => backendWs.send({ type: "getNoises" }),
+      })
+      console.log("[playbook] fetchNoises: result", result)
+      setNoises(result)
+    } catch (err) {
+      console.error("[playbook] getNoises failed:", err)
+    }
+  }, [])
+
+  const fetchPlaybooks = useCallback(async () => {
+    console.log("[playbook] fetchPlaybooks: sending getPlaybooks")
+    try {
+      const result = await executeWsOperation<PlaybookData[]>({
+        messageType: "getPlaybooks",
+        sendFn: () => backendWs.send({ type: "getPlaybooks" }),
+      })
+      console.log("[playbook] fetchPlaybooks: result", result)
+      setPlaybooks(result)
+      onHasPlaybooks(result.length > 0)
+    } catch (err) {
+      console.error("[playbook] getPlaybooks failed:", err)
+    }
+  }, [onHasPlaybooks])
+
+  useEffect(() => {
+    fetchNoises()
+    fetchPlaybooks()
+  }, [fetchNoises, fetchPlaybooks])
+
+  const handleSavePlaybook = useCallback(() => {
+    setPlaybookName("")
+    setShowNameDialog(true)
+  }, [])
+
+  const handleConfirmSave = useCallback(async () => {
+    console.log("[playbook] handleConfirmSave: called, name=", playbookName)
+    if (!playbookName.trim()) return
+    const timelineEvents = scenarioItems.flatMap((item) => [
+      {},
+      { id: item.id, name: item.name, description: item.description },
+    ])
+    timelineEvents.push({})
+    console.log("[playbook] handleConfirmSave: timelineEvents", timelineEvents)
+    try {
+      const result = await executeWsOperation({
+        messageType: "createPlaybook",
+        sendFn: () => backendWs.send({
+          type: "createPlaybook",
+          data: {
+            name: playbookName.trim(),
+            timelineEvents,
+            persistentBgCommands: [{}],
+            settings: {},
+          },
+        }),
+      })
+      console.log("[playbook] createPlaybook success:", result)
+      await fetchPlaybooks()
+      console.log("[playbook] fetchPlaybooks after save complete")
+    } catch (err) {
+      console.error("[playbook] createPlaybook failed:", err)
+      return
+    }
+    setShowNameDialog(false)
+  }, [playbookName, scenarioItems, fetchPlaybooks])
+
+  const handleSelectNoise = useCallback((selected: NoiseSelected) => {
+    setNoiseSelected(selected)
+    if (selected.type === "create-noise") {
+      setNoiseForm({ name: "", command: "" })
+      setShowConfirmButton(true)
+    } else if (selected.type === "select-noise") {
+      setLeftTab("noise")
+      setShowConfirmButton(true)
+    } else {
+      setShowConfirmButton(false)
+    }
+  }, [])
+
+  const handleNoiseFormChange = useCallback((field: string, value: string) => {
+    setNoiseForm((prev) => ({ ...prev, [field]: value }))
+  }, [])
+
+  const handleCreateNoise = useCallback(async () => {
+    console.log("[playbook] handleCreateNoise: called, noiseForm=", noiseForm)
+    if (!noiseForm.name || !noiseForm.command) return
+    console.log("[playbook] handleCreateNoise: sending createNoise, ws state=", backendWs.getState())
+    try {
+      const result = await executeWsOperation({
+        messageType: "createNoise",
+        sendFn: () => backendWs.send({ type: "createNoise", data: { name: noiseForm.name, command: noiseForm.command } }),
+      })
+      console.log("[playbook] createNoise success:", result)
+      await fetchNoises()
+      console.log("[playbook] createNoise: fetchNoises done, resetting form")
+    } catch (err) {
+      console.error("[playbook] createNoise failed:", err)
+      return
+    }
+    setNoiseSelected({ type: "none" })
+    setShowConfirmButton(false)
+  }, [noiseForm, fetchNoises])
+
+  const handleDeleteNoise = useCallback(async (name: string) => {
+    try {
+      await executeWsOperation({
+        messageType: "deleteNoise",
+        sendFn: () => backendWs.send({ type: "deleteNoise", data: { name } }),
+      })
+      await fetchNoises()
+    } catch (err) {
+      console.error("[playbook] deleteNoise failed:", err)
+    }
+  }, [fetchNoises])
+
+  const handleConfirmNoiseSelection = useCallback(() => {
+    onSelectNoise()
+    setShowConfirmButton(false)
+    setLeftTab("playbook")
+  }, [onSelectNoise])
+
+  const handleSelectPlaybook = useCallback(() => {
+    setSelectedPlaybook(pendingPlaybook)
+    onComplete()
+  }, [pendingPlaybook, onComplete])
+
+  const handleCancelNoiseSelection = useCallback(() => {
+    setShowConfirmButton(false)
+    setLeftTab("playbook")
+  }, [])
+
+  const handleAddNoiseToTimeline = useCallback(() => {
+    setLeftTab("noise")
+    setShowConfirmButton(true)
+  }, [])
+
+  const handleLeftTabChange = useCallback((tab: string) => {
+    setLeftTab(tab)
+    if (tab === "playbook") {
+      setShowConfirmButton(false)
+    }
+  }, [])
+
+  const isCreatingNoise = noiseSelected.type === "create-noise"
 
   return (
-    <TabContentCard className="p-6 flex flex-col min-h-0">
+    <>
+      <TabContentCard className="p-6 flex flex-col min-h-0">
       <div className="mb-4 flex items-center gap-3 shrink-0">
         <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
           <RiBookLine className="size-5 text-primary" />
         </div>
         <div>
           <h3 className="font-semibold text-lg">Playbook</h3>
-          <p className="text-muted-foreground text-sm">Signal to noise ratio analysis</p>
+          <p className="text-muted-foreground text-sm">current playbook selected: <span className="font-bold">{selectedPlaybook || 'please select a playbook configuration'}</span></p>
         </div>
       </div>
-      <div className="mt-4 flex-1 min-h-0 rounded-lg flex outline outline-2 outline-yellow-400">
-        <div className="w-[200px] shrink-0 overflow-hidden h-full outline outline-2 outline-white">
-          <PlaybookTree playbooks={playbooks} onAddPlaybook={handleAddPlaybook} />
+      <div className="mt-4 flex-1 min-h-0 rounded-lg flex gap-4">
+        <div className="w-[200px] shrink-0 overflow-hidden h-full">
+          <PlaybookTree onSelectNoise={handleSelectNoise} noises={noises} onDeleteNoise={handleDeleteNoise} leftTab={leftTab} onLeftTabChange={handleLeftTabChange} playbooks={playbooks} onSelectedNoiseChange={setSelectedNoise} hideAddNoiseButton={showConfirmButton} onSelectedPlaybookChange={setPendingPlaybook} />
         </div>
         <div className="flex-1 min-w-0">
-          <Tabs value={activeTab} onValueChange={setActiveTab} defaultValue="timeline" className="flex h-full flex-col">
-            <div className="flex shrink-0 items-center justify-between px-4 py-2">
-              <TabsList>
-                <TabsTrigger value="timeline">
-                  <GitBranch className="size-4" />
-                </TabsTrigger>
-                <TabsTrigger value="chat">
-                  <MessageCircle className="size-4" />
-                </TabsTrigger>
-                <TabsTrigger value="settings">
-                  <Settings className="size-4" />
-                </TabsTrigger>
-              </TabsList>
-              <Button onClick={onComplete}>
-                <CheckCircle2 className="size-4" />
-                Finish playbook configuration
-              </Button>
+          {isCreatingNoise ? (
+            <div className="flex h-full flex-col rounded-4xl bg-muted shadow-sm">
+              <div className="flex shrink-0 items-center justify-between px-4 py-2">
+                <span className="font-semibold text-sm">Create Noise Template</span>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={() => { setNoiseSelected({ type: "none" }); setShowConfirmButton(false) }}>
+                    Cancel
+                  </Button>
+                  <Button disabled={!noiseForm.name || !noiseForm.command} onClick={handleCreateNoise}>
+                    Create Noise Template
+                  </Button>
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex flex-col gap-4 p-4 text-sm min-h-full">
+                  <div>
+                    <label className="font-bold text-sm">Name</label>
+                    <Input
+                      className="mt-1 font-mono"
+                      placeholder="Noise name"
+                      value={noiseForm.name}
+                      onChange={(e) => handleNoiseFormChange("name", e.target.value)}
+                    />
+                  </div>
+                  <div className="flex-1 flex flex-col min-h-0">
+                    <label className="font-bold text-sm">Command</label>
+                    <textarea
+                      className="mt-1 font-mono w-full flex-1 min-h-[200px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm resize-none"
+                      placeholder="Command / script"
+                      value={noiseForm.command}
+                      onChange={(e) => handleNoiseFormChange("command", e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
-            <TabsContent value="timeline" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
-              <PlaybookTimelineTab />
-            </TabsContent>
-            <TabsContent value="chat" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
-              <PlaybookChatTab />
-            </TabsContent>
-            <TabsContent value="settings" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
-              <PlaybookSettingsTab />
-            </TabsContent>
-          </Tabs>
+          ) : (
+            <Tabs value={activeTab} onValueChange={setActiveTab} defaultValue="timeline" className="flex h-full flex-col">
+              <div className="flex shrink-0 items-center justify-between px-4 py-2">
+                <TabsList>
+                  <TabsTrigger value="timeline">
+                    {leftTab === "noise" ? <NotebookPen className="size-4" /> : <GitBranch className="size-4" />}
+                  </TabsTrigger>
+                  <TabsTrigger value="chat">
+                    <MessageCircle className="size-4" />
+                  </TabsTrigger>
+                  <TabsTrigger value="settings">
+                    <Settings className="size-4" />
+                  </TabsTrigger>
+                </TabsList>
+                <div className="flex items-center gap-2">
+                  {leftTab === "playbook" && (
+                    <>
+                      <Button onClick={handleSavePlaybook}>
+                        <Plus className="size-4" />
+                        Save Playbook
+                      </Button>
+                      <Button disabled={!pendingPlaybook} onClick={handleSelectPlaybook}>
+                        Select playbook configuration
+                      </Button>
+                    </>
+                  )}
+                  {leftTab === "noise" && showConfirmButton && (
+                    <>
+                      <Button variant="outline" onClick={handleCancelNoiseSelection}>
+                        Cancel
+                      </Button>
+                      <Button disabled={!selectedNoise} onClick={handleConfirmNoiseSelection}>
+                        Select Noise
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+              <TabsContent value="timeline" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
+                {leftTab === "playbook" ? (
+                  <PlaybookTimelineTab currentPlaybookData={currentPlaybookData} scenarioItems={scenarioItems} onAddNoise={handleAddNoiseToTimeline} />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+                    Noise configuration placeholder
+                  </div>
+                )}
+              </TabsContent>
+              <TabsContent value="chat" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
+                <PlaybookChatTab />
+              </TabsContent>
+              <TabsContent value="settings" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
+                <PlaybookSettingsTab />
+              </TabsContent>
+            </Tabs>
+          )}
         </div>
       </div>
-    </TabContentCard>
+      </TabContentCard>
+      <AlertDialog open={showNameDialog} onOpenChange={setShowNameDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save Playbook</AlertDialogTitle>
+            <AlertDialogDescription>
+              Enter a name for this playbook configuration.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input
+            autoFocus
+            placeholder="Playbook name"
+            value={playbookName}
+            onChange={(e) => setPlaybookName(e.target.value)}
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={!playbookName.trim()} onClick={handleConfirmSave}>
+              Save
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

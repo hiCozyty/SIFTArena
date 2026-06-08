@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/tabs"
 import { FileText, MessageCircle, ListChecks, Loader2, CheckCircle2, XCircle, Circle } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { TechniqueTree, type SelectedItem } from "@/components/attack-configuration/technique-tree"
 import { AbilityInfoTab } from "@/components/attack-configuration/ability-info-tab"
 import { AiChatTab } from "@/components/attack-configuration/ai-chat-tab"
@@ -34,7 +35,15 @@ function AttackerConfigurationUi({
   setScenarioItems: React.Dispatch<React.SetStateAction<ScenarioItem[]>>
 }) {
   const [selected, setSelected] = useState<SelectedItem>({ type: "none" })
-  const [activeTab, setActiveTab] = useState("ability")
+  const [searchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "ability")
+
+  useEffect(() => {
+    const tab = searchParams.get("tab")
+    if (tab && ["ability", "chat", "scenario"].includes(tab)) {
+      setActiveTab(tab)
+    }
+  }, [searchParams])
   const [writeForm, setWriteForm] = useState({ name: "", description: "", command: "", winPrereq: "" })
 
   useEffect(() => {
@@ -275,12 +284,14 @@ function AttackerConfigurationUi({
 }
 
 export function AttackConfiguration({
+  scenarioItems,
+  setScenarioItems,
   onComplete,
 }: {
+  scenarioItems: ScenarioItem[]
+  setScenarioItems: React.Dispatch<React.SetStateAction<ScenarioItem[]>>
   onComplete: (completed: boolean) => void
 }) {
-  const [scenarioItems, setScenarioItems] = useState<ScenarioItem[]>([])
-
   useEffect(() => {
     onComplete(scenarioItems.length > 0)
   }, [scenarioItems.length, onComplete])

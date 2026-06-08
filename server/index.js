@@ -6,6 +6,8 @@ import { fetchFocusedCategoriesAndTechniques } from "./caldera/categories.js"
 import { initDatabase, getCustomAbilities, createCustomAbility, updateCustomAbility, deleteCustomAbility, syncToCaldera } from "./caldera/customAbilities.js"
 import { testAbility } from "./caldera/testAbility.js"
 import { initDatabase as initVmConfigDb, getDeployableVmConfigs, createDeployableVmConfig, updateDeployableVmConfig, deleteDeployableVmConfig } from "./ludus/deployableVmConfigs.js"
+import { initDatabase as initNoiseDb, getNoises, createNoise, updateNoise, deleteNoise } from "./caldera/noises.js"
+import { initDatabase as initPlaybookDb, getPlaybooks, createPlaybook, updatePlaybook, deletePlaybook } from "./caldera/playbooks.js"
 import { createVncProxyHandler, getOrCreateVncSession } from "./ludus/proxmox.js"
 import { createWinrmProxy } from "./ludus/winrm-proxy.js"
 import { createSshProxy } from "./ludus/ssh-proxy.js"
@@ -86,8 +88,20 @@ addOperation("createDeployableVmConfig", async (_, __, data) => createDeployable
 addOperation("updateDeployableVmConfig", async (_, __, data) => updateDeployableVmConfig(data.data.id, data.data.data))
 addOperation("deleteDeployableVmConfig", async (_, __, data) => deleteDeployableVmConfig(data.data.id))
 
+addOperation("getNoises", async () => getNoises())
+addOperation("createNoise", async (_, __, data) => createNoise(data.data))
+addOperation("updateNoise", async (_, __, data) => updateNoise(data.data.name, data.data.data))
+addOperation("deleteNoise", async (_, __, data) => deleteNoise(data.data.name))
+
+addOperation("getPlaybooks", async () => getPlaybooks())
+addOperation("createPlaybook", async (_, __, data) => createPlaybook(data.data))
+addOperation("updatePlaybook", async (_, __, data) => updatePlaybook(data.data.name, data.data.data))
+addOperation("deletePlaybook", async (_, __, data) => deletePlaybook(data.data.name))
+
 initDatabase()
 initVmConfigDb()
+initNoiseDb()
+initPlaybookDb()
 syncToCaldera()
 
 const pollerHandler = createWsHandler(LUDUS_SERVER_URL, LUDUS_API_KEY)
