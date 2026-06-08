@@ -36,6 +36,22 @@ export type PlaybookData = {
   settings: Record<string, unknown>
 }
 
+export type PlaybookSettings = {
+  waitTimeBetweenEvents: number
+  jitterBetweenEvents: number
+  persistentBgRandomize: boolean
+  persistentBgInterval: number
+  persistentBgJitter: number
+}
+
+const DEFAULT_SETTINGS: PlaybookSettings = {
+  waitTimeBetweenEvents: 1000,
+  jitterBetweenEvents: 0,
+  persistentBgRandomize: false,
+  persistentBgInterval: 2000,
+  persistentBgJitter: 0,
+}
+
 export function PlaybookContent({
   scenarioItems,
   onHasPlaybooks,
@@ -61,6 +77,7 @@ export function PlaybookContent({
   const [pendingPlaybook, setPendingPlaybook] = useState<string | null>(null)
   const [assignedNoises, setAssignedNoises] = useState<Record<string, { name: string; command: string }>>({})
   const [pendingSlotKey, setPendingSlotKey] = useState<string | null>(null)
+  const [settings, setSettings] = useState<PlaybookSettings>(DEFAULT_SETTINGS)
 
   const currentPlaybookData = playbooks.find(p => p.name === pendingPlaybook) ?? null
 
@@ -100,6 +117,21 @@ export function PlaybookContent({
     fetchPlaybooks()
   }, [fetchNoises, fetchPlaybooks])
 
+  useEffect(() => {
+    if (currentPlaybookData?.settings && typeof currentPlaybookData.settings === "object") {
+      const s = currentPlaybookData.settings as Record<string, unknown>
+      setSettings({
+        waitTimeBetweenEvents: typeof s.waitTimeBetweenEvents === "number" ? s.waitTimeBetweenEvents : DEFAULT_SETTINGS.waitTimeBetweenEvents,
+        jitterBetweenEvents: typeof s.jitterBetweenEvents === "number" ? s.jitterBetweenEvents : DEFAULT_SETTINGS.jitterBetweenEvents,
+        persistentBgRandomize: typeof s.persistentBgRandomize === "boolean" ? s.persistentBgRandomize : DEFAULT_SETTINGS.persistentBgRandomize,
+        persistentBgInterval: typeof s.persistentBgInterval === "number" ? s.persistentBgInterval : DEFAULT_SETTINGS.persistentBgInterval,
+        persistentBgJitter: typeof s.persistentBgJitter === "number" ? s.persistentBgJitter : DEFAULT_SETTINGS.persistentBgJitter,
+      })
+    } else {
+      setSettings(DEFAULT_SETTINGS)
+    }
+  }, [pendingPlaybook, currentPlaybookData])
+
   const handleSavePlaybook = useCallback(() => {
     setPlaybookName("")
     setShowNameDialog(true)
@@ -133,7 +165,7 @@ export function PlaybookContent({
             name: playbookName.trim(),
             timelineEvents,
             persistentBgCommands: pbgEntries.length > 0 ? pbgEntries : [{}],
-            settings: {},
+            settings,
           },
         }),
       })
@@ -145,7 +177,7 @@ export function PlaybookContent({
       return
     }
     setShowNameDialog(false)
-  }, [playbookName, scenarioItems, fetchPlaybooks, assignedNoises])
+  }, [playbookName, scenarioItems, fetchPlaybooks, assignedNoises, settings])
 
   const handleSelectNoise = useCallback((selected: NoiseSelected) => {
     setNoiseSelected(selected)
@@ -225,7 +257,7 @@ export function PlaybookContent({
             name,
             timelineEvents: Array.isArray(data.timelineEvents) ? data.timelineEvents : [],
             persistentBgCommands: Array.isArray(data.persistentBgCommands) ? data.persistentBgCommands : [{}],
-            settings: data.settings ?? {},
+            settings: data.settings ?? DEFAULT_SETTINGS,
           },
         }),
       })
@@ -411,7 +443,7 @@ export function PlaybookContent({
                 <PlaybookChatTab />
               </TabsContent>
               <TabsContent value="settings" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
-                <PlaybookSettingsTab />
+                <PlaybookSettingsTab settings={settings} onSettingsChange={setSettings} />
               </TabsContent>
             </Tabs>
           )}
