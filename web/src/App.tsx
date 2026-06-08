@@ -3,6 +3,7 @@ import { ThemeProvider } from "@/components/shared-ui-primitives/theme-provider"
 import { AuthenticatedApp } from "@/components/app/authenticated-app"
 import { PrototypeUI } from "@/pages/prototype-ui"
 import { PrototypeUI2 } from "@/pages/prototype-ui2"
+import { PrototypeUI3 } from "@/pages/prototype-ui3"
 import { PreviewUI } from "@/pages/preview-ui"
 
 function App() {
@@ -12,6 +13,7 @@ function App() {
         <Routes>
           <Route path="/prototypeui" element={<PrototypeUI />} />
           <Route path="/prototypeui2" element={<PrototypeUI2 />} />
+          <Route path="/prototypeui3" element={<PrototypeUI3 />} />
           <Route path="/previewui" element={<PreviewUI />} />
           <Route path="/*" element={<AuthenticatedApp />} />
         </Routes>

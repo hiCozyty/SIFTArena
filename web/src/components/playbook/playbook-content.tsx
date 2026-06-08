@@ -3,6 +3,7 @@ import { TabContentCard } from "@/components/shared-ui-primitives/tab-content-ca
 import { PlaybookTree } from "@/components/playbook/playbook-tree"
 import { PlaybookTimelineTab } from "@/components/playbook/playbook-timeline-tab"
 import { PlaybookChatTab } from "@/components/playbook/playbook-chat-tab"
+import { useOpencodeChat } from "@/hooks/use-opencode-chat"
 import { PlaybookSettingsTab } from "@/components/playbook/playbook-settings-tab"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -42,6 +43,7 @@ export type PlaybookSettings = {
   persistentBgRandomize: boolean
   persistentBgInterval: number
   persistentBgJitter: number
+  signalToNoiseRatio: number
 }
 
 const DEFAULT_SETTINGS: PlaybookSettings = {
@@ -50,6 +52,7 @@ const DEFAULT_SETTINGS: PlaybookSettings = {
   persistentBgRandomize: false,
   persistentBgInterval: 2000,
   persistentBgJitter: 0,
+  signalToNoiseRatio: 1,
 }
 
 export function PlaybookContent({
@@ -78,6 +81,8 @@ export function PlaybookContent({
   const [assignedNoises, setAssignedNoises] = useState<Record<string, { name: string; command: string }>>({})
   const [pendingSlotKey, setPendingSlotKey] = useState<string | null>(null)
   const [settings, setSettings] = useState<PlaybookSettings>(DEFAULT_SETTINGS)
+
+  const chat = useOpencodeChat({ baseUrl: "http://localhost:3112" })
 
   const currentPlaybookData = playbooks.find(p => p.name === pendingPlaybook) ?? null
 
@@ -126,6 +131,7 @@ export function PlaybookContent({
         persistentBgRandomize: typeof s.persistentBgRandomize === "boolean" ? s.persistentBgRandomize : DEFAULT_SETTINGS.persistentBgRandomize,
         persistentBgInterval: typeof s.persistentBgInterval === "number" ? s.persistentBgInterval : DEFAULT_SETTINGS.persistentBgInterval,
         persistentBgJitter: typeof s.persistentBgJitter === "number" ? s.persistentBgJitter : DEFAULT_SETTINGS.persistentBgJitter,
+        signalToNoiseRatio: typeof s.signalToNoiseRatio === "number" ? s.signalToNoiseRatio : DEFAULT_SETTINGS.signalToNoiseRatio,
       })
     } else {
       setSettings(DEFAULT_SETTINGS)
@@ -440,7 +446,7 @@ export function PlaybookContent({
                 )}
               </TabsContent>
               <TabsContent value="chat" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
-                <PlaybookChatTab />
+                <PlaybookChatTab {...chat} />
               </TabsContent>
               <TabsContent value="settings" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
                 <PlaybookSettingsTab settings={settings} onSettingsChange={setSettings} />

@@ -5,24 +5,27 @@ import { cn } from "@/lib/utils"
 type VncStatus = "connecting" | "connected" | "disconnected" | "error"
 
 interface VncViewerProps {
-  vmId: number
+  vmId: number | string
+  backend?: "proxmox" | "docker"
   className?: string
   onStatusChange?: (status: VncStatus) => void
 }
 
-function getWsUrl(vmId: number) {
+function getWsUrl(vmId: number | string, backend?: "proxmox" | "docker") {
   const apiUrl = import.meta.env.VITE_API_URL || `${location.protocol}//${location.host}`
   const proto = apiUrl.startsWith("https:") ? "wss:" : "ws:"
   const host = new URL(apiUrl).host
-  return `${proto}//${host}/vnc/${vmId}`
+  const prefix = backend === "docker" ? "docker-vnc" : "vnc"
+  return `${proto}//${host}/${prefix}/${vmId}`
 }
 
-function getTicketUrl(vmId: number) {
+function getTicketUrl(vmId: number | string, backend?: "proxmox" | "docker") {
   const apiUrl = import.meta.env.VITE_API_URL || `${location.protocol}//${location.host}`
-  return `${apiUrl}/vnc-ticket/${vmId}`
+  const prefix = backend === "docker" ? "docker-vnc-ticket" : "vnc-ticket"
+  return `${apiUrl}/${prefix}/${vmId}`
 }
 
-export function VncViewer({ vmId, className, onStatusChange }: VncViewerProps) {
+export function VncViewer({ vmId, backend, className, onStatusChange }: VncViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const rfbRef = useRef<RFB | null>(null)
   const [status, setStatus] = useState<VncStatus>("disconnected")
@@ -48,12 +51,12 @@ export function VncViewer({ vmId, className, onStatusChange }: VncViewerProps) {
       if (cancelled) return
 
       try {
-        const ticketRes = await fetch(getTicketUrl(vmId))
+        const ticketRes = await fetch(getTicketUrl(vmId, backend))
         if (!ticketRes.ok) throw new Error(`Failed to fetch VNC ticket: ${ticketRes.status}`)
         const { ticket } = await ticketRes.json()
         if (cancelled) return
 
-        const wsUrl = getWsUrl(vmId)
+        const wsUrl = getWsUrl(vmId, backend)
         rfb = new RFB(container, wsUrl, {
           wsProtocols: ["binary"],
           credentials: { password: ticket },
@@ -103,7 +106,7 @@ export function VncViewer({ vmId, className, onStatusChange }: VncViewerProps) {
       }
       while (container.firstChild) container.removeChild(container.firstChild)
     }
-  }, [vmId, updateStatus])
+  }, [vmId, backend, updateStatus])
 
   return (
     <div className={cn("relative", className)}>

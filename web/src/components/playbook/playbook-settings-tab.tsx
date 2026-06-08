@@ -1,6 +1,7 @@
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { Slider } from "@/components/ui/slider"
 import { Separator } from "@/components/ui/separator"
 import type { PlaybookSettings } from "@/components/playbook/playbook-content"
 
@@ -64,6 +65,20 @@ export function PlaybookSettingsTab({
           value={settings.persistentBgJitter}
           onChange={(e) => onSettingsChange({ ...settings, persistentBgJitter: Number(e.target.value) })}
         />
+      </div>
+      <Separator className="my-4" />
+      <div>
+        <Label>Timeline technique signal to background noise ratio</Label>
+        <div className="mt-2 flex items-center gap-4">
+          <Slider
+            min={1}
+            max={50}
+            step={1}
+            value={[settings.signalToNoiseRatio]}
+            onValueChange={([v]) => onSettingsChange({ ...settings, signalToNoiseRatio: v })}
+          />
+          <span className="w-12 text-right text-sm font-mono">1:{settings.signalToNoiseRatio}</span>
+        </div>
       </div>
     </div>
   )

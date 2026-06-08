@@ -1,0 +1,30 @@
+services:
+  sift:
+    build: .
+    image: sift-workstation:latest
+    container_name: sift-workstation
+    hostname: sift-workstation
+
+    privileged: true
+    cap_add:
+      - SYS_ADMIN
+      - MKNOD
+    devices:
+      - /dev/fuse
+
+    ports:
+      - "5901:5901"
+      - "2222:22"
+
+    env_file:
+      - ../../.env
+
+    environment:
+      - VNC_RESOLUTION=1280x800
+      - VNC_COL_DEPTH=24
+
+    volumes:
+      - ./evidence:/data
+      - ./images:/mnt/images
+
+    restart: unless-stopped

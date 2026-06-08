@@ -9,6 +9,7 @@ let db = null
 export function initDatabase() {
   mkdirSync(join(import.meta.dir, "..", "data"), { recursive: true })
   db = new Database(DB_PATH, { create: true })
+  db.run("PRAGMA journal_mode = WAL;")
   db.exec(`
     CREATE TABLE IF NOT EXISTS noises (
       name TEXT PRIMARY KEY,

@@ -19,6 +19,6 @@ RUN useradd -m -s /bin/bash sandbox && \
 USER sandbox
 WORKDIR /workspace
 
-RUN mkdir -p /workspace/abilityGeneration /workspace/backgroundLogs
+RUN mkdir -p /workspace/abilityGeneration /workspace/noiseGeneration
 
 EXPOSE 3111 3112

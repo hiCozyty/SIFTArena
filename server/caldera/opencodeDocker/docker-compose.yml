@@ -16,9 +16,10 @@ services:
     ports:
       - "3112:3112"
     env_file: ../../../.env
-    working_dir: /workspace/backgroundLogs
+    working_dir: /workspace/noiseGeneration
     volumes:
-      - ./backgroundLogs/opencode.json:/workspace/backgroundLogs/opencode.json
-      - ./backgroundLogs/AGENTS.md:/workspace/backgroundLogs/AGENTS.md
+      - ./noiseGeneration/opencode.json:/workspace/noiseGeneration/opencode.json
+      - ./noiseGeneration/AGENTS.md:/workspace/noiseGeneration/AGENTS.md
+      - ../../data/noises.db:/workspace/noiseGeneration/noises.db:ro
     restart: unless-stopped
     command: ["opencode", "serve", "--port", "3112", "--hostname", "0.0.0.0"]
