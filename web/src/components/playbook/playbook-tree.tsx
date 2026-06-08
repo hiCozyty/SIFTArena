@@ -33,6 +33,7 @@ export function PlaybookTree({
   onSelectedNoiseChange,
   hideAddNoiseButton,
   onSelectedPlaybookChange,
+  onDeletePlaybook,
 }: {
   onSelectNoise: (selected: NoiseSelected) => void
   noises: Array<{ name: string; command: string; description: string }>

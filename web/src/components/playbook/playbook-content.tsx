@@ -108,11 +108,21 @@ export function PlaybookContent({
   const handleConfirmSave = useCallback(async () => {
     console.log("[playbook] handleConfirmSave: called, name=", playbookName)
     if (!playbookName.trim()) return
-    const timelineEvents = scenarioItems.flatMap((item) => [
-      {},
-      { id: item.id, name: item.name, description: item.description },
-    ])
-    timelineEvents.push({})
+    const timelineEvents = scenarioItems.flatMap((item, i) => {
+      const noiseSlotKey = `timeline-${i}`
+      const noiseData = assignedNoises[noiseSlotKey]
+      return [
+        noiseData ? { name: noiseData.name, command: noiseData.command } : {},
+        { id: item.id, name: item.name, description: item.description },
+      ]
+    })
+    const endSlotKey = `timeline-${scenarioItems.length}`
+    const endNoiseData = assignedNoises[endSlotKey]
+    timelineEvents.push(endNoiseData ? { name: endNoiseData.name, command: endNoiseData.command } : {})
+    const pbgEntries = Object.keys(assignedNoises)
+      .filter(k => k.startsWith("pbg-"))
+      .sort((a, b) => parseInt(a.replace("pbg-", ""), 10) - parseInt(b.replace("pbg-", ""), 10))
+      .map(k => ({ name: assignedNoises[k].name, command: assignedNoises[k].command }))
     console.log("[playbook] handleConfirmSave: timelineEvents", timelineEvents)
     try {
       const result = await executeWsOperation({
@@ -122,7 +132,7 @@ export function PlaybookContent({
           data: {
             name: playbookName.trim(),
             timelineEvents,
-            persistentBgCommands: [{}],
+            persistentBgCommands: pbgEntries.length > 0 ? pbgEntries : [{}],
             settings: {},
           },
         }),
@@ -135,7 +145,7 @@ export function PlaybookContent({
       return
     }
     setShowNameDialog(false)
-  }, [playbookName, scenarioItems, fetchPlaybooks])
+  }, [playbookName, scenarioItems, fetchPlaybooks, assignedNoises])
 
   const handleSelectNoise = useCallback((selected: NoiseSelected) => {
     setNoiseSelected(selected)
@@ -220,9 +230,10 @@ export function PlaybookContent({
   }, [])
 
   const handleSelectPlaybook = useCallback(() => {
+    console.log("[playbook] handleSelectPlaybook: selected playbook data payload:", JSON.stringify(currentPlaybookData, null, 2))
     setSelectedPlaybook(pendingPlaybook)
     onComplete()
-  }, [pendingPlaybook, onComplete])
+  }, [pendingPlaybook, onComplete, currentPlaybookData])
 
   const handleCancelNoiseSelection = useCallback(() => {
     setShowConfirmButton(false)
@@ -346,7 +357,7 @@ export function PlaybookContent({
               </div>
               <TabsContent value="timeline" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
                 {leftTab === "playbook" ? (
-                  <PlaybookTimelineTab currentPlaybookData={currentPlaybookData} scenarioItems={scenarioItems} assignedNoises={assignedNoises} onAddNoise={handleAddNoiseToTimeline} onRemoveNoise={handleRemoveNoise} />
+                  <PlaybookTimelineTab currentPlaybookData={currentPlaybookData} scenarioItems={scenarioItems} assignedNoises={assignedNoises} onAddNoise={handleAddNoiseToTimeline} onRemoveNoise={handleRemoveNoise} noises={noises} />
                 ) : (
                   <div className="flex h-full flex-col p-4 overflow-auto">
                     {selectedNoiseData ? (
