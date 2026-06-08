@@ -12,7 +12,8 @@ export function initDatabase() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS noises (
       name TEXT PRIMARY KEY,
-      command TEXT
+      command TEXT,
+      description TEXT DEFAULT ''
     )
   `)
 }
@@ -25,9 +26,9 @@ export function getNoises() {
 export function createNoise(data) {
   const row = db
     .query(
-      "INSERT INTO noises (name, command) VALUES (?, ?) RETURNING *"
+      "INSERT INTO noises (name, command, description) VALUES (?, ?, ?) RETURNING *"
     )
-    .get(data.name, data.command)
+    .get(data.name, data.command, data.description ?? "")
   return row
 }
 
@@ -36,6 +37,7 @@ export function updateNoise(name, data) {
   const values = []
 
   if (data.command !== undefined) { fields.push("command = ?"); values.push(data.command) }
+  if (data.description !== undefined) { fields.push("description = ?"); values.push(data.description) }
 
   if (fields.length === 0) {
     const existing = db.query("SELECT * FROM noises WHERE name = ?").get(name)

@@ -40,9 +40,11 @@ function runTests() {
     const created = createNoise({
       name: "Background HTTP",
       command: "curl -s http://example.com/api/beacon",
+      description: "Generates periodic HTTP GET requests",
     })
     assert(created.name === "Background HTTP", "name matches")
     assert(created.command === "curl -s http://example.com/api/beacon", "command matches")
+    assert(created.description === "Generates periodic HTTP GET requests", "description matches")
 
     // Test 3: Get after create
     console.log("\n3. getNoises (after create)")
@@ -55,9 +57,11 @@ function runTests() {
     const created2 = createNoise({
       name: "DNS Beacon",
       command: "nslookup beacon.example.com",
+      description: "DNS lookup for C2 beacon",
     })
     assert(created2.name === "DNS Beacon", "name matches")
     assert(created2.command === "nslookup beacon.example.com", "command matches")
+    assert(created2.description === "DNS lookup for C2 beacon", "description matches")
     const afterCreate2 = getNoises()
     assert(afterCreate2.length === 2, "has 2 noises")
 
@@ -74,9 +78,11 @@ function runTests() {
     console.log("\n6. updateNoise")
     const updated = updateNoise("Background HTTP", {
       command: "curl -s http://new-c2.example.com/api/beacon",
+      description: "Updated HTTP beacon to new C2",
     })
     assert(updated.name === "Background HTTP", "name unchanged")
     assert(updated.command === "curl -s http://new-c2.example.com/api/beacon", "command updated")
+    assert(updated.description === "Updated HTTP beacon to new C2", "description updated")
 
     // Test 7: Update non-existent noise
     console.log("\n7. updateNoise (non-existent)")
@@ -89,6 +95,7 @@ function runTests() {
     assert(noChange !== null, "returns existing noise")
     assert(noChange.name === "DNS Beacon", "name unchanged")
     assert(noChange.command === "nslookup beacon.example.com", "command unchanged")
+    assert(noChange.description === "DNS lookup for C2 beacon", "description unchanged")
 
     // Test 9: Delete noise
     console.log("\n9. deleteNoise")

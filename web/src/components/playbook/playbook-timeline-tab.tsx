@@ -9,17 +9,49 @@ import {
 import { Button } from "@/components/ui/button"
 import type { PlaybookData } from "@/components/playbook/playbook-content"
 import type { ScenarioItem } from "@/components/attack-configuration/scenario-tab"
+import { Trash2 } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 
 export function PlaybookTimelineTab({
   currentPlaybookData,
   scenarioItems,
+  assignedNoises,
   onAddNoise,
+  onRemoveNoise,
 }: {
   currentPlaybookData?: PlaybookData | null
   scenarioItems: ScenarioItem[]
-  onAddNoise?: () => void
+  assignedNoises?: Record<string, { name: string; command: string }>
+  onAddNoise?: (slotKey: string) => void
+  onRemoveNoise?: (slotKey: string) => void
 }) {
+  const renderNoiseSlot = (slotKey: string) => {
+    const assigned = assignedNoises?.[slotKey]
+    if (assigned) {
+      return (
+        <div className="flex items-start gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold">{assigned.name}</p>
+            <pre className="mt-1 rounded border border-input bg-background p-2 text-xs font-mono whitespace-pre-wrap">
+              {assigned.command}
+            </pre>
+          </div>
+          <button
+            className="mt-0.5 shrink-0 text-muted-foreground hover:text-destructive transition-colors"
+            onClick={() => onRemoveNoise?.(slotKey)}
+            aria-label="Remove noise"
+          >
+            <Trash2 className="size-3.5" />
+          </button>
+        </div>
+      )
+    }
+    return (
+      <Button variant="outline" size="sm" onClick={() => onAddNoise?.(slotKey)}>
+        + Add noise
+      </Button>
+    )
+  }
   const navigate = useNavigate()
 
   if (!currentPlaybookData) {
@@ -35,28 +67,21 @@ export function PlaybookTimelineTab({
               </TableHeader>
               <TableBody>
                 {scenarioItems.flatMap((item, i) => {
-                  const rows = []
-                  rows.push(
-                    <TableRow key={`noise-before-${item.id}`}>
+                  const rows = [
+                    <TableRow key={`noise-${i}`}>
                       <TableCell>
-                        <Button variant="outline" size="sm" onClick={onAddNoise}>
-                          + Add noise
-                        </Button>
+                        {renderNoiseSlot(`timeline-${i}`)}
                       </TableCell>
-                    </TableRow>
-                  )
-                  rows.push(
+                    </TableRow>,
                     <TableRow key={item.id}>
                       <TableCell>{item.name}</TableCell>
-                    </TableRow>
-                  )
+                    </TableRow>,
+                  ]
                   if (i === scenarioItems.length - 1) {
                     rows.push(
-                      <TableRow key={`noise-after-${item.id}`}>
+                      <TableRow key={`noise-end`}>
                         <TableCell>
-                          <Button variant="outline" size="sm" onClick={onAddNoise}>
-                            + Add noise
-                          </Button>
+                          {renderNoiseSlot(`timeline-${i + 1}`)}
                         </TableCell>
                       </TableRow>
                     )
@@ -76,9 +101,7 @@ export function PlaybookTimelineTab({
               <TableBody>
                 <TableRow>
                   <TableCell>
-                    <Button variant="outline" size="sm" onClick={onAddNoise}>
-                      + Add noise
-                    </Button>
+                    {renderNoiseSlot("pbg-0")}
                   </TableCell>
                 </TableRow>
               </TableBody>

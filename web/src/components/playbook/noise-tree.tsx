@@ -24,7 +24,7 @@ export function NoiseTree({
   hideAddButton,
 }: {
   onSelect: (selected: NoiseSelected) => void
-  noises: Array<{ name: string; command: string }>
+  noises: Array<{ name: string; command: string; description: string }>
   onDeleteNoise: (name: string) => void
   onSelectedNoiseChange?: (name: string | null) => void
   hideAddButton?: boolean

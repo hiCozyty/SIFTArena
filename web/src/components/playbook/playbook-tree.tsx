@@ -12,6 +12,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs"
+import { Trash2 } from "lucide-react"
 import { useState } from "react"
 import { NoiseTree, type NoiseSelected } from "@/components/playbook/noise-tree"
 import type { PlaybookData } from "@/components/playbook/playbook-content"
@@ -34,7 +35,7 @@ export function PlaybookTree({
   onSelectedPlaybookChange,
 }: {
   onSelectNoise: (selected: NoiseSelected) => void
-  noises: Array<{ name: string; command: string }>
+  noises: Array<{ name: string; command: string; description: string }>
   onDeleteNoise: (name: string) => void
   leftTab: string
   onLeftTabChange: (tab: string) => void
@@ -42,6 +43,7 @@ export function PlaybookTree({
   onSelectedNoiseChange?: (name: string | null) => void
   hideAddNoiseButton?: boolean
   onSelectedPlaybookChange?: (name: string | null) => void
+  onDeletePlaybook?: (name: string) => void
 }) {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
 
@@ -80,6 +82,16 @@ export function PlaybookTree({
                       <TreeNodeTrigger>
                         <TreeIcon hasChildren={false} />
                         <TreeLabel className="whitespace-normal break-words">{p.name}</TreeLabel>
+                        <button
+                          className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onDeletePlaybook?.(p.name)
+                          }}
+                          aria-label={`Delete ${p.name}`}
+                        >
+                          <Trash2 className="size-3" />
+                        </button>
                       </TreeNodeTrigger>
                     </TreeNode>
                   ))}

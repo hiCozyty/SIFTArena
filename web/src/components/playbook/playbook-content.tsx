@@ -49,8 +49,8 @@ export function PlaybookContent({
 }) {
   const [activeTab, setActiveTab] = useState("timeline")
   const [noiseSelected, setNoiseSelected] = useState<NoiseSelected>({ type: "none" })
-  const [noiseForm, setNoiseForm] = useState({ name: "", command: "" })
-  const [noises, setNoises] = useState<Array<{ name: string; command: string }>>([])
+  const [noiseForm, setNoiseForm] = useState({ name: "", command: "", description: "" })
+  const [noises, setNoises] = useState<Array<{ name: string; command: string; description: string }>>([])
   const [leftTab, setLeftTab] = useState("playbook")
   const [showNameDialog, setShowNameDialog] = useState(false)
   const [playbookName, setPlaybookName] = useState("")
@@ -59,13 +59,17 @@ export function PlaybookContent({
   const [selectedNoise, setSelectedNoise] = useState<string | null>(null)
   const [selectedPlaybook, setSelectedPlaybook] = useState<string | null>(null)
   const [pendingPlaybook, setPendingPlaybook] = useState<string | null>(null)
+  const [assignedNoises, setAssignedNoises] = useState<Record<string, { name: string; command: string }>>({})
+  const [pendingSlotKey, setPendingSlotKey] = useState<string | null>(null)
 
   const currentPlaybookData = playbooks.find(p => p.name === pendingPlaybook) ?? null
+
+  const selectedNoiseData = noises.find(n => n.name === selectedNoise) ?? null
 
   const fetchNoises = useCallback(async () => {
     console.log("[playbook] fetchNoises: sending getNoises")
     try {
-      const result = await executeWsOperation<Array<{ name: string; command: string }>>({
+      const result = await executeWsOperation<Array<{ name: string; command: string; description: string }>>({
         messageType: "getNoises",
         sendFn: () => backendWs.send({ type: "getNoises" }),
       })
@@ -157,7 +161,7 @@ export function PlaybookContent({
     try {
       const result = await executeWsOperation({
         messageType: "createNoise",
-        sendFn: () => backendWs.send({ type: "createNoise", data: { name: noiseForm.name, command: noiseForm.command } }),
+        sendFn: () => backendWs.send({ type: "createNoise", data: { name: noiseForm.name, command: noiseForm.command, description: noiseForm.description } }),
       })
       console.log("[playbook] createNoise success:", result)
       await fetchNoises()
@@ -177,16 +181,43 @@ export function PlaybookContent({
         sendFn: () => backendWs.send({ type: "deleteNoise", data: { name } }),
       })
       await fetchNoises()
+      setSelectedNoise(null)
     } catch (err) {
       console.error("[playbook] deleteNoise failed:", err)
     }
   }, [fetchNoises])
 
+  const handleDeletePlaybook = useCallback(async (name: string) => {
+    try {
+      await executeWsOperation({
+        messageType: "deletePlaybook",
+        sendFn: () => backendWs.send({ type: "deletePlaybook", data: { name } }),
+      })
+      await fetchPlaybooks()
+      setPendingPlaybook(null)
+    } catch (err) {
+      console.error("[playbook] deletePlaybook failed:", err)
+    }
+  }, [fetchPlaybooks])
+
   const handleConfirmNoiseSelection = useCallback(() => {
+    if (pendingSlotKey && selectedNoiseData) {
+      setAssignedNoises(prev => ({ ...prev, [pendingSlotKey]: { name: selectedNoiseData.name, command: selectedNoiseData.command } }))
+    }
+    setPendingSlotKey(null)
+    setSelectedNoise(null)
     onSelectNoise()
     setShowConfirmButton(false)
     setLeftTab("playbook")
-  }, [onSelectNoise])
+  }, [onSelectNoise, pendingSlotKey, selectedNoiseData])
+
+  const handleRemoveNoise = useCallback((slotKey: string) => {
+    setAssignedNoises(prev => {
+      const next = { ...prev }
+      delete next[slotKey]
+      return next
+    })
+  }, [])
 
   const handleSelectPlaybook = useCallback(() => {
     setSelectedPlaybook(pendingPlaybook)
@@ -198,7 +229,8 @@ export function PlaybookContent({
     setLeftTab("playbook")
   }, [])
 
-  const handleAddNoiseToTimeline = useCallback(() => {
+  const handleAddNoiseToTimeline = useCallback((slotKey: string) => {
+    setPendingSlotKey(slotKey)
     setLeftTab("noise")
     setShowConfirmButton(true)
   }, [])
@@ -226,7 +258,7 @@ export function PlaybookContent({
       </div>
       <div className="mt-4 flex-1 min-h-0 rounded-lg flex gap-4">
         <div className="w-[200px] shrink-0 overflow-hidden h-full">
-          <PlaybookTree onSelectNoise={handleSelectNoise} noises={noises} onDeleteNoise={handleDeleteNoise} leftTab={leftTab} onLeftTabChange={handleLeftTabChange} playbooks={playbooks} onSelectedNoiseChange={setSelectedNoise} hideAddNoiseButton={showConfirmButton} onSelectedPlaybookChange={setPendingPlaybook} />
+          <PlaybookTree onSelectNoise={handleSelectNoise} noises={noises} onDeleteNoise={handleDeleteNoise} leftTab={leftTab} onLeftTabChange={handleLeftTabChange} playbooks={playbooks} onSelectedNoiseChange={setSelectedNoise} hideAddNoiseButton={showConfirmButton} onSelectedPlaybookChange={setPendingPlaybook} onDeletePlaybook={handleDeletePlaybook} />
         </div>
         <div className="flex-1 min-w-0">
           {isCreatingNoise ? (
@@ -251,6 +283,15 @@ export function PlaybookContent({
                       placeholder="Noise name"
                       value={noiseForm.name}
                       onChange={(e) => handleNoiseFormChange("name", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-sm">Description</label>
+                    <Input
+                      className="mt-1 font-mono"
+                      placeholder="Describe this noise"
+                      value={noiseForm.description}
+                      onChange={(e) => handleNoiseFormChange("description", e.target.value)}
                     />
                   </div>
                   <div className="flex-1 flex flex-col min-h-0">
@@ -305,10 +346,25 @@ export function PlaybookContent({
               </div>
               <TabsContent value="timeline" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
                 {leftTab === "playbook" ? (
-                  <PlaybookTimelineTab currentPlaybookData={currentPlaybookData} scenarioItems={scenarioItems} onAddNoise={handleAddNoiseToTimeline} />
+                  <PlaybookTimelineTab currentPlaybookData={currentPlaybookData} scenarioItems={scenarioItems} assignedNoises={assignedNoises} onAddNoise={handleAddNoiseToTimeline} onRemoveNoise={handleRemoveNoise} />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
-                    Noise configuration placeholder
+                  <div className="flex h-full flex-col p-4 overflow-auto">
+                    {selectedNoiseData ? (
+                      <>
+                        <h4 className="font-semibold text-sm mb-2">Name</h4>
+                        <p className="text-sm font-mono mb-4">{selectedNoiseData.name}</p>
+                        <h4 className="font-semibold text-sm mb-2">Description</h4>
+                        <p className="text-sm text-muted-foreground mb-4">{selectedNoiseData.description || "—"}</p>
+                        <h4 className="font-semibold text-sm mb-2">Command</h4>
+                        <pre className="flex-1 min-h-0 overflow-auto rounded-md border border-input bg-background p-3 text-sm font-mono whitespace-pre-wrap">
+                          {selectedNoiseData.command}
+                        </pre>
+                      </>
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+                        Select a noise template from the left panel
+                      </div>
+                    )}
                   </div>
                 )}
               </TabsContent>
