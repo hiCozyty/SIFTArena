@@ -22,6 +22,21 @@ su - sift -c "vncserver :1 \
 
 nohup websockify 6901 localhost:5901 > /home/sift/.vnc/websockify.log 2>&1 &
 
+(
+  while true; do
+    sleep 5
+    if ! su - sift -c "vncserver -list 2>&1" | grep -q ":1"; then
+      echo "VNC server :1 not found, restarting..."
+      su - sift -c "vncserver :1 \
+        -geometry ${VNC_RESOLUTION:-1280x800} \
+        -depth ${VNC_COL_DEPTH:-24} \
+        -localhost no \
+        -SecurityTypes VncAuth \
+        > /home/sift/.vnc/vnc-restart.log 2>&1"
+    fi
+  done
+) &
+
 sleep 3
 
 echo "Services started. Container is running."

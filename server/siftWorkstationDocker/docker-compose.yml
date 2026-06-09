@@ -25,6 +25,7 @@ services:
       - VNC_COL_DEPTH=24
 
     volumes:
+      - ./entrypoint.sh:/entrypoint.sh
       - ../evidence:/home/sift/evidence
       - ../workflows:/home/sift/workflows
       - ../playbooks:/home/sift/playbooks
