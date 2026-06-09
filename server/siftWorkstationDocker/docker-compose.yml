@@ -25,7 +25,8 @@ services:
       - VNC_COL_DEPTH=24
 
     volumes:
-      - ./evidence:/data
-      - ./images:/mnt/images
+      - ../evidence:/home/sift/evidence
+      - ../workflows:/home/sift/workflows
+      - ../playbooks:/home/sift/playbooks
 
     restart: unless-stopped

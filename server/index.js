@@ -12,6 +12,7 @@ import { createVncProxyHandler, getOrCreateVncSession } from "./ludus/proxmox.js
 import { createWinrmProxy } from "./ludus/winrm-proxy.js"
 import { createSshProxy } from "./ludus/ssh-proxy.js"
 import { getContainerBackend } from "./ludus/container-backends.js"
+import { listWorkflows, readWorkflowFile } from "./ludus/workflows.js"
 
 const LUDUS_SERVER_URL = process.env.LUDUS_SERVER_URL + "/api/v2"
 const LUDUS_API_KEY = process.env.LUDUS_API_KEY
@@ -95,6 +96,8 @@ addOperation("updateNoise", async (_, __, data) => updateNoise(data.data.name, d
 addOperation("deleteNoise", async (_, __, data) => deleteNoise(data.data.name))
 
 addOperation("getPlaybooks", async () => getPlaybooks())
+addOperation("listWorkflows", listWorkflows)
+addOperation("readWorkflowFile", readWorkflowFile)
 addOperation("createPlaybook", async (_, __, data) => createPlaybook(data.data))
 addOperation("updatePlaybook", async (_, __, data) => updatePlaybook(data.data.name, data.data.data))
 addOperation("deletePlaybook", async (_, __, data) => deletePlaybook(data.data.name))

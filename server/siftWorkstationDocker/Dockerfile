@@ -83,7 +83,7 @@ ENV PATH="/root/.local/bin:${PATH}"
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-VOLUME ["/data", "/mnt/images"]
+VOLUME ["/home/sift/evidence", "/home/sift/workflows", "/home/sift/playbooks"]
 
 WORKDIR /home/sift
 

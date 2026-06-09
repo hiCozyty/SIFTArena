@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md"],
+  "permission": {
+    "edit": "deny",
+    "bash": "deny"
+  },
+  "mcp": {
+    "customMCP": {
+      "type": "local",
+      "command": ["bun", "run", "./workflows/workflow1/customMCP/index.ts"],
+      "enabled": true
+    }
+  }
+}

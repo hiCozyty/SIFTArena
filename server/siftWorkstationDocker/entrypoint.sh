@@ -27,10 +27,15 @@ sleep 3
 echo "Services started. Container is running."
 echo ""
 
-if ! command -v claude &>/dev/null; then
-    echo "Installing Protocol SIFT + Claude Code (first run)..."
-    export PATH="$HOME/.local/bin:$PATH"
-    curl -fsSL https://raw.githubusercontent.com/teamdfir/protocol-sift/main/install.sh | bash || true
+if ! command -v bun &>/dev/null; then
+    echo "Installing bun (first run)..."
+    curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash || true
+fi
+
+if ! command -v opencode &>/dev/null; then
+    echo "Installing opencode (first run)..."
+    curl -fsSL https://opencode.ai/install | bash || true
+    cp /root/.opencode/bin/opencode /usr/local/bin/opencode
     echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/sift/.bashrc
 fi
 
