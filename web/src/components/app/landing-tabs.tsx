@@ -33,7 +33,7 @@ interface LandingTabsProps extends CompletionState {
   scenarioItems: ScenarioItem[]
   onLabRangeComplete: () => void
   onAttackConfigComplete: (completed: boolean) => void
-  onSiftAgentConfigured: () => void
+  onSiftAgentConfigured: (configured: boolean) => void
   onHasPlaybooks: (hasPlaybooks: boolean) => void
   onPlaybookComplete: () => void
   onSelectNoise: () => void

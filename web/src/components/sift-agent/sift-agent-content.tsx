@@ -59,7 +59,7 @@ export function SiftAgentContent({
   onConfigured,
 }: {
   configured: boolean
-  onConfigured: () => void
+  onConfigured: (configured: boolean) => void
 }) {
   const { theme } = useTheme()
   const shikiTheme = useMemo(() => {
@@ -73,6 +73,7 @@ export function SiftAgentContent({
   const [workflows, setWorkflows] = useState<Workflow[] | null>(null)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const [selectedWorkflowName, setSelectedWorkflowName] = useState<string | null>(null)
+  const [pendingWorkflowName, setPendingWorkflowName] = useState<string | null>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [fileContent, setFileContent] = useState<string | null>(null)
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null)
@@ -93,11 +94,16 @@ export function SiftAgentContent({
     }).then(setWorkflows).catch(() => setWorkflows([]))
   }, [])
 
+  useEffect(() => {
+    onConfigured(selectedWorkflowName !== null)
+  }, [selectedWorkflowName, onConfigured])
+
   const handleSelectFile = useCallback((nodeId: string) => {
+    setActiveTab("notes")
     if (nodeId === selectedNodeId) {
       setSelectedNodeId(null)
       setSelectedFilePath(null)
-      setSelectedWorkflowName(null)
+      setPendingWorkflowName(null)
       setFileContent(null)
       setHighlightedHtml(null)
       return
@@ -105,7 +111,7 @@ export function SiftAgentContent({
     const path = nodeId.startsWith("workflows/") ? nodeId.slice("workflows/".length) : nodeId
     setSelectedNodeId(nodeId)
     setSelectedFilePath(path)
-    setSelectedWorkflowName(path.split("/")[0])
+    setPendingWorkflowName(path.split("/")[0])
     executeWsOperation<{ content: string | null }>({
       messageType: "readWorkflowFile",
       sendFn: () => backendWs.send({ type: "readWorkflowFile", data: { path } }),
@@ -116,7 +122,7 @@ export function SiftAgentContent({
     if (nodeId === null) {
       setSelectedNodeId(null)
       setSelectedFilePath(null)
-      setSelectedWorkflowName(null)
+      setPendingWorkflowName(null)
       setFileContent(null)
       setHighlightedHtml(null)
       return
@@ -124,7 +130,7 @@ export function SiftAgentContent({
     if (nodeId === selectedNodeId) {
       setSelectedNodeId(null)
       setSelectedFilePath(null)
-      setSelectedWorkflowName(null)
+      setPendingWorkflowName(null)
       setFileContent(null)
       setHighlightedHtml(null)
       return
@@ -132,7 +138,7 @@ export function SiftAgentContent({
     const path = nodeId.startsWith("workflows/") ? nodeId.slice("workflows/".length) : nodeId
     setSelectedNodeId(nodeId)
     setSelectedFilePath(null)
-    setSelectedWorkflowName(path.split("/")[0])
+    setPendingWorkflowName(path.split("/")[0])
     setFileContent(null)
     setHighlightedHtml(null)
   }, [selectedNodeId])
@@ -145,7 +151,7 @@ export function SiftAgentContent({
         </div>
         <div>
           <h3 className="font-semibold text-lg">SIFT Agent</h3>
-          <p className="text-muted-foreground text-sm">Current selected AI agent workflow: {selectedWorkflowName ?? "none"}</p>
+          <p className="text-muted-foreground text-sm">Current selected AI agent workflow: {selectedWorkflowName ? <strong>{selectedWorkflowName}</strong> : "none"}</p>
         </div>
       </div>
       <div className="mt-4 flex-1 min-h-0 rounded-lg flex gap-4">
@@ -171,7 +177,10 @@ export function SiftAgentContent({
                   <Terminal className="size-4" />
                 </TabsTrigger>
               </TabsList>
-              <Button disabled={!selectedWorkflowName}>
+              <Button
+                disabled={!pendingWorkflowName}
+                onClick={() => setSelectedWorkflowName(pendingWorkflowName)}
+              >
                 Select Workflow
               </Button>
             </div>

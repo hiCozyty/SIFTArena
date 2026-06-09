@@ -108,10 +108,10 @@ export function SiftAgentTree({
         <div className="min-h-0 min-w-0 flex-1 max-w-full flex flex-col">
           <TreeView className="pl-0 rounded-lg m-2 -ml-[5px] flex-1 overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <TreeNode nodeId="workflows" isLast={true}>
-              <TreeNodeTrigger>
+              <div className="group relative mx-1 flex items-center rounded-4xl px-3 py-2">
                 <TreeIcon hasChildren />
                 <TreeLabel className="whitespace-normal break-words">Workflows</TreeLabel>
-              </TreeNodeTrigger>
+              </div>
               <TreeNodeContent hasChildren>
                 {workflows?.map((w, i) => (
                   <FileTreeRow

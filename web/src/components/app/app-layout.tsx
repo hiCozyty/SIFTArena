@@ -22,7 +22,7 @@ export function AppLayout() {
         scenarioItems={scenarioItems}
         onLabRangeComplete={() => setLabRangeCompleted(true)}
         onAttackConfigComplete={(v) => setAttackConfigCompleted(v)}
-        onSiftAgentConfigured={() => setSiftAgentConfigured(true)}
+        onSiftAgentConfigured={setSiftAgentConfigured}
         onHasPlaybooks={setHasPlaybooks}
         onPlaybookComplete={() => setPlaybookCompleted(true)}
         onSelectNoise={() => {}}
