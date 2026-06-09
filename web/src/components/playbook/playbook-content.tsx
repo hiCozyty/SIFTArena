@@ -89,13 +89,11 @@ export function PlaybookContent({
   const selectedNoiseData = noises.find(n => n.name === selectedNoise) ?? null
 
   const fetchNoises = useCallback(async () => {
-    console.log("[playbook] fetchNoises: sending getNoises")
     try {
       const result = await executeWsOperation<Array<{ name: string; command: string; description: string }>>({
         messageType: "getNoises",
         sendFn: () => backendWs.send({ type: "getNoises" }),
       })
-      console.log("[playbook] fetchNoises: result", result)
       setNoises(result)
     } catch (err) {
       console.error("[playbook] getNoises failed:", err)
@@ -103,13 +101,11 @@ export function PlaybookContent({
   }, [])
 
   const fetchPlaybooks = useCallback(async () => {
-    console.log("[playbook] fetchPlaybooks: sending getPlaybooks")
     try {
       const result = await executeWsOperation<PlaybookData[]>({
         messageType: "getPlaybooks",
         sendFn: () => backendWs.send({ type: "getPlaybooks" }),
       })
-      console.log("[playbook] fetchPlaybooks: result", result)
       setPlaybooks(result)
       onHasPlaybooks(result.length > 0)
     } catch (err) {
@@ -144,7 +140,6 @@ export function PlaybookContent({
   }, [])
 
   const handleConfirmSave = useCallback(async () => {
-    console.log("[playbook] handleConfirmSave: called, name=", playbookName)
     if (!playbookName.trim()) return
     const timelineEvents = scenarioItems.flatMap((item, i) => {
       const noiseSlotKey = `timeline-${i}`
@@ -161,7 +156,6 @@ export function PlaybookContent({
       .filter(k => k.startsWith("pbg-"))
       .sort((a, b) => parseInt(a.replace("pbg-", ""), 10) - parseInt(b.replace("pbg-", ""), 10))
       .map(k => ({ name: assignedNoises[k].name, command: assignedNoises[k].command }))
-    console.log("[playbook] handleConfirmSave: timelineEvents", timelineEvents)
     try {
       const result = await executeWsOperation({
         messageType: "createPlaybook",
@@ -175,10 +169,8 @@ export function PlaybookContent({
           },
         }),
       })
-      console.log("[playbook] createPlaybook success:", result)
       await fetchPlaybooks()
-      console.log("[playbook] fetchPlaybooks after save complete")
-    } catch (err) {
+      } catch (err) {
       console.error("[playbook] createPlaybook failed:", err)
       return
     }
@@ -203,18 +195,14 @@ export function PlaybookContent({
   }, [])
 
   const handleCreateNoise = useCallback(async () => {
-    console.log("[playbook] handleCreateNoise: called, noiseForm=", noiseForm)
     if (!noiseForm.name || !noiseForm.command) return
-    console.log("[playbook] handleCreateNoise: sending createNoise, ws state=", backendWs.getState())
     try {
       const result = await executeWsOperation({
         messageType: "createNoise",
         sendFn: () => backendWs.send({ type: "createNoise", data: { name: noiseForm.name, command: noiseForm.command, description: noiseForm.description } }),
       })
-      console.log("[playbook] createNoise success:", result)
       await fetchNoises()
-      console.log("[playbook] createNoise: fetchNoises done, resetting form")
-    } catch (err) {
+      } catch (err) {
       console.error("[playbook] createNoise failed:", err)
       return
     }
@@ -293,7 +281,6 @@ export function PlaybookContent({
   }, [])
 
   const handleSelectPlaybook = useCallback(() => {
-    console.log("[playbook] handleSelectPlaybook: selected playbook data payload:", JSON.stringify(currentPlaybookData, null, 2))
     setSelectedPlaybook(pendingPlaybook)
     onComplete()
   }, [pendingPlaybook, onComplete, currentPlaybookData])

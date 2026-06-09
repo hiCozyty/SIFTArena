@@ -29,7 +29,8 @@ docker compose up -d --build
 
 | Service | Port | Credentials |
 |---------|------|-------------|
-| KasmVNC (WebSocket) | 5901 | `forensics` |
+| noVNC via websockify | 6901 | `forensics` |
+| TigerVNC (TCP) | 5901 | `forensics` |
 | SSH | 2222 | `sift:forensics` |
 
 First build takes ~15 minutes (installs XFCE + Cast + SIFT SaltStack + Protocol SIFT).

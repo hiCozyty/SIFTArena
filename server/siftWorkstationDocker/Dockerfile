@@ -1,7 +1,7 @@
 FROM ubuntu:22.04
 
 LABEL maintainer="shadow-protocol"
-LABEL description="SANS SIFT Workstation with XFCE desktop, KasmVNC, and SSH"
+LABEL description="SANS SIFT Workstation with XFCE desktop, TigerVNC + websockify, and SSH"
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CAST_VERSION=1.0.8
@@ -35,10 +35,8 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && apt-get install -y \
-    wget \
-    && wget -q "https://github.com/kasmtech/KasmVNC/releases/download/v1.4.0/kasmvncserver_jammy_1.4.0_amd64.deb" -O /tmp/kasmvnc.deb \
-    && apt-get install -y /tmp/kasmvnc.deb \
-    && rm /tmp/kasmvnc.deb \
+    tigervnc-standalone-server \
+    websockify \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && apt-get install -y \
@@ -58,8 +56,8 @@ RUN useradd -m -s /bin/bash sift \
     && echo "sift ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 RUN mkdir -p /home/sift/.vnc \
-    && printf "forensics\nforensics\n" | kasmvncpasswd -u sift -wo /home/sift/.kasmpasswd \
-    && chown -R sift:sift /home/sift/.vnc /home/sift/.kasmpasswd
+    && printf "forensics\nforensics\n" | vncpasswd /home/sift/.vnc/passwd \
+    && chown -R sift:sift /home/sift/.vnc
 
 USER sift
 WORKDIR /home/sift
@@ -89,6 +87,6 @@ VOLUME ["/data", "/mnt/images"]
 
 WORKDIR /home/sift
 
-EXPOSE 5901 22
+EXPOSE 5901 6901 22
 
 ENTRYPOINT ["/entrypoint.sh"]

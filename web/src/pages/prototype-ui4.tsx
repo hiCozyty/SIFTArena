@@ -1,7 +1,9 @@
 import { useState } from "react"
-import { SiftTerminal } from "@/sift-docker/sift-terminal"
+import { SiftVnc } from "@/sift-docker/sift-vnc"
 
 type Status = "connecting" | "connected" | "disconnected" | "error"
+
+const SIFT_ID = "sift"
 
 const STATUS_COLORS: Record<Status, string> = {
   connecting: "text-amber-500",
@@ -10,8 +12,8 @@ const STATUS_COLORS: Record<Status, string> = {
   error: "text-red-500",
 }
 
-export function PrototypeUI3() {
-  const [status, setStatus] = useState<Status>("disconnected")
+export function PrototypeUI4() {
+  const [status, setStatus] = useState<Status>("connecting")
 
   return (
     <div className="flex h-screen flex-col">
@@ -27,8 +29,9 @@ export function PrototypeUI3() {
       </div>
 
       <div className="flex-1 overflow-hidden">
-        <SiftTerminal
-          containerId="sift"
+        <SiftVnc
+          key="sift-vnc"
+          containerId={SIFT_ID}
           className="h-full"
           onStatusChange={setStatus}
         />

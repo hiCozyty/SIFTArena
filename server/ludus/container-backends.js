@@ -1,8 +1,7 @@
 const CONTAINER_BACKENDS = {
   sift: {
     vncHost: "localhost",
-    vncPort: 5901,
-    vncUser: "sift",
+    vncPort: 6901,
     vncPass: "forensics",
     sshHost: "localhost",
     sshPort: 2222,

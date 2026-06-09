@@ -5,6 +5,7 @@ export function createSshProxy() {
     open(ws) {
       const vmid = ws.data?.vmid
       const host = ws.data?.host
+      const port = ws.data?.port
       const username = ws.data?.username
       const password = ws.data?.password
 
@@ -38,7 +39,9 @@ export function createSshProxy() {
       activeSessions.set(vmid, { abort })
 
       try {
-        const args = ["-p", password, "ssh", "-tt", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=5", `${username}@${host}`]
+        const args = ["-p", password, "ssh", "-tt"]
+        if (port) args.push("-p", String(port))
+        args.push("-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=5", `${username}@${host}`)
         proc = Bun.spawn(["sshpass", ...args], {
           terminal: {
             cols: 80,

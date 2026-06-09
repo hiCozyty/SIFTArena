@@ -4,6 +4,7 @@ import { AuthenticatedApp } from "@/components/app/authenticated-app"
 import { PrototypeUI } from "@/pages/prototype-ui"
 import { PrototypeUI2 } from "@/pages/prototype-ui2"
 import { PrototypeUI3 } from "@/pages/prototype-ui3"
+import { PrototypeUI4 } from "@/pages/prototype-ui4"
 import { PreviewUI } from "@/pages/preview-ui"
 
 function App() {
@@ -14,6 +15,7 @@ function App() {
           <Route path="/prototypeui" element={<PrototypeUI />} />
           <Route path="/prototypeui2" element={<PrototypeUI2 />} />
           <Route path="/prototypeui3" element={<PrototypeUI3 />} />
+          <Route path="/prototypeui4" element={<PrototypeUI4 />} />
           <Route path="/previewui" element={<PreviewUI />} />
           <Route path="/*" element={<AuthenticatedApp />} />
         </Routes>

@@ -11,6 +11,7 @@ import { initDatabase as initPlaybookDb, getPlaybooks, createPlaybook, updatePla
 import { createVncProxyHandler, getOrCreateVncSession } from "./ludus/proxmox.js"
 import { createWinrmProxy } from "./ludus/winrm-proxy.js"
 import { createSshProxy } from "./ludus/ssh-proxy.js"
+import { getContainerBackend } from "./ludus/container-backends.js"
 
 const LUDUS_SERVER_URL = process.env.LUDUS_SERVER_URL + "/api/v2"
 const LUDUS_API_KEY = process.env.LUDUS_API_KEY
@@ -130,6 +131,42 @@ const server = Bun.serve({
         }))
     }
 
+    if (url.pathname.startsWith("/docker-vnc-ticket/")) {
+      const id = url.pathname.split("/docker-vnc-ticket/")[1]
+      console.log(`[docker-vnc-ticket ${id}] Incoming ticket request`)
+      const container = getContainerBackend(id)
+      if (!container) {
+        console.log(`[docker-vnc-ticket ${id}] Container not found`)
+        return new Response(JSON.stringify({ error: "Container not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        })
+      }
+      console.log(`[docker-vnc-ticket ${id}] Returning ticket for ${container.label}`)
+      return new Response(JSON.stringify({ ticket: container.vncPass }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      })
+    }
+
+    if (url.pathname.startsWith("/docker-vnc/")) {
+      const id = url.pathname.split("/docker-vnc/")[1]
+      console.log(`[docker-vnc ${id}] Incoming WS request`)
+      const container = getContainerBackend(id)
+      if (!container) {
+        console.log(`[docker-vnc ${id}] Container not found`)
+        return new Response(JSON.stringify({ error: "Container not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        })
+      }
+      console.log(`[docker-vnc ${id}] Docker container: ${container.label} (${container.vncHost}:${container.vncPort})`)
+      if (server.upgrade(request, { data: { id, isDockerVnc: true, host: container.vncHost, port: container.vncPort } })) {
+        console.log(`[docker-vnc ${id}] Upgraded to container VNC`)
+        return
+      }
+      console.log(`[docker-vnc ${id}] Container VNC upgrade failed`)
+    }
+
     if (url.pathname.startsWith("/vnc/")) {
       const vmid = url.pathname.split("/vnc/")[1]
       if (vmid && server.upgrade(request, { data: { vmid, isVnc: true } })) {
@@ -139,6 +176,7 @@ const server = Bun.serve({
 
     if (url.pathname.startsWith("/term/")) {
       const vmid = url.pathname.split("/term/")[1]
+      console.log(`[term ${vmid}] Incoming WS request`)
       if (!vmid) return new Response(JSON.stringify({ error: "Missing VM ID" }), {
         status: 400,
         headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -147,6 +185,7 @@ const server = Bun.serve({
       if (LUDUS_SERVER_URL && LUDUS_API_KEY) {
         try {
           const vm = await getVMInfo(LUDUS_SERVER_URL, LUDUS_API_KEY, vmid)
+          console.log(`[term ${vmid}] Ludus lookup result:`, JSON.stringify(vm))
           if (!vm?.ip) {
             console.log(`[term ${vmid}] VM IP not reachable`)
           } else {
@@ -169,6 +208,19 @@ const server = Bun.serve({
         } catch (err) {
           console.log(`[term ${vmid}] Route error:`, err.message)
         }
+      } else {
+        console.log(`[term ${vmid}] Ludus not configured, skipping VM lookup`)
+      }
+
+      const container = getContainerBackend(vmid)
+      console.log(`[term ${vmid}] Container backend lookup:`, container ? `found (${container.label})` : "not found")
+      if (container) {
+        console.log(`[term ${vmid}] Docker container: ${container.label} (${container.sshHost}:${container.sshPort})`)
+        if (server.upgrade(request, { data: { vmid, isSsh: true, host: container.sshHost, port: container.sshPort, username: container.sshUser, password: container.sshPass } })) {
+          console.log(`[term ${vmid}] Upgraded to container SSH`)
+          return
+        }
+        console.log(`[term ${vmid}] Container SSH upgrade failed`)
       }
     }
 
@@ -183,18 +235,53 @@ const server = Bun.serve({
   },
   websocket: {
     open(ws) {
+      if (ws.data?.isDockerVnc) {
+        ws.binaryType = "arraybuffer"
+        const { id, host, port } = ws.data
+
+        const containerWs = new WebSocket(`ws://${host}:${port}/`)
+        containerWs.binaryType = "arraybuffer"
+
+        ws._dc = {
+          containerWs,
+          heartbeat: setInterval(() => { if (ws.readyState === 1) ws.ping() }, 30000),
+        }
+
+        containerWs.onmessage = (event) => {
+          if (ws.readyState === 1) ws.send(event.data, true)
+        }
+        containerWs.onclose = () => {
+          if (ws.readyState === 1) ws.close()
+        }
+        containerWs.onerror = () => {
+          if (ws.readyState === 1) ws.close(1011, "Container connection failed")
+        }
+        return
+      }
       if (ws.data?.isVnc) return vncHandler.open(ws)
       if (ws.data?.isWinrm) return winrmHandler.open(ws)
       if (ws.data?.isSsh) return sshHandler.open(ws)
       pollerHandler.open(ws)
     },
     message(ws, message) {
+      if (ws.data?.isDockerVnc) {
+        if (ws._dc?.containerWs?.readyState === 1) ws._dc.containerWs.send(message)
+        return
+      }
       if (ws.data?.isVnc) return vncHandler.message(ws, message)
       if (ws.data?.isWinrm) return winrmHandler.message(ws, message)
       if (ws.data?.isSsh) return sshHandler.message(ws, message)
       pollerHandler.message(ws, message)
     },
     close(ws, code, reason) {
+      if (ws.data?.isDockerVnc) {
+        clearInterval(ws._dc?.heartbeat)
+        if (ws._dc?.containerWs) {
+          ws._dc.containerWs.close()
+          ws._dc.containerWs = null
+        }
+        return
+      }
       if (ws.data?.isVnc) return vncHandler.close(ws, code, reason)
       if (ws.data?.isWinrm) return winrmHandler.close(ws, code, reason)
       if (ws.data?.isSsh) return sshHandler.close(ws, code, reason)
