@@ -1,5 +1,6 @@
-import { readdir } from "node:fs/promises"
+import { readdir, stat } from "node:fs/promises"
 import { join } from "node:path"
+import { getContainerBackend } from "./container-backends.js"
 
 const WORKFLOWS_DIR = join(import.meta.dir, "..", "workflows")
 
@@ -47,4 +48,107 @@ export async function readWorkflowFile(_, __, data) {
   } catch {
     return { content: null }
   }
+}
+
+export async function verifyWorkflowMcpTool(_, __, data) {
+  const { workflowName } = data.data
+  if (!workflowName) throw new Error("workflowName is required")
+  if (!/^[\w-]+$/.test(workflowName)) throw new Error("workflowName contains invalid characters")
+
+  try {
+    const stats = await stat(join(WORKFLOWS_DIR, workflowName))
+    if (!stats.isDirectory()) throw new Error(`"${workflowName}" is not a directory`)
+  } catch (err) {
+    if (err.code === "ENOENT") throw new Error(`Workflow "${workflowName}" not found`)
+    throw err
+  }
+
+  const backend = getContainerBackend("sift")
+  if (!backend) throw new Error("SIFT container backend not found")
+
+  const jrpcMsgs = [
+    '{"jsonrpc":"2.0","method":"tools/list","id":1}',
+    '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"my_tool","arguments":{"input":"test-mcp"}},"id":2}',
+  ]
+  const remoteCmd = [
+    `cd /home/sift/workflows/${workflowName}`,
+    `printf '${jrpcMsgs[0]}\\n${jrpcMsgs[1]}\\n'`,
+    `timeout 10 bun run ./customMCP/index.ts 2>/dev/null`,
+  ].join(" | ")
+
+  const cmd = [
+    "sshpass", "-p", backend.sshPass,
+    "ssh",
+    "-p", String(backend.sshPort),
+    "-o", "StrictHostKeyChecking=no",
+    "-o", "UserKnownHostsFile=/dev/null",
+    "-o", "ConnectTimeout=5",
+    `${backend.sshUser}@${backend.sshHost}`,
+    remoteCmd,
+  ]
+
+  const proc = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" })
+  const [stdout, stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ])
+  const exitCode = await proc.exited
+
+  if (exitCode !== 0) {
+    throw new Error(`MCP tool verification failed: ${stderr.trim() || stdout.trim()}`)
+  }
+
+  const lines = stdout.trim().split("\n").filter(Boolean).map(l => {
+    try { return JSON.parse(l) } catch { return null }
+  }).filter(Boolean)
+
+  const callResponse = lines.find(l => l.id === 2)
+  if (!callResponse) throw new Error("No tools/call response received")
+  if (callResponse.error) {
+    throw new Error(`Tool call failed: ${callResponse.error.message || JSON.stringify(callResponse.error)}`)
+  }
+
+  const toolResult = callResponse.result?.content?.[0]?.text || ""
+  return { success: true, workflow: workflowName, tool: "my_tool", result: toolResult }
+}
+
+export async function initializeOpencodeSessionFromDocker(_, __, data) {
+  const { workflowName } = data.data
+  if (!workflowName) throw new Error("workflowName is required")
+  if (!/^[\w-]+$/.test(workflowName)) throw new Error("workflowName contains invalid characters")
+
+  try {
+    const stats = await stat(join(WORKFLOWS_DIR, workflowName))
+    if (!stats.isDirectory()) throw new Error(`"${workflowName}" is not a directory`)
+  } catch (err) {
+    if (err.code === "ENOENT") throw new Error(`Workflow "${workflowName}" not found`)
+    throw err
+  }
+
+  const backend = getContainerBackend("sift")
+  if (!backend) throw new Error("SIFT container backend not found")
+
+  const cmd = [
+    "sshpass", "-p", backend.sshPass,
+    "ssh",
+    "-p", String(backend.sshPort),
+    "-o", "StrictHostKeyChecking=no",
+    "-o", "UserKnownHostsFile=/dev/null",
+    "-o", "ConnectTimeout=5",
+    `${backend.sshUser}@${backend.sshHost}`,
+    `kill $(lsof -t -i:3113) 2>/dev/null; cd /home/sift/workflows/${workflowName} && nohup opencode serve --port 3113 --hostname 0.0.0.0 > /tmp/opencode-serve.log 2>&1 & sleep 1 && echo OK`,
+  ]
+
+  const proc = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" })
+  const [stdout, stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ])
+  const exitCode = await proc.exited
+
+  if (exitCode !== 0) {
+    throw new Error(`Failed to start opencode session: ${stderr.trim() || stdout.trim()}`)
+  }
+
+  return { success: true, workflow: workflowName, message: stdout.trim() }
 }

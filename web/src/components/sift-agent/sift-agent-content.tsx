@@ -2,6 +2,8 @@ import { SiftAgentIcon } from "@/components/icons/sift-agent-icon"
 import { Button } from "@/components/ui/button"
 import { TabContentCard } from "@/components/shared-ui-primitives/tab-content-card"
 import { SiftAgentTree } from "@/components/sift-agent/sift-agent-tree"
+import { SiftTerminal } from "@/sift-docker/sift-terminal"
+import { SiftVnc } from "@/sift-docker/sift-vnc"
 import {
   Tabs,
   TabsContent,
@@ -208,14 +210,10 @@ export function SiftAgentContent({
               )}
             </TabsContent>
             <TabsContent value="vnc" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
-              <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
-                VNC viewer
-              </div>
+              <SiftVnc containerId="sift" className="h-full" />
             </TabsContent>
             <TabsContent value="cli" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
-              <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
-                CLI terminal
-              </div>
+              <SiftTerminal containerId="sift" className="h-full" />
             </TabsContent>
           </Tabs>
         </div>
