@@ -1000,11 +1000,11 @@ export function useLabRangeState(onComplete: () => void) {
                 ? { ...item, description: "Caldera already installed", status: "built" }
                 : item
             ),
-            { id: "win11-lsa-disable", title: "Disabling LSA Protection on win11-22h2", description: "Checking LSA protection status...", status: "building" },
+            { id: "win11-lsa-disable", title: "Staging Windows (LSA, logging, sysmon...)", description: "Checking readiness...", status: "building" },
           ])
           setCalderaActive(false)
           setCalderaActive2(true)
-          backendWs.send({ type: "checkLsaProtection", label: "win11-22h2" })
+          backendWs.send({ type: "checkWindowsReadiness", label: "win11-22h2" })
           unsub()
         } else {
           setTimelineItems((prev) =>
@@ -1057,11 +1057,11 @@ export function useLabRangeState(onComplete: () => void) {
                 ? { ...item, description: "Caldera installed successfully", status: "built" }
                 : item
             ),
-            { id: "win11-lsa-disable", title: "Disabling LSA Protection on win11-22h2", description: "Checking LSA protection status...", status: "building" },
+            { id: "win11-lsa-disable", title: "Staging Windows (LSA, logging, sysmon...)", description: "Checking readiness...", status: "building" },
           ])
           setCalderaActive(false)
           setCalderaActive2(true)
-          backendWs.send({ type: "checkLsaProtection", label: "win11-22h2" })
+          backendWs.send({ type: "checkWindowsReadiness", label: "win11-22h2" })
           unsub()
         } else {
           const recapLines = ansible?.playRecap ?? []
@@ -1090,14 +1090,14 @@ export function useLabRangeState(onComplete: () => void) {
     if (!lsaDisableActive) return
 
     const unsub = backendWs.subscribe((data) => {
-      if (data.type === "checkLsaProtection") {
+      if (data.type === "checkWindowsReadiness") {
         const error = data.error as string | undefined
-        const result = data.result as { lsaDisabled?: boolean } | undefined
-        if (!error && result?.lsaDisabled) {
+        const result = data.result as { ready?: boolean; checks?: Record<string, boolean> } | undefined
+        if (!error && result?.ready) {
           setTimelineItems((prev) => [
             ...prev.map((item) =>
               item.id === "win11-lsa-disable"
-                ? { ...item, description: "LSA Protection already disabled", status: "built" }
+                ? { ...item, description: "Windows already staged", status: "built" }
                 : item
             ),
             { id: "golden-image", title: `Preparing golden image for ${GOLDEN_IMAGE_VMS.map(v => v.vm).join(" and ")}`, description: `Creating snapshots...`, status: "building" },
@@ -1110,12 +1110,25 @@ export function useLabRangeState(onComplete: () => void) {
           setTimelineItems((prev) =>
             prev.map((item) =>
               item.id === "win11-lsa-disable"
-                ? { ...item, description: "Running ansible playbook..." }
+                ? { ...item, description: "Checking LSA protection status..." }
                 : item
             )
           )
-          backendWs.send({ type: "runAnsibleScript", label: "win11-22h2", playbook: "./server/ludus/win11-22h2-lsa-ppl-disable.yml" })
+          backendWs.send({ type: "checkLsaProtection", label: "win11-22h2" })
         }
+        return
+      }
+
+      if (data.type === "checkLsaProtection") {
+        const result = data.result as { lsaDisabled?: boolean } | undefined
+        setTimelineItems((prev) =>
+          prev.map((item) =>
+            item.id === "win11-lsa-disable"
+              ? { ...item, description: result?.lsaDisabled ? "LSA OK, running full staging playbook..." : "Running full staging playbook..." }
+              : item
+          )
+        )
+        backendWs.send({ type: "runAnsibleScript", label: "win11-22h2", playbook: "./server/ludus/win11-22h2-lsa-ppl-disable.yml" })
         return
       }
 
@@ -1154,7 +1167,7 @@ export function useLabRangeState(onComplete: () => void) {
           setTimelineItems((prev) => [
             ...prev.map((item) =>
               item.id === "win11-lsa-disable"
-                ? { ...item, description: "LSA Protection disabled", status: "built" }
+                ? { ...item, description: "Windows staged successfully", status: "built" }
                 : item
             ),
             { id: "golden-image", title: `Preparing golden image for ${GOLDEN_IMAGE_VMS.map(v => v.vm).join(" and ")}`, description: `Creating snapshots...`, status: "building" },

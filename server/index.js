@@ -1,7 +1,7 @@
 import { createWsHandler, addFetcher, addOperation } from "./poller.js"
 import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./ludus/templates.js"
 import { fetchPackerTemplates } from "./ludus/packer-templates.js"
-import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, powerOffVM, powerOnVM, deployCustomVM, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, checkLsaProtection, getVmDefs, listProxmoxVMs, getVMInfo } from "./ludus/range.js"
+import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, powerOffVM, powerOnVM, deployCustomVM, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, checkLsaProtection, checkWindowsReadiness, getVmDefs, listProxmoxVMs, getVMInfo } from "./ludus/range.js"
 import { fetchFocusedCategoriesAndTechniques } from "./caldera/categories.js"
 import { initDatabase, getCustomAbilities, createCustomAbility, updateCustomAbility, deleteCustomAbility, syncToCaldera } from "./caldera/customAbilities.js"
 import { testAbility } from "./caldera/testAbility.js"
@@ -76,6 +76,7 @@ addOperation("saveBaseClean", saveBaseClean)
 addOperation("runAnsibleScript", runAnsibleScript)
 addOperation("checkCaldera", checkCaldera)
 addOperation("checkLsaProtection", checkLsaProtection)
+addOperation("checkWindowsReadiness", checkWindowsReadiness)
 addFetcher("getFocusedCategoriesAndTechniques", fetchFocusedCategoriesAndTechniques)
 addOperation("getFocusedCategoriesAndTechniques", fetchFocusedCategoriesAndTechniques)
 

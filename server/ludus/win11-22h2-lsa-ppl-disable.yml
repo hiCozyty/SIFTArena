@@ -1,21 +1,27 @@
 ---
-- name: Disable LSA Protection on Windows hosts
+- name: Prepare Windows VM for T1003.001 LSASS benchmark
   hosts: all
   gather_facts: false
+
   tasks:
-    - name: Check current RunAsPPL value
+
+    # ─────────────────────────────────────────────
+    # PHASE 1: LSA PROTECTION
+    # ─────────────────────────────────────────────
+
+    - name: Check RunAsPPL value
       ansible.windows.win_reg_stat:
         path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
         name: RunAsPPL
       register: runasppl_state
 
-    - name: Check current RunAsPPLBoot value
+    - name: Check RunAsPPLBoot value
       ansible.windows.win_reg_stat:
         path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
         name: RunAsPPLBoot
       register: runaspplboot_state
 
-    - name: Set reboot required flag
+    - name: Set reboot flag
       ansible.builtin.set_fact:
         lsa_reboot_required: false
 
@@ -51,3 +57,320 @@
       ansible.windows.win_reboot:
         reboot_timeout: 300
       when: lsa_reboot_required
+
+    # ─────────────────────────────────────────────
+    # PHASE 2: AUDIT POLICY
+    # ─────────────────────────────────────────────
+
+    - name: Enable Process Creation auditing
+      ansible.windows.win_shell: |
+        auditpol /set /subcategory:"Process Creation" /success:enable /failure:enable
+      changed_when: false
+
+    - name: Enable Kernel Object auditing
+      ansible.windows.win_shell: |
+        auditpol /set /subcategory:"Kernel Object" /success:enable /failure:enable
+      changed_when: false
+
+    - name: Enable Handle Manipulation auditing
+      ansible.windows.win_shell: |
+        auditpol /set /subcategory:"Handle Manipulation" /success:enable /failure:enable
+      changed_when: false
+
+    # ─────────────────────────────────────────────
+    # PHASE 3: REGISTRY LOGGING KEYS
+    # ─────────────────────────────────────────────
+
+    - name: Enable command line in process creation events
+      ansible.windows.win_regedit:
+        path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit
+        name: ProcessCreationIncludeCmdLine_Enabled
+        data: 1
+        type: dword
+
+    - name: Set LSASS AuditLevel
+      ansible.windows.win_regedit:
+        path: HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\lsass.exe
+        name: AuditLevel
+        data: 8
+        type: dword
+
+    - name: Enable PowerShell Script Block Logging
+      ansible.windows.win_regedit:
+        path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging
+        name: EnableScriptBlockLogging
+        data: 1
+        type: dword
+
+    - name: Enable PowerShell Script Block Invocation Logging
+      ansible.windows.win_regedit:
+        path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging
+        name: EnableScriptBlockInvocationLogging
+        data: 1
+        type: dword
+
+    - name: Enable PowerShell Module Logging
+      ansible.windows.win_regedit:
+        path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging
+        name: EnableModuleLogging
+        data: 1
+        type: dword
+
+    - name: Set PowerShell Module Logging wildcard
+      ansible.windows.win_regedit:
+        path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging\ModuleNames
+        name: "*"
+        data: "*"
+        type: string
+
+    - name: Assert Prefetch enabled
+      ansible.windows.win_regedit:
+        path: HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters
+        name: EnablePrefetcher
+        data: 3
+        type: dword
+
+    # ─────────────────────────────────────────────
+    # PHASE 4: EVENT LOG CHANNEL SIZES
+    # ─────────────────────────────────────────────
+
+    - name: Resize Security log
+      ansible.windows.win_shell: |
+        wevtutil sl Security /ms:524288000
+      changed_when: false
+
+    - name: Resize and enable Security Mitigations KernelMode
+      ansible.windows.win_shell: |
+        wevtutil sl "Microsoft-Windows-Security-Mitigations/KernelMode" /e:true /rt:false /ms:67108864
+      changed_when: false
+
+    - name: Resize and enable Security Mitigations UserMode
+      ansible.windows.win_shell: |
+        wevtutil sl "Microsoft-Windows-Security-Mitigations/UserMode" /e:true /rt:false /ms:67108864
+      changed_when: false
+
+    - name: Resize PowerShell Operational log
+      ansible.windows.win_shell: |
+        wevtutil sl "Microsoft-Windows-PowerShell/Operational" /ms:524288000
+      changed_when: false
+
+    - name: Resize legacy Windows PowerShell log
+      ansible.windows.win_shell: |
+        wevtutil sl "Windows PowerShell" /ms:524288000
+      changed_when: false
+
+    - name: Enable and resize BITS Client log
+      ansible.windows.win_shell: |
+        wevtutil sl "Microsoft-Windows-Bits-Client/Operational" /e:true /rt:false /ms:67108864
+      changed_when: false
+
+    - name: Enable and resize DNS Client log
+      ansible.windows.win_shell: |
+        wevtutil sl "Microsoft-Windows-DNS-Client/Operational" /e:true /rt:false /ms:33554432
+      changed_when: false
+
+    # ─────────────────────────────────────────────
+    # PHASE 5: USN JOURNAL
+    # ─────────────────────────────────────────────
+
+    - name: Resize USN Journal
+      ansible.windows.win_shell: |
+        fsutil usn createjournal m=67108864 a=4194304 C:
+      changed_when: false
+
+    # ─────────────────────────────────────────────
+    # PHASE 6: REGISTRY SACL AUDITING
+    # ─────────────────────────────────────────────
+
+    - name: Set audit SACL on IFEO key
+      ansible.windows.win_shell: |
+        $acl = Get-Acl "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options"
+        $rights = [System.Security.AccessControl.RegistryRights]::SetValue -bor
+                  [System.Security.AccessControl.RegistryRights]::CreateSubKey -bor
+                  [System.Security.AccessControl.RegistryRights]::Delete
+        $rule = New-Object System.Security.AccessControl.RegistryAuditRule(
+            "Everyone", $rights,
+            [System.Security.AccessControl.InheritanceFlags]"ContainerInherit,ObjectInherit",
+            [System.Security.AccessControl.PropagationFlags]::None,
+            [System.Security.AccessControl.AuditFlags]::Success
+        )
+        $acl.AddAuditRule($rule)
+        Set-Acl "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options" $acl
+      changed_when: false
+
+    - name: Create SilentProcessExit key if missing
+      ansible.windows.win_regedit:
+        path: HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SilentProcessExit
+        state: present
+
+    - name: Set audit SACL on SilentProcessExit key
+      ansible.windows.win_shell: |
+        $keyPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SilentProcessExit"
+        $acl = Get-Acl $keyPath
+        $rights = [System.Security.AccessControl.RegistryRights]::SetValue -bor
+                  [System.Security.AccessControl.RegistryRights]::CreateSubKey
+        $rule = New-Object System.Security.AccessControl.RegistryAuditRule(
+            "Everyone", $rights,
+            [System.Security.AccessControl.InheritanceFlags]"ContainerInherit,ObjectInherit",
+            [System.Security.AccessControl.PropagationFlags]::None,
+            [System.Security.AccessControl.AuditFlags]::Success
+        )
+        $acl.AddAuditRule($rule)
+        Set-Acl $keyPath $acl
+      changed_when: false
+
+    # ─────────────────────────────────────────────
+    # PHASE 7: SYSMON
+    # ─────────────────────────────────────────────
+
+    - name: Create Sysmon staging directory
+      ansible.windows.win_file:
+        path: C:\Windows\Temp\sysmon-setup
+        state: directory
+
+    - name: Write Sysmon config
+      ansible.windows.win_copy:
+        dest: C:\Windows\Temp\sysmon-setup\sysmon-lsass.xml
+        content: |
+          <Sysmon schemaversion="4.90">
+            <HashAlgorithms>md5,sha256,imphash</HashAlgorithms>
+            <CheckRevocation>False</CheckRevocation>
+            <EventFiltering>
+              <RuleGroup name="ProcessCreate" groupRelation="or">
+                <ProcessCreate onmatch="include">
+                  <Image condition="end with">rundll32.exe</Image>
+                  <Image condition="end with">procdump.exe</Image>
+                  <Image condition="end with">procdump64.exe</Image>
+                  <Image condition="end with">createdump.exe</Image>
+                  <Image condition="end with">WerFault.exe</Image>
+                  <Image condition="end with">nanodump.x64.exe</Image>
+                  <Image condition="end with">Outflank-Dumpert.exe</Image>
+                  <Image condition="end with">xordump.exe</Image>
+                  <Image condition="end with">python.exe</Image>
+                  <CommandLine condition="contains">lsass</CommandLine>
+                  <CommandLine condition="contains">comsvcs</CommandLine>
+                  <CommandLine condition="contains">MiniDump</CommandLine>
+                  <CommandLine condition="contains">minidump</CommandLine>
+                  <CommandLine condition="contains">pypykatz</CommandLine>
+                  <CommandLine condition="contains">xordump</CommandLine>
+                </ProcessCreate>
+              </RuleGroup>
+              <RuleGroup name="ImageLoad" groupRelation="or">
+                <ImageLoad onmatch="include">
+                  <ImageLoaded condition="end with">comsvcs.dll</ImageLoaded>
+                  <ImageLoaded condition="end with">dbghelp.dll</ImageLoaded>
+                  <ImageLoaded condition="end with">dbgcore.dll</ImageLoaded>
+                </ImageLoad>
+              </RuleGroup>
+              <RuleGroup name="ProcessAccess" groupRelation="or">
+                <ProcessAccess onmatch="include">
+                  <TargetImage condition="end with">lsass.exe</TargetImage>
+                </ProcessAccess>
+              </RuleGroup>
+              <RuleGroup name="FileCreate" groupRelation="or">
+                <FileCreate onmatch="include">
+                  <TargetFilename condition="end with">.dmp</TargetFilename>
+                  <TargetFilename condition="contains">lsass</TargetFilename>
+                  <TargetFilename condition="contains">nanodump</TargetFilename>
+                  <TargetFilename condition="contains">dumpert</TargetFilename>
+                  <TargetFilename condition="contains">SilentProcessExit</TargetFilename>
+                </FileCreate>
+              </RuleGroup>
+              <RuleGroup name="FileDelete" groupRelation="or">
+                <FileDelete onmatch="include">
+                  <TargetFilename condition="end with">.dmp</TargetFilename>
+                </FileDelete>
+              </RuleGroup>
+              <RuleGroup name="DnsQuery" groupRelation="or">
+                <DnsQuery onmatch="include">
+                  <QueryName condition="contains">github</QueryName>
+                  <QueryName condition="contains">sysinternals</QueryName>
+                  <QueryName condition="contains">python.org</QueryName>
+                  <QueryName condition="contains">visualstudio</QueryName>
+                </DnsQuery>
+              </RuleGroup>
+              <RuleGroup name="FileCreateStreamHash" groupRelation="or">
+                <FileCreateStreamHash onmatch="include">
+                  <TargetFilename condition="end with">procdump.exe</TargetFilename>
+                  <TargetFilename condition="end with">procdump64.exe</TargetFilename>
+                  <TargetFilename condition="end with">xordump.exe</TargetFilename>
+                  <TargetFilename condition="end with">nanodump.x64.exe</TargetFilename>
+                  <TargetFilename condition="end with">Outflank-Dumpert.exe</TargetFilename>
+                </FileCreateStreamHash>
+              </RuleGroup>
+            </EventFiltering>
+          </Sysmon>
+
+    - name: Check if Sysmon64 service exists
+      ansible.windows.win_service_info:
+        name: Sysmon64
+      register: sysmon_svc
+      ignore_errors: true
+
+    - name: Download Sysmon zip
+      ansible.windows.win_shell: |
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        (New-Object System.Net.WebClient).DownloadFile(
+          "https://download.sysinternals.com/files/Sysmon.zip",
+          "C:\Windows\Temp\sysmon-setup\Sysmon.zip"
+        )
+      when: sysmon_svc.failed or not sysmon_svc.exists
+
+    - name: Expand Sysmon zip
+      ansible.windows.win_shell: |
+        Expand-Archive -LiteralPath 'C:\Windows\Temp\sysmon-setup\Sysmon.zip' -DestinationPath 'C:\Windows\Temp\sysmon-setup' -Force
+      when: sysmon_svc.failed or not sysmon_svc.exists
+
+    - name: Install Sysmon with config
+      ansible.windows.win_shell: |
+        & 'C:\Windows\Temp\sysmon-setup\Sysmon64.exe' -accepteula -i 'C:\Windows\Temp\sysmon-setup\sysmon-lsass.xml'
+      when: sysmon_svc.failed or not sysmon_svc.exists
+
+    - name: Update Sysmon config if already installed
+      ansible.windows.win_shell: |
+        & 'C:\Windows\Temp\sysmon-setup\Sysmon64.exe' -c 'C:\Windows\Temp\sysmon-setup\sysmon-lsass.xml'
+      when: not (sysmon_svc.failed or not sysmon_svc.exists)
+
+    - name: Resize Sysmon Operational log
+      ansible.windows.win_shell: |
+        wevtutil sl "Microsoft-Windows-Sysmon/Operational" /ms:524288000
+      changed_when: false
+
+    # ─────────────────────────────────────────────
+    # PHASE 8: READINESS VERIFICATION
+    # ─────────────────────────────────────────────
+
+    - name: Run readiness check
+      ansible.windows.win_shell: |
+        Write-Output "--- Readiness Check Start ---"
+        $results = @{}
+        $results['lsaDisabled']        = ((Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name RunAsPPL -EA SilentlyContinue).RunAsPPL -eq 0)
+        $results['sysmonRunning']      = ((Get-Service Sysmon64 -EA SilentlyContinue).Status -eq 'Running')
+        $results['cmdlineLogging']     = ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit' -Name ProcessCreationIncludeCmdLine_Enabled -EA SilentlyContinue).ProcessCreationIncludeCmdLine_Enabled -eq 1)
+        $results['scriptBlockLogging'] = ((Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging' -Name EnableScriptBlockLogging -EA SilentlyContinue).EnableScriptBlockLogging -eq 1)
+        $results['prefetchEnabled']    = ((Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters' -Name EnablePrefetcher -EA SilentlyContinue).EnablePrefetcher -ge 1)
+        $results['usnJournalActive']   = ((fsutil usn queryjournal C: 2>&1 | Out-String) -notmatch 'does not have')
+        $results['lsassAuditLevel']    = ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\lsass.exe' -Name AuditLevel -EA SilentlyContinue).AuditLevel -eq 8)
+        $results['handleAudit']        = ((auditpol /get /subcategory:"Handle Manipulation") -match 'Success and Failure')
+        $results['dnsClientLog']       = ((wevtutil gl "Microsoft-Windows-DNS-Client/Operational" 2>&1 | Out-String) -match 'enabled: true')
+        $results['psLogSize']          = ([int]((wevtutil gl "Microsoft-Windows-PowerShell/Operational" 2>&1 | Out-String) -replace '(?s).*maxSize:\s*(\d+).*','$1') -ge 524288000)
+        $allPassed = $true
+        foreach ($k in $results.Keys) {
+            $v = $results[$k]
+            $icon = if ($v) { "[PASS]" } else { $allPassed = $false; "[FAIL]" }
+            Write-Output "$icon  $k"
+        }
+        Write-Output ""
+        if ($allPassed) { Write-Output "READY" } else { Write-Output "NOT READY" }
+        Write-Output "--- Readiness Check End ---"
+      register: readiness_output
+      changed_when: false
+
+    - name: Print readiness results
+      ansible.builtin.debug:
+        msg: "{{ readiness_output.stdout_lines }}"
+
+    - name: Fail playbook if VM is not ready
+      ansible.builtin.fail:
+        msg: "VM did not pass readiness check. Review output above."
+      when: "'NOT READY' in readiness_output.stdout"

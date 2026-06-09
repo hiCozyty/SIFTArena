@@ -948,6 +948,55 @@ exit(r.status_code)
   }
 }
 
+export async function checkWindowsReadiness(ludusUrl, apiKey, data, ws) {
+  const { label } = data
+  if (!label) throw new Error("label is required")
+
+  const range = await apiCall(ludusUrl, apiKey, "/range")
+  const vm = findVM(range.VMs ?? [], label)
+  const ip = vm.ip && vm.ip !== "null" ? vm.ip : await waitForVMIP(ludusUrl, apiKey, vm.name)
+
+  const psCmd = `$results = @{}
+$results['lsaDisabled'] = ((Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name RunAsPPL -EA SilentlyContinue).RunAsPPL -eq 0)
+$results['sysmonRunning'] = ((Get-Service Sysmon64 -EA SilentlyContinue).Status -eq 'Running')
+$results['cmdlineLogging'] = ((Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Audit' -Name ProcessCreationIncludeCmdLine_Enabled -EA SilentlyContinue).ProcessCreationIncludeCmdLine_Enabled -eq 1)
+$results['scriptBlockLogging'] = ((Get-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging' -Name EnableScriptBlockLogging -EA SilentlyContinue).EnableScriptBlockLogging -eq 1)
+$results['prefetchEnabled'] = ((Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management\\PrefetchParameters' -Name EnablePrefetcher -EA SilentlyContinue).EnablePrefetcher -ge 1)
+$results['usnJournalActive'] = ((fsutil usn queryjournal C: 2>&1 | Out-String) -notmatch 'does not have')
+$results['lsassAuditLevel'] = ((Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\lsass.exe' -Name AuditLevel -EA SilentlyContinue).AuditLevel -eq 8)
+$results['handleAudit'] = ((auditpol /get /subcategory:'Handle Manipulation') -match 'Success and Failure')
+$results['dnsClientLog'] = ((wevtutil gl 'Microsoft-Windows-DNS-Client/Operational' 2>&1 | Out-String) -match 'enabled: true')
+$results['psLogSize'] = ([int]((wevtutil gl 'Microsoft-Windows-PowerShell/Operational' 2>&1 | Out-String) -replace '(?s).*maxSize:\\s*(\\d+).*','$1') -ge 524288000)
+$results['ready'] = ($results.Values -notcontains $false)
+ConvertTo-Json $results`
+  const psCmdSafe = psCmd.replace(/'/g, "\\'")
+
+  try {
+    const py = `
+import winrm
+import json
+s = winrm.Session('${ip}', auth=('localuser', 'password'), transport='ssl', server_cert_validation='ignore')
+r = s.run_cmd('powershell -Command "${psCmdSafe}"')
+out = r.std_out.decode().strip()
+if out:
+    parsed = json.loads(out)
+    print(json.dumps({"ready": parsed.get("ready", False), "checks": {k: v for k, v in parsed.items() if k != "ready"}}))
+else:
+    print(json.dumps({"ready": False, "checks": {}, "winrmFailed": true}))
+exit(r.status_code)
+`
+    const result = await $`uv run python -c ${py}`.nothrow().quiet()
+    if (result.exitCode !== 0) {
+      return { ready: false, checks: {}, winrmFailed: true }
+    }
+    const raw = result.stdout.toString().trim()
+    if (!raw) return { ready: false, checks: {}, winrmFailed: true }
+    return JSON.parse(raw)
+  } catch (err) {
+    return { ready: false, checks: {}, winrmFailed: true }
+  }
+}
+
 export function parseInventoryForHost(inventoryText, hostName) {
   const lines = inventoryText.split("\n")
   for (const line of lines) {
