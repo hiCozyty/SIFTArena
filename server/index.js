@@ -1,6 +1,6 @@
 import { createWsHandler, addFetcher, addOperation } from "./poller.js"
 import { fetchTemplates, fetchTemplatesWithLog, buildTemplates } from "./ludus/templates.js"
-import { fetchPackerTemplates } from "./ludus/packer-templates.js"
+import { fetchPackerTemplates, ensureWin11DiskSize } from "./ludus/packer-templates.js"
 import { fetchRangeWithLog, deleteRangeVMs, deployVM, deployAllBaseVMs, deleteVM, powerOffVM, powerOnVM, deployCustomVM, updateRangeConfig, fetchSystemInfo, abortRange, restoreToBaseClean, listSnapshots, saveBaseClean, prepareGoldenImage, runAnsibleScript, checkCaldera, checkLsaProtection, checkWindowsReadiness, getVmDefs, listProxmoxVMs, getVMInfo } from "./ludus/range.js"
 import { fetchFocusedCategoriesAndTechniques } from "./caldera/categories.js"
 import { initDatabase, getCustomAbilities, createCustomAbility, updateCustomAbility, deleteCustomAbility, syncToCaldera } from "./caldera/customAbilities.js"
@@ -12,7 +12,7 @@ import { createVncProxyHandler, getOrCreateVncSession } from "./ludus/proxmox.js
 import { createWinrmProxy } from "./ludus/winrm-proxy.js"
 import { createSshProxy } from "./ludus/ssh-proxy.js"
 import { getContainerBackend } from "./ludus/container-backends.js"
-import { listWorkflows, readWorkflowFile, initializeOpencodeSessionFromDocker, verifyWorkflowMcpTool } from "./ludus/workflows.js"
+import { listWorkflows, readWorkflowFile } from "./ludus/workflows.js"
 
 const LUDUS_SERVER_URL = process.env.LUDUS_SERVER_URL + "/api/v2"
 const LUDUS_API_KEY = process.env.LUDUS_API_KEY
@@ -99,8 +99,6 @@ addOperation("deleteNoise", async (_, __, data) => deleteNoise(data.data.name))
 addOperation("getPlaybooks", async () => getPlaybooks())
 addOperation("listWorkflows", listWorkflows)
 addOperation("readWorkflowFile", readWorkflowFile)
-addOperation("initializeOpencodeSessionFromDocker", initializeOpencodeSessionFromDocker)
-addOperation("verifyWorkflowMcpTool", verifyWorkflowMcpTool)
 addOperation("createPlaybook", async (_, __, data) => createPlaybook(data.data))
 addOperation("updatePlaybook", async (_, __, data) => updatePlaybook(data.data.name, data.data.data))
 addOperation("deletePlaybook", async (_, __, data) => deletePlaybook(data.data.name))
@@ -109,6 +107,7 @@ initDatabase()
 initVmConfigDb()
 initNoiseDb()
 initPlaybookDb()
+await ensureWin11DiskSize(LUDUS_SERVER_URL)
 syncToCaldera()
 
 const pollerHandler = createWsHandler(LUDUS_SERVER_URL, LUDUS_API_KEY)

@@ -51,40 +51,52 @@ test("Proxmox node name can be discovered", async () => {
   console.log(`  Node: ${node}`)
 })
 
-test("VNC proxy for VM 104 (Kali)", async () => {
+test("VNC proxy for VM 104 (Router)", async () => {
   const info = await getVncInfo(104)
   expect(info).toHaveProperty("port")
   expect(info).toHaveProperty("ticket")
   console.log(`  Port: ${info.port}`)
 })
 
-test("VNC proxy for VM 105 (Win11)", async () => {
+test("VNC proxy for VM 105 (DC01)", async () => {
   const info = await getVncInfo(105)
   expect(info).toHaveProperty("port")
   expect(info).toHaveProperty("ticket")
   console.log(`  Port: ${info.port}`)
 })
 
-test("VNC proxy for VM 106 (Win11-test)", async () => {
+test("VNC proxy for VM 106 (Kali)", async () => {
   const info = await getVncInfo(106)
   expect(info).toHaveProperty("port")
   expect(info).toHaveProperty("ticket")
   console.log(`  Port: ${info.port}`)
 })
 
-test("VNC WebSocket connects for VM 104 (Kali)", async () => {
+test("VNC WebSocket connects for VM 104 (Router)", async () => {
   const { port, ticket } = await getVncInfo(104)
   await testWsConnect(104, port, ticket)
 }, { timeout: 15000 })
 
-test("VNC WebSocket connects for VM 105 (Win11)", async () => {
+test("VNC WebSocket connects for VM 105 (DC01)", async () => {
   const { port, ticket } = await getVncInfo(105)
   await testWsConnect(105, port, ticket)
 }, { timeout: 15000 })
 
-test("VNC WebSocket connects for VM 106 (Win11-test)", async () => {
+test("VNC WebSocket connects for VM 106 (Kali)", async () => {
   const { port, ticket } = await getVncInfo(106)
   await testWsConnect(106, port, ticket)
+}, { timeout: 15000 })
+
+test("VNC proxy for VM 107 (Win11)", async () => {
+  const info = await getVncInfo(107)
+  expect(info).toHaveProperty("port")
+  expect(info).toHaveProperty("ticket")
+  console.log(`  Port: ${info.port}`)
+})
+
+test("VNC WebSocket connects for VM 107 (Win11)", async () => {
+  const { port, ticket } = await getVncInfo(107)
+  await testWsConnect(107, port, ticket)
 }, { timeout: 15000 })
 
 test("Proxy forwards binary frames from VNC server to client", async () => {

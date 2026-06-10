@@ -87,6 +87,6 @@ VOLUME ["/home/sift/evidence", "/home/sift/workflows", "/home/sift/playbooks"]
 
 WORKDIR /home/sift
 
-EXPOSE 5901 6901 22 3113
+EXPOSE 5901 6901 22
 
 ENTRYPOINT ["/entrypoint.sh"]

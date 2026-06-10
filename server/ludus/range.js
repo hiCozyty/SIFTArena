@@ -969,7 +969,7 @@ $results['dnsClientLog'] = ((wevtutil gl 'Microsoft-Windows-DNS-Client/Operation
 $results['psLogSize'] = ([int]((wevtutil gl 'Microsoft-Windows-PowerShell/Operational' 2>&1 | Out-String) -replace '(?s).*maxSize:\\s*(\\d+).*','$1') -ge 524288000)
 $results['ready'] = ($results.Values -notcontains $false)
 ConvertTo-Json $results`
-  const psCmdSafe = psCmd.replace(/'/g, "\\'")
+  const psCmdSafe = psCmd.replace(/'/g, "\\'").replace(/\n/g, "; ")
 
   try {
     const py = `
@@ -986,10 +986,12 @@ else:
 exit(r.status_code)
 `
     const result = await $`uv run python -c ${py}`.nothrow().quiet()
+    console.log("[checkWindowsReadiness] exitCode:", result.exitCode, "stderr:", String(result.stderr))
     if (result.exitCode !== 0) {
       return { ready: false, checks: {}, winrmFailed: true }
     }
     const raw = result.stdout.toString().trim()
+    console.log("[checkWindowsReadiness] raw output:", raw)
     if (!raw) return { ready: false, checks: {}, winrmFailed: true }
     return JSON.parse(raw)
   } catch (err) {

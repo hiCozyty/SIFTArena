@@ -8,7 +8,7 @@
   "mcp": {
     "customMCP": {
       "type": "local",
-      "command": ["bun", "run", "./customMCP/index.ts"],
+      "command": ["bun", "run", "./workflows/workflow1/customMCP/index.ts"],
       "enabled": true
     }
   }

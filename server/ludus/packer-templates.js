@@ -50,3 +50,15 @@ export async function fetchPackerTemplates(ludusUrl) {
 
   return templates
 }
+
+export async function ensureWin11DiskSize(ludusUrl) {
+  const host = new URL(ludusUrl).hostname
+  const file = "/opt/ludus/packer/win11-22h2-x64-enterprise/win11-22h2-x64-enterprise.pkr.hcl"
+
+  const current = await $`ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 root@${host} "grep 'default = \"250G\"' ${file} 2>/dev/null || true"`.quiet().text()
+
+  if (current.includes("250G")) {
+    await $`ssh -o StrictHostKeyChecking=accept-new root@${host} "sed -i 's/default = \"250G\"/default = \"32G\"/' ${file}"`.quiet()
+    console.log("ensureWin11DiskSize: reset vm_disk_size from 250G to 32G")
+  }
+}

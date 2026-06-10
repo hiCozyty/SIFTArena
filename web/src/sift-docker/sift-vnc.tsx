@@ -48,19 +48,15 @@ export function SiftVnc({ containerId, className, onStatusChange }: SiftVncProps
       if (cancelled) return
 
       try {
-        console.log(`[SiftVNC ${containerId}] Fetching ticket from ${getTicketUrl(containerId)}`)
         const ticketRes = await fetch(getTicketUrl(containerId))
         if (!ticketRes.ok) {
           console.error(`[SiftVNC ${containerId}] Ticket fetch failed: HTTP ${ticketRes.status}`)
           throw new Error(`Failed to fetch VNC ticket: ${ticketRes.status}`)
         }
         const { ticket } = await ticketRes.json()
-        console.log(`[SiftVNC ${containerId}] Ticket received (${ticket ? ticket.length : 0} chars)`)
         if (cancelled) return
 
         const wsUrl = getWsUrl(containerId)
-        console.log(`[SiftVNC ${containerId}] Connecting to ${wsUrl}`)
-
         rfb = new RFB(container, wsUrl, {
           wsProtocols: ["binary"],
           credentials: { password: ticket },
@@ -71,14 +67,12 @@ export function SiftVnc({ containerId, className, onStatusChange }: SiftVncProps
 
         rfb.addEventListener("connect", () => {
           if (cancelled) return
-          console.log(`[SiftVNC ${containerId}] Connected`)
           updateStatus("connected")
         })
 
         rfb.addEventListener("disconnect", (e: any) => {
           if (cancelled) return
           const detail = e?.detail || {}
-          console.log(`[SiftVNC ${containerId}] Disconnected`, detail)
           updateStatus("disconnected")
         })
 
@@ -89,15 +83,12 @@ export function SiftVnc({ containerId, className, onStatusChange }: SiftVncProps
         })
 
         rfb.addEventListener("desktopname", (e: any) => {
-          console.log(`[SiftVNC ${containerId}] Desktop name:`, e?.detail?.name)
-        })
+          })
 
         rfb.addEventListener("clipboard", (e: any) => {
-          console.log(`[SiftVNC ${containerId}] Clipboard event`)
-        })
+          })
 
         rfb.addEventListener("credentialsrequired", () => {
-          console.log(`[SiftVNC ${containerId}] Credentials required, sending ticket`)
           rfb.sendCredentials({ password: ticket })
         })
       } catch (err) {
