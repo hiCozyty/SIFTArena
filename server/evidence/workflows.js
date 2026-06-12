@@ -1,5 +1,6 @@
 import { readdir, stat } from "node:fs/promises"
 import { join, basename } from "node:path"
+import { collectEvidence as runEvidenceCollection } from "../benchmark/evidenceCollection.js"
 
 const WORKFLOWS_DIR = join(import.meta.dir, "..", "..", "workflows")
 const EVIDENCE_DIR = join(import.meta.dir, "..", "..", "evidence")
@@ -114,7 +115,7 @@ export async function getEvidenceFileInfo(_, __, data) {
   const { path } = data.data
   const fullPath = join(EVIDENCE_DIR, path)
   const s = await stat(fullPath).catch(() => null)
-  if (!s || !s.isFile()) return { name: null, path, size: null, hash: null }
+  if (!s || !s.isFile()) return { name: null, path, size: null, hash: null, created: null }
 
   let hash = null
   try {
@@ -126,6 +127,7 @@ export async function getEvidenceFileInfo(_, __, data) {
     path,
     size: s.size,
     hash,
+    created: s.birthtime.toISOString(),
   }
 }
 
@@ -173,4 +175,50 @@ echo "Mounted at /mnt/windows"`
   }
 
   return { success: true, output: stdout.trim(), mountPoint: "/mnt/windows" }
+}
+
+export async function unmountEvidenceFromSift(_, __, data) {
+  const { path } = data.data
+
+  const unmountScript = `set -e
+echo "=== Unmounting filesystem ==="
+umount /mnt/windows 2>/dev/null || true
+
+echo "=== Unmounting EWF ==="
+umount /mnt/ewf 2>/dev/null || true
+
+echo "=== Cleanup complete ==="`
+
+  const proc = Bun.spawn([
+    "sshpass", "-p", "forensics", "ssh",
+    "-p", "2222",
+    "-o", "StrictHostKeyChecking=no",
+    "-o", "UserKnownHostsFile=/dev/null",
+    "sift@localhost",
+    unmountScript,
+  ])
+
+  const stdout = await new Response(proc.stdout).text()
+  const stderr = await new Response(proc.stderr).text()
+  const exitCode = await proc.exited
+
+  if (exitCode !== 0) {
+    throw new Error(`Unmount failed (exit ${exitCode}): ${stderr || stdout}`)
+  }
+
+  return { success: true, output: stdout.trim() }
+}
+
+export async function collectEvidence(_, __, data) {
+  const { playbookName, vmid, overwrite } = data.data || {}
+  return runEvidenceCollection({ playbookName, vmid, overwrite })
+}
+
+export async function checkEvidenceExists(_, __, data) {
+  const { playbookName } = data.data || {}
+  if (!playbookName) throw new Error("playbookName is required")
+  const memoryDump = Bun.file(`./evidence/${playbookName}/memory.dump`)
+  const diskImage = Bun.file(`./evidence/${playbookName}/disk-image.E01`)
+  const exists = await memoryDump.exists() && await diskImage.exists()
+  return { exists, playbookName }
 }

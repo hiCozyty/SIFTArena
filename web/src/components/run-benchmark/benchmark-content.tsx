@@ -18,6 +18,16 @@ import {
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { SiftAgentTree, type Workflow } from "@/components/sift-agent/sift-agent-tree"
 import * as backendWs from "@/lib/backend-ws"
 import { executeWsOperation } from "@/lib/ws-ops"
@@ -55,11 +65,17 @@ export function BenchmarkContent({
 
   const [evidence, setEvidence] = useState<Workflow[]>([])
   const [selectedEvidenceNodeId, setSelectedEvidenceNodeId] = useState<string | null>(null)
-  const [evidenceFileInfo, setEvidenceFileInfo] = useState<{ name: string | null, path: string, size: number | null, hash: string | null } | null>(null)
+  const [evidenceFileInfo, setEvidenceFileInfo] = useState<{ name: string | null, path: string, size: number | null, hash: string | null, created: string | null } | null>(null)
   const [evidenceFileInfoLoading, setEvidenceFileInfoLoading] = useState(false)
   const [mountingEvidence, setMountingEvidence] = useState(false)
   const [mountResult, setMountResult] = useState<string | null>(null)
   const [mountError, setMountError] = useState<string | null>(null)
+  const [unmountingEvidence, setUnmountingEvidence] = useState(false)
+  const [mountedPlaybookName, setMountedPlaybookName] = useState<string | null>(null)
+  const [collectingEvidence, setCollectingEvidence] = useState(false)
+  const [evidenceCollectionError, setEvidenceCollectionError] = useState<string | null>(null)
+  const [showCollectDialog, setShowCollectDialog] = useState(false)
+  const [collectDialogOverwrite, setCollectDialogOverwrite] = useState(false)
 
   useEffect(() => {
     if (!playbookFinished) return
@@ -97,12 +113,67 @@ export function BenchmarkContent({
         sendFn: () => backendWs.send({ type: "mountEvidenceToSift", data: { path: playbookDir } }),
       })
       setMountResult(result.output)
+      setMountedPlaybookName(playbookDir)
     } catch (err) {
       setMountError(err instanceof Error ? err.message : String(err))
     } finally {
       setMountingEvidence(false)
     }
   }, [evidenceFileInfo])
+
+  const isE01File = evidenceFileInfo?.name?.toLowerCase().endsWith(".e01") ?? false
+
+  const handleUnmountEvidence = useCallback(async () => {
+    if (!evidenceFileInfo?.path) return
+    const playbookDir = evidenceFileInfo.path.split("/")[0]
+    setUnmountingEvidence(true)
+    try {
+      await executeWsOperation({
+        messageType: "unmountEvidenceFromSift",
+        sendFn: () => backendWs.send({ type: "unmountEvidenceFromSift", data: { path: playbookDir } }),
+      })
+      setMountResult(null)
+      setMountedPlaybookName(null)
+    } catch (err) {
+      setMountError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setUnmountingEvidence(false)
+    }
+  }, [evidenceFileInfo])
+
+  const handleCollectEvidence = useCallback(async () => {
+    setCollectingEvidence(true)
+    setEvidenceCollectionError(null)
+    try {
+      const { exists } = await executeWsOperation<{ exists: boolean }>({
+        messageType: "checkEvidenceExists",
+        sendFn: () => backendWs.send({ type: "checkEvidenceExists", data: { playbookName: "test-playbook" } }),
+      })
+      setCollectDialogOverwrite(exists)
+      setShowCollectDialog(true)
+    } catch (err) {
+      setEvidenceCollectionError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setCollectingEvidence(false)
+    }
+  }, [])
+
+  const handleConfirmCollect = useCallback(async () => {
+    setShowCollectDialog(false)
+    setCollectingEvidence(true)
+    setEvidenceCollectionError(null)
+    try {
+      await executeWsOperation({
+        messageType: "collectEvidence",
+        sendFn: () => backendWs.send({ type: "collectEvidence", data: { playbookName: "test-playbook", vmid: 107, overwrite: true } }),
+      })
+      setPlaybookFinished(true)
+    } catch (err) {
+      setEvidenceCollectionError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setCollectingEvidence(false)
+    }
+  }, [])
 
   useEffect(() => {
     if (logRef.current) {
@@ -175,7 +246,18 @@ export function BenchmarkContent({
                   <span className="text-sm font-medium">Current Workflow Selected:</span>
                   <span className="text-muted-foreground text-sm">Full Attack Chain</span>
                 </div>
-                <Button>Run playbook</Button>
+                <div className="flex items-center gap-2">
+                  <Button>Run playbook</Button>
+                  <Button
+                    disabled={collectingEvidence}
+                    onClick={handleCollectEvidence}
+                  >
+                    {collectingEvidence ? "Collecting..." : "Collect evidence"}
+                  </Button>
+                </div>
+                {evidenceCollectionError && (
+                  <p className="text-xs text-destructive">{evidenceCollectionError}</p>
+                )}
                 <div className="flex items-center gap-2">
                   <Progress value={45} className="w-48" />
                   <span className="text-muted-foreground text-xs">45%</span>
@@ -221,43 +303,61 @@ export function BenchmarkContent({
                   rootLabel="Evidence"
                 />
               </div>
-              <div className="overflow-auto rounded-xl border bg-muted flex flex-col">
-                {evidenceFileInfo ? (
-                  <>
-                    <div className="shrink-0 px-4 py-2 border-b border-border flex items-center justify-between">
-                      <span className="text-muted-foreground text-xs font-mono">{evidenceFileInfo.path}</span>
-                      <Button
-                        size="sm"
-                        disabled={mountingEvidence}
-                        onClick={handleMountEvidence}
-                      >
-                        {mountingEvidence ? "Mounting..." : "Mount Evidence to SIFT"}
-                      </Button>
+              <div className="flex flex-col min-h-0">
+                <div className="shrink-0 px-4 py-2 border-b border-border flex items-center justify-between">
+                  <span className="text-muted-foreground text-xs">
+                    Current mounted evidence: {mountedPlaybookName ? <strong>{mountedPlaybookName}</strong> : "None"}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={unmountingEvidence || !mountedPlaybookName}
+                      onClick={handleUnmountEvidence}
+                    >
+                      {unmountingEvidence ? "Unmounting..." : "Unmount"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={mountingEvidence || !isE01File}
+                      onClick={handleMountEvidence}
+                    >
+                      {mountingEvidence ? "Mounting..." : "Mount Evidence to SIFT"}
+                    </Button>
+                  </div>
+                </div>
+                <div className="overflow-auto rounded-xl border bg-muted flex flex-col flex-1">
+                  {evidenceFileInfo ? (
+                    <>
+                      <div className="shrink-0 px-4 py-2 border-b border-border">
+                        <span className="text-muted-foreground text-xs font-mono">{evidenceFileInfo.path}</span>
+                      </div>
+                      <pre className="font-mono text-xs text-zinc-300 flex-1 overflow-auto p-3">
+                        <code>{[
+                          `name:    ${evidenceFileInfo.name}`,
+                          `path:    ${evidenceFileInfo.path}`,
+                          `size:    ${evidenceFileInfo.size !== null ? formatSize(evidenceFileInfo.size) : "unknown"}`,
+                          evidenceFileInfo.created && `created: ${new Date(evidenceFileInfo.created).toLocaleString()}`,
+                          evidenceFileInfo.hash && `hash:    ${evidenceFileInfo.hash}`,
+                        ].filter(Boolean).join("\n")}</code>
+                      </pre>
+                      {mountResult && (
+                        <pre className="mx-3 mb-2 rounded-lg bg-zinc-900 p-2 font-mono text-xs text-green-400 max-h-48 overflow-auto shrink-0">{mountResult}</pre>
+                      )}
+                      {mountError && (
+                        <p className="mx-3 mb-2 text-xs text-red-400 shrink-0">{mountError}</p>
+                      )}
+                    </>
+                  ) : evidenceFileInfoLoading ? (
+                    <div className="flex h-full items-center justify-center text-muted-foreground text-sm p-3">
+                      Loading...
                     </div>
-                    <pre className="font-mono text-xs text-zinc-300 flex-1 overflow-auto p-3">
-                      <code>{[
-                        `name:    ${evidenceFileInfo.name}`,
-                        `path:    ${evidenceFileInfo.path}`,
-                        `size:    ${evidenceFileInfo.size !== null ? formatSize(evidenceFileInfo.size) : "unknown"}`,
-                        evidenceFileInfo.hash && `hash:    ${evidenceFileInfo.hash}`,
-                      ].filter(Boolean).join("\n")}</code>
-                    </pre>
-                    {mountResult && (
-                      <pre className="mx-3 mb-2 rounded-lg bg-zinc-900 p-2 font-mono text-xs text-green-400 max-h-48 overflow-auto shrink-0">{mountResult}</pre>
-                    )}
-                    {mountError && (
-                      <p className="mx-3 mb-2 text-xs text-red-400 shrink-0">{mountError}</p>
-                    )}
-                  </>
-                ) : evidenceFileInfoLoading ? (
-                  <div className="flex h-full items-center justify-center text-muted-foreground text-sm p-3">
-                    Loading...
-                  </div>
-                ) : (
-                  <div className="flex h-full items-center justify-center text-muted-foreground text-sm p-3">
-                    {evidence.length === 0 ? "No evidence files found" : "Select an evidence file"}
-                  </div>
-                )}
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-muted-foreground text-sm p-3">
+                      {evidence.length === 0 ? "No evidence files found" : "Select an evidence file"}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </AccordionContent>
@@ -276,6 +376,26 @@ export function BenchmarkContent({
           </AccordionContent>
         </AccordionItem>
       </Accordion>
+      <AlertDialog open={showCollectDialog} onOpenChange={setShowCollectDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {collectDialogOverwrite ? "Overwrite Evidence?" : "Collect Evidence?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {collectDialogOverwrite
+                ? "Evidence already exists for test-playbook. Overwrite?"
+                : "Collect evidence for test-playbook? Files will be saved to evidence/test-playbook/."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmCollect}>
+              {collectDialogOverwrite ? "Overwrite" : "Collect"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </TabContentCard>
   )
 }

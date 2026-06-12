@@ -85,6 +85,17 @@ function FileTreeRow({
   )
 }
 
+function collectDirIds(entries: FileEntry[], parentPath: string): string[] {
+  const ids: string[] = []
+  for (const entry of entries) {
+    if (entry.type !== "directory") continue
+    const id = `${parentPath}/${entry.name}`
+    ids.push(id)
+    if (entry.children) ids.push(...collectDirIds(entry.children, id))
+  }
+  return ids
+}
+
 export function SiftAgentTree({
   workflows,
   onSelectFile,
@@ -101,7 +112,13 @@ export function SiftAgentTree({
 
   return (
     <TreeProvider
-      defaultExpandedIds={["workflows"]}
+      defaultExpandedIds={[
+        "workflows",
+        ...(workflows?.flatMap((w) => {
+          const dirId = `workflows/${w.name}`
+          return [dirId, ...collectDirIds(w.files, dirId)]
+        }) ?? []),
+      ]}
       selectedIds={selectedNodeId ? [selectedNodeId] : []}
       onSelectionChange={() => {}}
       className="h-full"
