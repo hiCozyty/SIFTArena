@@ -60,6 +60,7 @@ export function BenchmarkContent({
   siftAgentConfigured: boolean
 }) {
   const logRef = useRef<HTMLDivElement>(null)
+  const streamRef = useRef<HTMLPreElement>(null)
   const navigate = useNavigate()
   const [playbookFinished, setPlaybookFinished] = useState(false)
 
@@ -72,6 +73,7 @@ export function BenchmarkContent({
   const [mountError, setMountError] = useState<string | null>(null)
   const [unmountingEvidence, setUnmountingEvidence] = useState(false)
   const [mountedPlaybookName, setMountedPlaybookName] = useState<string | null>(null)
+  const [mountStreamOutput, setMountStreamOutput] = useState("")
   const [collectingEvidence, setCollectingEvidence] = useState(false)
   const [evidenceCollectionError, setEvidenceCollectionError] = useState<string | null>(null)
   const [showCollectDialog, setShowCollectDialog] = useState(false)
@@ -84,6 +86,45 @@ export function BenchmarkContent({
       sendFn: () => backendWs.send({ type: "listEvidence" }),
     }).then(setEvidence).catch(() => setEvidence([]))
   }, [playbookFinished])
+
+  useEffect(() => {
+    if (playbookCompleted) setPlaybookFinished(true)
+  }, [playbookCompleted])
+
+  useEffect(() => {
+    if (playbookFinished) return
+    executeWsOperation<Workflow[]>({
+      messageType: "listEvidence",
+      sendFn: () => backendWs.send({ type: "listEvidence" }),
+    }).then((results) => {
+      setEvidence(results)
+      if (results?.length > 0) setPlaybookFinished(true)
+    }).catch(() => setEvidence([]))
+  }, [])
+
+  useEffect(() => {
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type === "mountEvidenceToSift:stream" || data.type === "unmountEvidenceFromSift:stream") {
+        setMountStreamOutput((prev) => prev + (data.text as string))
+      }
+    })
+    return unsub
+  }, [])
+
+  useEffect(() => {
+    executeWsOperation<string | null>({
+      messageType: "getMountedEvidence",
+      sendFn: () => backendWs.send({ type: "getMountedEvidence" }),
+    }).then((playbookName) => {
+      if (playbookName) setMountedPlaybookName(playbookName as string)
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (streamRef.current) {
+      streamRef.current.scrollTop = streamRef.current.scrollHeight
+    }
+  }, [mountStreamOutput])
 
   const handleSelectEvidenceFile = useCallback((nodeId: string) => {
     if (nodeId === selectedEvidenceNodeId) {
@@ -104,6 +145,8 @@ export function BenchmarkContent({
   const handleMountEvidence = useCallback(async () => {
     if (!evidenceFileInfo?.path) return
     const playbookDir = evidenceFileInfo.path.split("/")[0]
+    console.log("[handleMountEvidence] Sending mount request for:", playbookDir)
+    setMountStreamOutput("")
     setMountingEvidence(true)
     setMountResult(null)
     setMountError(null)
@@ -112,11 +155,14 @@ export function BenchmarkContent({
         messageType: "mountEvidenceToSift",
         sendFn: () => backendWs.send({ type: "mountEvidenceToSift", data: { path: playbookDir } }),
       })
+      console.log("[handleMountEvidence] Mount response:", result)
       setMountResult(result.output)
       setMountedPlaybookName(playbookDir)
     } catch (err) {
+      console.error("[handleMountEvidence] Mount error:", err)
       setMountError(err instanceof Error ? err.message : String(err))
     } finally {
+      console.log("[handleMountEvidence] Done, setting mountingEvidence=false")
       setMountingEvidence(false)
     }
   }, [evidenceFileInfo])
@@ -126,6 +172,7 @@ export function BenchmarkContent({
   const handleUnmountEvidence = useCallback(async () => {
     if (!evidenceFileInfo?.path) return
     const playbookDir = evidenceFileInfo.path.split("/")[0]
+    setMountStreamOutput("")
     setUnmountingEvidence(true)
     try {
       await executeWsOperation({
@@ -284,12 +331,12 @@ export function BenchmarkContent({
           <AccordionTrigger>
             Evidence Collection
             {!playbookFinished && (
-              <span className="ml-1 text-muted-foreground font-normal">(Run Playbook First)</span>
+              <span className="ml-1 text-muted-foreground/80 font-normal">(Run Playbook First)</span>
             )}
           </AccordionTrigger>
           <AccordionContent>
             <div className="grid gap-4 rounded-xl p-1 h-[calc(80vh-17rem)]" style={{ gridTemplateColumns: "220px 1fr" }}>
-              <div className="rounded-xl border bg-muted/30 p-3 overflow-auto">
+              <div className="rounded-4xl border bg-muted/30 p-3 overflow-auto">
                 <SiftAgentTree
                   workflows={evidence}
                   selectedNodeId={selectedEvidenceNodeId}
@@ -304,7 +351,7 @@ export function BenchmarkContent({
                 />
               </div>
               <div className="flex flex-col min-h-0">
-                <div className="shrink-0 px-4 py-2 border-b border-border flex items-center justify-between">
+                <div className="shrink-0 px-4 py-2 flex items-center justify-between">
                   <span className="text-muted-foreground text-xs">
                     Current mounted evidence: {mountedPlaybookName ? <strong>{mountedPlaybookName}</strong> : "None"}
                   </span>
@@ -326,13 +373,13 @@ export function BenchmarkContent({
                     </Button>
                   </div>
                 </div>
-                <div className="overflow-auto rounded-xl border bg-muted flex flex-col flex-1">
+                <div className="overflow-auto rounded-4xl border bg-muted flex flex-col flex-1 min-w-0">
                   {evidenceFileInfo ? (
                     <>
                       <div className="shrink-0 px-4 py-2 border-b border-border">
                         <span className="text-muted-foreground text-xs font-mono">{evidenceFileInfo.path}</span>
                       </div>
-                      <pre className="font-mono text-xs text-zinc-300 flex-1 overflow-auto p-3">
+                      <pre className="font-mono text-xs text-zinc-700 flex-1 overflow-auto p-3 dark:text-zinc-300">
                         <code>{[
                           `name:    ${evidenceFileInfo.name}`,
                           `path:    ${evidenceFileInfo.path}`,
@@ -341,11 +388,11 @@ export function BenchmarkContent({
                           evidenceFileInfo.hash && `hash:    ${evidenceFileInfo.hash}`,
                         ].filter(Boolean).join("\n")}</code>
                       </pre>
-                      {mountResult && (
-                        <pre className="mx-3 mb-2 rounded-lg bg-zinc-900 p-2 font-mono text-xs text-green-400 max-h-48 overflow-auto shrink-0">{mountResult}</pre>
+                       {(mountStreamOutput || mountResult) && (
+                         <pre ref={streamRef} className="mx-3 mb-2 rounded-4xl bg-zinc-100 p-2 font-mono text-xs text-zinc-900 max-h-48 overflow-auto shrink-0 min-w-0 w-full whitespace-pre-wrap dark:bg-zinc-900 dark:text-green-400">{mountStreamOutput || mountResult}</pre>
                       )}
                       {mountError && (
-                        <p className="mx-3 mb-2 text-xs text-red-400 shrink-0">{mountError}</p>
+                        <p className="mx-3 mb-2 text-xs text-red-600 dark:text-red-400 shrink-0">{mountError}</p>
                       )}
                     </>
                   ) : evidenceFileInfoLoading ? (
@@ -362,10 +409,12 @@ export function BenchmarkContent({
             </div>
           </AccordionContent>
         </AccordionItem>
-        <AccordionItem value="timeline-analysis" disabled>
+        <AccordionItem value="timeline-analysis" disabled={!mountedPlaybookName}>
           <AccordionTrigger>
             Timeline and Analysis
-            <span className="ml-1 text-muted-foreground font-normal">(Run Evidence Collection First)</span>
+            {!mountedPlaybookName && (
+              <span className="ml-1 text-muted-foreground/80 font-normal">(Select and Mount Evidence to SIFT)</span>
+            )}
           </AccordionTrigger>
           <AccordionContent>
             <div className="h-[calc(80vh-17rem)] overflow-auto rounded-xl border bg-muted/30 p-4">

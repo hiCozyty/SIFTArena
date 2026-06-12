@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     apt-utils \
     locales \
+    unzip \
     && locale-gen en_US.UTF-8 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -79,6 +80,12 @@ RUN wget -q "https://github.com/ekristen/cast/releases/download/v${CAST_VERSION}
 RUN sudo cast install --mode=server teamdfir/sift-saltstack
 
 ENV PATH="/root/.local/bin:${PATH}"
+
+RUN curl -fsSL https://opencode.ai/install | bash && \
+    cp /root/.opencode/bin/opencode /usr/local/bin/opencode
+
+RUN curl -fsSL https://bun.sh/install | bash && \
+    cp /root/.bun/bin/bun /usr/local/bin/bun
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

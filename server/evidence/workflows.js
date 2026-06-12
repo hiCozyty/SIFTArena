@@ -5,6 +5,8 @@ import { collectEvidence as runEvidenceCollection } from "../benchmark/evidenceC
 const WORKFLOWS_DIR = join(import.meta.dir, "..", "..", "workflows")
 const EVIDENCE_DIR = join(import.meta.dir, "..", "..", "evidence")
 
+let currentMountedEvidence = null
+
 async function readDirTree(dirPath) {
   const entries = await readdir(dirPath, { withFileTypes: true })
   const result = []
@@ -131,82 +133,156 @@ export async function getEvidenceFileInfo(_, __, data) {
   }
 }
 
-export async function mountEvidenceToSift(_, __, data) {
-  const { path } = data.data
+export async function mountEvidenceToSift(_, __, data, ws) {
+  let { path, extractInode } = data.data
   const containerPath = `/home/sift/evidence/${path}`
 
+  if (extractInode) {
+    console.log(`[mountEvidenceToSift] extractInode ${extractInode} for ${path}`)
+    const offset = await detectPartitionOffset(containerPath)
+    const e01Path = `${containerPath}/disk-image.E01`
+
+    const proc = Bun.spawn([
+      "sshpass", "-p", "forensics", "ssh",
+      "-p", "2222",
+      "-o", "StrictHostKeyChecking=no",
+      "-o", "UserKnownHostsFile=/dev/null",
+      "-o", "LogLevel=ERROR",
+      "sift@localhost",
+      `sudo icat -o ${offset} "${e01Path}" ${extractInode}`,
+    ])
+
+    const buf = await new Response(proc.stdout).arrayBuffer()
+    const exitCode = await proc.exited
+
+    if (exitCode !== 0) {
+      const stderr = await new Response(proc.stderr).text()
+      throw new Error(`icat failed (exit ${exitCode}): ${stderr}`)
+    }
+
+    if (buf.byteLength === 0) {
+      throw new Error(`icat returned empty output for inode ${extractInode}`)
+    }
+
+    const base64 = Buffer.from(buf).toString("base64")
+
+    return {
+      extractInode,
+      sectorOffset: offset,
+      size: buf.byteLength,
+      data: base64,
+    }
+  }
+
+  console.log("[mountEvidenceToSift] Starting Sleuth Kit analysis for path:", path)
+
   const mountScript = `set -e
-echo "=== Verifying E01 ==="
-ewfverify ${containerPath}/disk-image.E01
+echo "=== Analyzing E01 with Sleuth Kit ==="
+E01="${containerPath}/disk-image.E01"
+echo "E01 path: $E01"
 
-echo "=== Creating mount points ==="
-mkdir -p /mnt/ewf /mnt/windows
+echo ""
+echo "=== Partition table (mmls) ==="
+sudo mmls "$E01" 2>&1
 
-echo "=== Mounting E01 ==="
-ewfmount ${containerPath}/disk-image.E01 /mnt/ewf
-
-echo "=== Finding NTFS partition offset ==="
-OFFSET_LINE=$(mmls /mnt/ewf/ewf1 | grep -i "NTFS" | head -1 | awk '{print $3}')
+echo ""
+echo "=== Detecting NTFS partition ==="
+OFFSET_LINE=$(sudo mmls "$E01" | grep -E 'Basic data|NTFS|ntfs' | sort -k5 -rn | head -1)
 if [ -z "$OFFSET_LINE" ]; then
-  echo "ERROR: No NTFS partition found in E01 image"
-  exit 1
+    echo "ERROR: Could not detect filesystem partition"
+    exit 1
 fi
-echo "Partition offset: $OFFSET_LINE"
+OFFSET=$(echo "$OFFSET_LINE" | awk '{print $3}')
+echo "Detected partition at sector: $OFFSET"
+echo "MOUNT_OFFSET:$OFFSET"
 
-echo "=== Mounting filesystem read-only ==="
-mount -o ro,loop,offset=$((${OFFSET_LINE}*512)) /mnt/ewf/ewf1 /mnt/windows
-echo "Mounted at /mnt/windows"`
+echo ""
+echo "=== File listing (fls -r -o $OFFSET) ==="
+sudo fls -r -o "$OFFSET" "$E01" | head -200
+echo "Done."`
+
+  const decoder = new TextDecoder()
+  let fullOutput = ""
 
   const proc = Bun.spawn([
     "sshpass", "-p", "forensics", "ssh",
     "-p", "2222",
     "-o", "StrictHostKeyChecking=no",
     "-o", "UserKnownHostsFile=/dev/null",
+    "-o", "LogLevel=ERROR",
     "sift@localhost",
     mountScript,
-  ])
+  ], {
+    terminal: {
+      data(_terminal, data) {
+        const text = decoder.decode(data)
+        fullOutput += text
+        if (ws) {
+          ws.send(JSON.stringify({ type: "mountEvidenceToSift:stream", text }))
+        }
+      }
+    }
+  })
 
-  const stdout = await new Response(proc.stdout).text()
-  const stderr = await new Response(proc.stderr).text()
   const exitCode = await proc.exited
 
   if (exitCode !== 0) {
-    throw new Error(`Mount failed (exit ${exitCode}): ${stderr || stdout}`)
+    throw new Error(`Mount failed (exit ${exitCode}): ${fullOutput}`)
   }
 
-  return { success: true, output: stdout.trim(), mountPoint: "/mnt/windows" }
+  const match = fullOutput.match(/MOUNT_OFFSET:(\d+)/)
+  if (match) {
+    partitionOffsetCache = parseInt(match[1], 10)
+    partitionOffsetCachePath = containerPath
+  }
+
+  currentMountedEvidence = path
+
+  return { success: true, output: fullOutput.trim() }
 }
 
-export async function unmountEvidenceFromSift(_, __, data) {
-  const { path } = data.data
+let partitionOffsetCache = null
+let partitionOffsetCachePath = null
 
-  const unmountScript = `set -e
-echo "=== Unmounting filesystem ==="
-umount /mnt/windows 2>/dev/null || true
+async function detectPartitionOffset(containerPath) {
+  if (partitionOffsetCachePath === containerPath && partitionOffsetCache) {
+    return partitionOffsetCache
+  }
 
-echo "=== Unmounting EWF ==="
-umount /mnt/ewf 2>/dev/null || true
-
-echo "=== Cleanup complete ==="`
+  const e01Path = `${containerPath}/disk-image.E01`
+  console.log("[detectPartitionOffset] Detecting for:", containerPath)
 
   const proc = Bun.spawn([
     "sshpass", "-p", "forensics", "ssh",
     "-p", "2222",
     "-o", "StrictHostKeyChecking=no",
     "-o", "UserKnownHostsFile=/dev/null",
+    "-o", "LogLevel=ERROR",
     "sift@localhost",
-    unmountScript,
+    `OFFSET_LINE=$(sudo mmls "${e01Path}" | grep -E 'Basic data|NTFS|ntfs' | sort -k5 -rn | head -1); if [ -z "$OFFSET_LINE" ]; then exit 1; fi; echo $(echo "$OFFSET_LINE" | awk '{print $3}')`,
   ])
 
-  const stdout = await new Response(proc.stdout).text()
-  const stderr = await new Response(proc.stderr).text()
+  const raw = (await new Response(proc.stdout).text()).trim()
   const exitCode = await proc.exited
-
-  if (exitCode !== 0) {
-    throw new Error(`Unmount failed (exit ${exitCode}): ${stderr || stdout}`)
+  if (exitCode !== 0 || !raw) {
+    throw new Error("Could not detect NTFS partition offset. Run mount first.")
   }
 
-  return { success: true, output: stdout.trim() }
+  const offset = parseInt(raw, 10)
+  if (isNaN(offset)) {
+    throw new Error(`Invalid partition offset: ${raw}`)
+  }
+
+  partitionOffsetCache = offset
+  partitionOffsetCachePath = containerPath
+  return offset
+}
+
+export async function unmountEvidenceFromSift() {
+  currentMountedEvidence = null
+  partitionOffsetCache = null
+  partitionOffsetCachePath = null
+  return { success: true, output: "No kernel mount to clean up — Sleuth Kit reads E01 directly." }
 }
 
 export async function collectEvidence(_, __, data) {
@@ -221,4 +297,8 @@ export async function checkEvidenceExists(_, __, data) {
   const diskImage = Bun.file(`./evidence/${playbookName}/disk-image.E01`)
   const exists = await memoryDump.exists() && await diskImage.exists()
   return { exists, playbookName }
+}
+
+export async function getMountedEvidence() {
+  return currentMountedEvidence
 }

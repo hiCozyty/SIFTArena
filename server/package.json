@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "cd .. && kill $(lsof -ti:8011) 2>/dev/null; bun run ./server/index.js & cd server/caldera/opencodeDocker && docker compose up -d; cd ../../siftWorkstationDocker && docker compose up -d; cd ../../web && bun run dev"
+    "start": "cd .. && kill $(lsof -ti:8011) 2>/dev/null; bun run ./server/index.js & cd server/caldera/opencodeDocker && docker compose up -d; cd ../../siftWorkstationDocker && docker compose down 2>/dev/null; docker compose up -d; cd ../../web && bun run dev"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

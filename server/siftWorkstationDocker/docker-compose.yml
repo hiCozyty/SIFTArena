@@ -30,4 +30,4 @@ services:
       - ../../workflows:/home/sift/workflows
       - ../../playbooks:/home/sift/playbooks
 
-    restart: unless-stopped
+
