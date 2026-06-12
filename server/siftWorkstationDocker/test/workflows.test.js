@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test"
-import { initializeOpencodeSessionFromDocker } from "../../ludus/workflows.js"
+import { initializeOpencodeSessionFromDocker } from "../../workflows/workflows.js"
 
 describe("initializeOpencodeSessionFromDocker validation", () => {
   test("rejects missing workflowName", async () => {
@@ -57,11 +57,15 @@ describe("initializeOpencodeSessionFromDocker validation", () => {
 describe("initializeOpencodeSessionFromDocker SSH command construction", () => {
   const originalSpawn = Bun.spawn
   let spawnedCmd
+  let spawnedOpts
+  let killCalled
 
   beforeAll(() => {
+    killCalled = false
     // @ts-ignore
     Bun.spawn = (cmd, opts) => {
       spawnedCmd = cmd
+      spawnedOpts = opts
       return {
         stdout: new ReadableStream({
           start(controller) {
@@ -74,7 +78,9 @@ describe("initializeOpencodeSessionFromDocker SSH command construction", () => {
             controller.close()
           },
         }),
-        exited: Promise.resolve(0),
+        exitCode: 0,
+        exited: Promise.resolve(),
+        kill() { killCalled = true },
       }
     }
   })
@@ -87,12 +93,15 @@ describe("initializeOpencodeSessionFromDocker SSH command construction", () => {
     const result = await initializeOpencodeSessionFromDocker(null, null, { data: { workflowName: "workflow1" } })
 
     expect(result).toEqual({ success: true, workflow: "workflow1", message: "OK" })
+    expect(spawnedOpts.stdin).toBe("ignore")
+    expect(killCalled).toBe(true)
     expect(spawnedCmd).toBeDefined()
     expect(spawnedCmd[0]).toBe("sshpass")
     expect(spawnedCmd[1]).toBe("-p")
     expect(spawnedCmd[3]).toBe("ssh")
     expect(spawnedCmd[5]).toBe("2222")
-    expect(spawnedCmd[10]).toBe("sift@localhost")
+    expect(spawnedCmd).toContain("-n")
+    expect(spawnedCmd).toContain("sift@localhost")
 
     const remoteCmd = spawnedCmd[spawnedCmd.length - 1]
     expect(remoteCmd).toContain("/home/sift/workflows/workflow1")

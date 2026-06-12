@@ -9,6 +9,8 @@ export function AppLayout() {
   const [siftAgentConfigured, setSiftAgentConfigured] = useState(false)
   const [hasPlaybooks, setHasPlaybooks] = useState(false)
   const [playbookCompleted, setPlaybookCompleted] = useState(false)
+  const [selectedPlaybookName, setSelectedPlaybookName] = useState<string | null>(null)
+  const [selectedWorkflowName, setSelectedWorkflowName] = useState<string | null>(null)
   const [scenarioItems, setScenarioItems] = useState<ScenarioItem[]>([])
 
   return (
@@ -19,12 +21,16 @@ export function AppLayout() {
         siftAgentConfigured={siftAgentConfigured}
         hasPlaybooks={hasPlaybooks}
         playbookCompleted={playbookCompleted}
+        selectedPlaybookName={selectedPlaybookName}
+        selectedWorkflowName={selectedWorkflowName}
         scenarioItems={scenarioItems}
         onLabRangeComplete={() => setLabRangeCompleted(true)}
         onAttackConfigComplete={(v) => setAttackConfigCompleted(v)}
         onSiftAgentConfigured={setSiftAgentConfigured}
         onHasPlaybooks={setHasPlaybooks}
         onPlaybookComplete={() => setPlaybookCompleted(true)}
+        onSelectedPlaybookNameChange={setSelectedPlaybookName}
+        onSelectedWorkflowNameChange={setSelectedWorkflowName}
         onSelectNoise={() => {}}
         onScenarioItemsChange={setScenarioItems}
       />

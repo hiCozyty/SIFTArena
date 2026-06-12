@@ -70,31 +70,34 @@ export async function initializeOpencodeSessionFromDocker(_, __, data) {
     throw new Error(`Workflow "${workflowName}" not found`)
   }
 
-  const remoteCmd = `kill $(lsof -t -i:3113) 2>/dev/null; cd /home/sift/workflows/${workflowName} && nohup opencode serve --port 3113 --hostname 0.0.0.0 > /tmp/opencode-serve.log 2>&1 & sleep 1 && echo OK`
+  const remoteCmd = `kill $(lsof -t -i:3113) 2>/dev/null; cd /home/sift/workflows/${workflowName} && ( setsid opencode serve --port 3113 --hostname 0.0.0.0 < /dev/null > /tmp/opencode-serve.log 2>&1 & ); ok=false; for i in $(seq 1 30); do curl -s http://localhost:3113/provider >/dev/null 2>&1 && { ok=true; break; }; sleep 0.2; done; $ok && echo OK || echo FAIL`
 
+  console.log(`[initializeOpencodeSessionFromDocker] spawning SSH for workflow "${workflowName}"`)
   const proc = Bun.spawn([
     "sshpass", "-p", "forensics", "ssh",
     "-p", "2222",
     "-o", "StrictHostKeyChecking=no",
     "-o", "UserKnownHostsFile=/dev/null",
+    "-n",
     "sift@localhost",
     remoteCmd,
-  ])
+  ], { stdin: "ignore" })
 
+  console.log("[initializeOpencodeSessionFromDocker] waiting for stdout...")
   const stdout = await new Response(proc.stdout).text()
-  const stderr = await new Response(proc.stderr).text()
-  const exitCode = await proc.exited
-
-  if (exitCode !== 0) {
-    throw new Error(`SSH command failed (exit ${exitCode}): ${stderr || stdout}`)
-  }
-
   const trimmed = stdout.trim()
-  if (!trimmed.endsWith("OK")) {
-    throw new Error(`Unexpected response from opencode serve: ${trimmed}`)
+  console.log(`[initializeOpencodeSessionFromDocker] stdout: ${trimmed}`)
+
+  if (trimmed.endsWith("OK")) {
+    proc.kill()
+    return { success: true, workflow: workflowName, message: "OK" }
   }
 
-  return { success: true, workflow: workflowName, message: "OK" }
+  const stderr = await new Response(proc.stderr).text()
+  await proc.exited
+  const exitCode = proc.exitCode
+  console.log(`[initializeOpencodeSessionFromDocker] stderr: ${stderr}`)
+  throw new Error(`SSH command failed (exit ${exitCode}): ${stderr || stdout}`)
 }
 
 export async function listEvidence() {
@@ -148,17 +151,13 @@ export async function mountEvidenceToSift(_, __, data, ws) {
       "-o", "StrictHostKeyChecking=no",
       "-o", "UserKnownHostsFile=/dev/null",
       "-o", "LogLevel=ERROR",
+      "-n",
       "sift@localhost",
       `sudo icat -o ${offset} "${e01Path}" ${extractInode}`,
-    ])
+    ], { stdin: "ignore" })
 
     const buf = await new Response(proc.stdout).arrayBuffer()
-    const exitCode = await proc.exited
-
-    if (exitCode !== 0) {
-      const stderr = await new Response(proc.stderr).text()
-      throw new Error(`icat failed (exit ${exitCode}): ${stderr}`)
-    }
+    proc.kill()
 
     if (buf.byteLength === 0) {
       throw new Error(`icat returned empty output for inode ${extractInode}`)
@@ -210,9 +209,11 @@ echo "Done."`
     "-o", "StrictHostKeyChecking=no",
     "-o", "UserKnownHostsFile=/dev/null",
     "-o", "LogLevel=ERROR",
+    "-n",
     "sift@localhost",
     mountScript,
   ], {
+    stdin: "ignore",
     terminal: {
       data(_terminal, data) {
         const text = decoder.decode(data)
@@ -225,6 +226,7 @@ echo "Done."`
   })
 
   const exitCode = await proc.exited
+  proc.kill()
 
   if (exitCode !== 0) {
     throw new Error(`Mount failed (exit ${exitCode}): ${fullOutput}`)
@@ -258,13 +260,14 @@ async function detectPartitionOffset(containerPath) {
     "-o", "StrictHostKeyChecking=no",
     "-o", "UserKnownHostsFile=/dev/null",
     "-o", "LogLevel=ERROR",
+    "-n",
     "sift@localhost",
     `OFFSET_LINE=$(sudo mmls "${e01Path}" | grep -E 'Basic data|NTFS|ntfs' | sort -k5 -rn | head -1); if [ -z "$OFFSET_LINE" ]; then exit 1; fi; echo $(echo "$OFFSET_LINE" | awk '{print $3}')`,
-  ])
+  ], { stdin: "ignore" })
 
   const raw = (await new Response(proc.stdout).text()).trim()
-  const exitCode = await proc.exited
-  if (exitCode !== 0 || !raw) {
+  proc.kill()
+  if (!raw) {
     throw new Error("Could not detect NTFS partition offset. Run mount first.")
   }
 
@@ -301,4 +304,21 @@ export async function checkEvidenceExists(_, __, data) {
 
 export async function getMountedEvidence() {
   return currentMountedEvidence
+}
+
+export async function listOpencodeModels() {
+  try {
+    const res = await fetch("http://localhost:3113/provider")
+    if (!res.ok) return { models: [], default: null }
+    const data = await res.json()
+    const provider = (data.all ?? []).find((p) => p.id === "opencode-go")
+    if (!provider) return { models: [], default: null }
+    const models = Object.values(provider.models ?? {}).map((m) => ({
+      id: `${m.providerID}/${m.id}`,
+      name: m.name,
+    }))
+    return { models, default: "opencode-go/deepseek-v4-flash" }
+  } catch {
+    return { models: [], default: null }
+  }
 }

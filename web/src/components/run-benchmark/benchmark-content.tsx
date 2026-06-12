@@ -17,7 +17,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { Progress } from "@/components/ui/progress"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,16 +31,6 @@ import { SiftAgentTree, type Workflow } from "@/components/sift-agent/sift-agent
 import * as backendWs from "@/lib/backend-ws"
 import { executeWsOperation } from "@/lib/ws-ops"
 
-const LOGS = [
-  "Initializing environment...",
-  "Loading LSASS dump module...",
-  "Executing attack chain...",
-  "Collecting evidence artifacts...",
-  "Processing memory snapshot...",
-  "Analyzing network captures...",
-  "Generating timeline...",
-]
-
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   const kb = bytes / 1024
@@ -55,11 +44,14 @@ function formatSize(bytes: number): string {
 export function BenchmarkContent({
   playbookCompleted,
   siftAgentConfigured,
+  selectedPlaybookName,
+  selectedWorkflowName,
 }: {
   playbookCompleted: boolean
   siftAgentConfigured: boolean
+  selectedPlaybookName: string | null
+  selectedWorkflowName: string | null
 }) {
-  const logRef = useRef<HTMLDivElement>(null)
   const streamRef = useRef<HTMLPreElement>(null)
   const navigate = useNavigate()
   const [playbookFinished, setPlaybookFinished] = useState(false)
@@ -77,7 +69,9 @@ export function BenchmarkContent({
   const [collectingEvidence, setCollectingEvidence] = useState(false)
   const [evidenceCollectionError, setEvidenceCollectionError] = useState<string | null>(null)
   const [showCollectDialog, setShowCollectDialog] = useState(false)
-  const [collectDialogOverwrite, setCollectDialogOverwrite] = useState(false)
+  const [showRunPlaybookDialog, setShowRunPlaybookDialog] = useState(false)
+  const [models, setModels] = useState<{ id: string, name: string }[]>([])
+  const [selectedModel, setSelectedModel] = useState("")
 
   useEffect(() => {
     if (!playbookFinished) return
@@ -188,23 +182,6 @@ export function BenchmarkContent({
     }
   }, [evidenceFileInfo])
 
-  const handleCollectEvidence = useCallback(async () => {
-    setCollectingEvidence(true)
-    setEvidenceCollectionError(null)
-    try {
-      const { exists } = await executeWsOperation<{ exists: boolean }>({
-        messageType: "checkEvidenceExists",
-        sendFn: () => backendWs.send({ type: "checkEvidenceExists", data: { playbookName: "test-playbook" } }),
-      })
-      setCollectDialogOverwrite(exists)
-      setShowCollectDialog(true)
-    } catch (err) {
-      setEvidenceCollectionError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setCollectingEvidence(false)
-    }
-  }, [])
-
   const handleConfirmCollect = useCallback(async () => {
     setShowCollectDialog(false)
     setCollectingEvidence(true)
@@ -223,14 +200,19 @@ export function BenchmarkContent({
   }, [])
 
   useEffect(() => {
-    if (logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight
-    }
-  }, [])
+    if (!playbookCompleted || !siftAgentConfigured) return
+    executeWsOperation<{ models: { id: string, name: string }[], default: string | null }>({
+      messageType: "listOpencodeModels",
+      sendFn: () => backendWs.send({ type: "listOpencodeModels" }),
+    }).then((result) => {
+      setModels(result.models)
+      setSelectedModel(result.default ?? result.models[0]?.id ?? "")
+    }).catch(() => {})
+  }, [playbookCompleted, siftAgentConfigured])
 
   return (
     <TabContentCard className="p-6">
-      <div className="mb-6 flex items-center gap-3">
+      <div className="mb-4 flex items-center gap-3">
         <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
           <BrandSpeedtestIcon className="size-5 text-primary" />
         </div>
@@ -272,32 +254,34 @@ export function BenchmarkContent({
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-medium">Select Model:</span>
-                  <Select defaultValue="gpt-4">
-                    <SelectTrigger className="w-48">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="gpt-4">GPT-4</SelectItem>
-                      <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                      <SelectItem value="claude-3.5">Claude 3.5 Sonnet</SelectItem>
-                      <SelectItem value="claude-3-opus">Claude 3 Opus</SelectItem>
-                      <SelectItem value="gemini-1.5">Gemini 1.5 Pro</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {models.length === 0 ? (
+                    <span className="text-muted-foreground text-sm">Loading models...</span>
+                  ) : (
+                    <Select value={selectedModel} onValueChange={setSelectedModel}>
+                      <SelectTrigger className="w-56">
+                        <SelectValue placeholder="Select a model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {models.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-medium">Current Playbook Selected:</span>
-                  <span className="text-muted-foreground text-sm">T1003.001 LSASS Dump</span>
+                  <span className="text-muted-foreground text-sm">{selectedPlaybookName ?? "None"}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-medium">Current Workflow Selected:</span>
-                  <span className="text-muted-foreground text-sm">Full Attack Chain</span>
+                  <span className="text-muted-foreground text-sm">{selectedWorkflowName ?? "None"}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button>Run playbook</Button>
+                  <Button onClick={() => setShowRunPlaybookDialog(true)}>Run playbook</Button>
                   <Button
                     disabled={collectingEvidence}
-                    onClick={handleCollectEvidence}
+                    onClick={() => setShowCollectDialog(true)}
                   >
                     {collectingEvidence ? "Collecting..." : "Collect evidence"}
                   </Button>
@@ -305,18 +289,6 @@ export function BenchmarkContent({
                 {evidenceCollectionError && (
                   <p className="text-xs text-destructive">{evidenceCollectionError}</p>
                 )}
-                <div className="flex items-center gap-2">
-                  <Progress value={45} className="w-48" />
-                  <span className="text-muted-foreground text-xs">45%</span>
-                </div>
-                <div
-                  ref={logRef}
-                  className="max-h-16 overflow-y-auto rounded-2xl bg-muted/50 p-2 font-mono text-xs text-muted-foreground"
-                >
-                  {LOGS.map((log, i) => (
-                    <p key={i}>{log}</p>
-                  ))}
-                </div>
                 <Button
                   variant="secondary"
                   onClick={() => setPlaybookFinished(true)}
@@ -425,22 +397,34 @@ export function BenchmarkContent({
           </AccordionContent>
         </AccordionItem>
       </Accordion>
+      <AlertDialog open={showRunPlaybookDialog} onOpenChange={setShowRunPlaybookDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Run Playbook</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to run the current selected playbook: {selectedPlaybookName ?? "None"}?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction>
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={showCollectDialog} onOpenChange={setShowCollectDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {collectDialogOverwrite ? "Overwrite Evidence?" : "Collect Evidence?"}
-            </AlertDialogTitle>
+            <AlertDialogTitle>Collect Evidence</AlertDialogTitle>
             <AlertDialogDescription>
-              {collectDialogOverwrite
-                ? "Evidence already exists for test-playbook. Overwrite?"
-                : "Collect evidence for test-playbook? Files will be saved to evidence/test-playbook/."}
+              You are about to dump the memory and collect full disk image. Are you sure you completed a playbook run?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmCollect}>
-              {collectDialogOverwrite ? "Overwrite" : "Collect"}
+              Yes I completed a playbook run
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

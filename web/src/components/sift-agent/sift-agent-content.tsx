@@ -59,9 +59,11 @@ type Workflow = {
 export function SiftAgentContent({
   configured,
   onConfigured,
+  onWorkflowNameChange,
 }: {
   configured: boolean
   onConfigured: (configured: boolean) => void
+  onWorkflowNameChange: (name: string | null) => void
 }) {
   const { theme } = useTheme()
   const shikiTheme = useMemo(() => {
@@ -149,6 +151,7 @@ export function SiftAgentContent({
 
   const handleSelectWorkflow = useCallback(async () => {
     if (!pendingWorkflowName) return
+    if (pendingWorkflowName === selectedWorkflowName) return
     setIsStartingSession(true)
     setSessionError(null)
     try {
@@ -157,12 +160,13 @@ export function SiftAgentContent({
         sendFn: () => backendWs.send({ type: "initializeOpencodeSession", data: { workflowName: pendingWorkflowName } }),
       })
       setSelectedWorkflowName(pendingWorkflowName)
+      onWorkflowNameChange(pendingWorkflowName)
     } catch (err) {
       setSessionError(err instanceof Error ? err.message : String(err))
     } finally {
       setIsStartingSession(false)
     }
-  }, [pendingWorkflowName])
+  }, [pendingWorkflowName, onWorkflowNameChange])
 
   return (
     <TabContentCard className="p-6 flex flex-col min-h-0">
@@ -203,10 +207,10 @@ export function SiftAgentContent({
                   <span className="text-xs text-destructive">{sessionError}</span>
                 )}
                 <Button
-                  disabled={!pendingWorkflowName || isStartingSession}
+                  disabled={!pendingWorkflowName || isStartingSession || pendingWorkflowName === selectedWorkflowName}
                   onClick={handleSelectWorkflow}
                 >
-                  {isStartingSession ? "Starting..." : "Select Workflow"}
+                  {isStartingSession ? "Starting..." : pendingWorkflowName === selectedWorkflowName ? "Workflow Already Selected" : "Select Workflow"}
                 </Button>
               </div>
             </div>

@@ -31,11 +31,15 @@ interface CompletionState {
 
 interface LandingTabsProps extends CompletionState {
   scenarioItems: ScenarioItem[]
+  selectedPlaybookName: string | null
+  selectedWorkflowName: string | null
   onLabRangeComplete: () => void
   onAttackConfigComplete: (completed: boolean) => void
   onSiftAgentConfigured: (configured: boolean) => void
   onHasPlaybooks: (hasPlaybooks: boolean) => void
   onPlaybookComplete: () => void
+  onSelectedPlaybookNameChange: (name: string | null) => void
+  onSelectedWorkflowNameChange: (name: string | null) => void
   onSelectNoise: () => void
   onScenarioItemsChange: React.Dispatch<React.SetStateAction<ScenarioItem[]>>
 }
@@ -149,12 +153,16 @@ export function LandingTabs({
   siftAgentConfigured,
   hasPlaybooks,
   playbookCompleted,
+  selectedPlaybookName,
+  selectedWorkflowName,
   scenarioItems,
   onLabRangeComplete,
   onAttackConfigComplete,
   onSiftAgentConfigured,
   onHasPlaybooks,
   onPlaybookComplete,
+  onSelectedPlaybookNameChange,
+  onSelectedWorkflowNameChange,
   onSelectNoise,
   onScenarioItemsChange,
 }: LandingTabsProps) {
@@ -215,15 +223,22 @@ export function LandingTabs({
                   scenarioItems={scenarioItems}
                   onHasPlaybooks={onHasPlaybooks}
                   onComplete={onPlaybookComplete}
+                  onPlaybookNameChange={onSelectedPlaybookNameChange}
                   onSelectNoise={onSelectNoise}
                 />
               ) : s === "SIFT Agent" ? (
                 <SiftAgentContent
                   configured={siftAgentConfigured}
                   onConfigured={onSiftAgentConfigured}
+                  onWorkflowNameChange={onSelectedWorkflowNameChange}
                 />
               ) : s === "Run Benchmark" ? (
-                <BenchmarkContent playbookCompleted={playbookCompleted} siftAgentConfigured={siftAgentConfigured} />
+                <BenchmarkContent
+                  playbookCompleted={playbookCompleted}
+                  siftAgentConfigured={siftAgentConfigured}
+                  selectedPlaybookName={selectedPlaybookName}
+                  selectedWorkflowName={selectedWorkflowName}
+                />
               ) : s === "Knowledge Graph" ? (
                 <KnowledgeGraphContent />
               ) : null}

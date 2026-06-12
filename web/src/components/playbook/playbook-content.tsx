@@ -59,11 +59,13 @@ export function PlaybookContent({
   scenarioItems,
   onHasPlaybooks,
   onComplete,
+  onPlaybookNameChange,
   onSelectNoise,
 }: {
   scenarioItems: ScenarioItem[]
   onHasPlaybooks: (hasPlaybooks: boolean) => void
   onComplete: () => void
+  onPlaybookNameChange: (name: string | null) => void
   onSelectNoise: () => void
 }) {
   const [activeTab, setActiveTab] = useState("timeline")
@@ -282,8 +284,9 @@ export function PlaybookContent({
 
   const handleSelectPlaybook = useCallback(() => {
     setSelectedPlaybook(pendingPlaybook)
+    onPlaybookNameChange(pendingPlaybook)
     onComplete()
-  }, [pendingPlaybook, onComplete, currentPlaybookData])
+  }, [pendingPlaybook, onComplete, onPlaybookNameChange])
 
   const handleClearChat = useCallback(async () => {
     await chat.resetSession()
