@@ -107,7 +107,7 @@ export function BenchmarkContent() {
             )}
           </AccordionTrigger>
           <AccordionContent>
-            <div className="grid gap-4 rounded-xl p-1 h-[440px]" style={{ gridTemplateColumns: "220px 1fr" }}>
+            <div className="grid gap-4 rounded-xl p-1 h-[calc(80vh-17rem)]" style={{ gridTemplateColumns: "220px 1fr" }}>
               <div className="rounded-xl border bg-muted/30 p-3">
                 <SiftAgentTree
                   workflows={[]}
@@ -133,9 +133,11 @@ export function BenchmarkContent() {
             <span className="ml-1 text-muted-foreground font-normal">(Run Evidence Collection First)</span>
           </AccordionTrigger>
           <AccordionContent>
-            <p className="text-muted-foreground text-sm">
-              Content for <strong>Timeline and Analysis</strong> goes here.
-            </p>
+            <div className="h-[calc(80vh-17rem)] overflow-auto rounded-xl border bg-muted/30 p-4">
+              <p className="text-muted-foreground text-sm">
+                Content for <strong>Timeline and Analysis</strong> goes here.
+              </p>
+            </div>
           </AccordionContent>
         </AccordionItem>
       </Accordion>

@@ -37,6 +37,13 @@ interface UseOpencodeChatOptions {
   baseUrl?: string
 }
 
+function generateId(): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2)
+}
+
 export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
   const [messages, setMessages] = useState<Message[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
@@ -209,7 +216,7 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
   useEffect(() => {
     let mounted = true
     const wsUrl = import.meta.env.VITE_BACKEND_WS_URL || "ws://localhost:8011"
-    const httpUrl = baseUrl || wsUrl.replace("ws://", "http://").replace("wss://", "https://")
+    const httpUrl = baseUrl || import.meta.env.VITE_OPENCODE_URL || wsUrl.replace("ws://", "http://").replace("wss://", "https://")
     const finalUrl = httpUrl.endsWith(":8011") ? httpUrl.replace(":8011", ":3111") : httpUrl
 
     const client = createOpencodeClient({ baseUrl: finalUrl })
@@ -336,13 +343,13 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
       }
 
       const userMessage: Message = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         role: "user",
         content,
         createdAt: new Date(),
       }
-      const assistantId = crypto.randomUUID()
-      const newGenId = crypto.randomUUID()
+      const assistantId = generateId()
+      const newGenId = generateId()
       activeGenerationIdRef.current = newGenId
       assistantMessageIdRef.current = assistantId
       activeAssistantMessageIdRef.current = assistantId
@@ -452,13 +459,13 @@ export function useOpencodeChat({ baseUrl }: UseOpencodeChatOptions = {}) {
       }).filter(Boolean).join("\n\n") || Object.entries(answers).map(([qi, a]) => `Q${parseInt(qi) + 1}: ${a}`).join("\n\n")
 
       const userMessage: Message = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         role: "user",
         content: questionContext,
         createdAt: new Date(),
       }
-      const assistantId = crypto.randomUUID()
-      const newGenId = crypto.randomUUID()
+      const assistantId = generateId()
+      const newGenId = generateId()
       activeGenerationIdRef.current = newGenId
       assistantMessageIdRef.current = assistantId
       activeAssistantMessageIdRef.current = assistantId

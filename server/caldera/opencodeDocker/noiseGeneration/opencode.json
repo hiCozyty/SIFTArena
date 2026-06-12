@@ -9,5 +9,12 @@
     "port": 3112,
     "hostname": "0.0.0.0",
     "cors": ["http://localhost:5173"]
+  },
+  "mcp": {
+    "sqlite": {
+      "type": "local",
+      "command": ["bun", "x", "mcp-sqlite", "--db-path", "/workspace/noiseGeneration/noises.db"],
+      "enabled": true
+    }
   }
 }

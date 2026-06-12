@@ -59,6 +59,5 @@ export async function ensureWin11DiskSize(ludusUrl) {
 
   if (current.includes("250G")) {
     await $`ssh -o StrictHostKeyChecking=accept-new root@${host} "sed -i 's/default = \"250G\"/default = \"32G\"/' ${file}"`.quiet()
-    console.log("ensureWin11DiskSize: reset vm_disk_size from 250G to 32G")
-  }
+    }
 }

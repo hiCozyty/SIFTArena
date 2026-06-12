@@ -986,12 +986,10 @@ else:
 exit(r.status_code)
 `
     const result = await $`uv run python -c ${py}`.nothrow().quiet()
-    console.log("[checkWindowsReadiness] exitCode:", result.exitCode, "stderr:", String(result.stderr))
     if (result.exitCode !== 0) {
       return { ready: false, checks: {}, winrmFailed: true }
     }
     const raw = result.stdout.toString().trim()
-    console.log("[checkWindowsReadiness] raw output:", raw)
     if (!raw) return { ready: false, checks: {}, winrmFailed: true }
     return JSON.parse(raw)
   } catch (err) {

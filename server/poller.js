@@ -51,7 +51,6 @@ export function createWsHandler(ludusUrl, apiKey) {
         if (data.type === "unsubscribe") { subscriptions.delete(data.channel); return }
 
         const handler = operations.get(data.type)
-        console.log("[poller]", data.type, handler ? "OK" : "MISSING handler")
         if (handler) {
           const result = handler(ludusUrl, apiKey, data, ws)
           if (result instanceof Promise) {

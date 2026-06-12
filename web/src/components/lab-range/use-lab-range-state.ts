@@ -1093,7 +1093,6 @@ export function useLabRangeState(onComplete: () => void) {
       if (data.type === "checkWindowsReadiness") {
         const error = data.error as string | undefined
         const result = data.result as { ready?: boolean; checks?: Record<string, boolean>; winrmFailed?: boolean } | undefined
-        console.log("[ws] checkWindowsReadiness", { error, ready: result?.ready, winrmFailed: result?.winrmFailed, checks: result?.checks })
         if (!error && result?.ready) {
           setTimelineItems((prev) => [
             ...prev.map((item) =>
@@ -1122,7 +1121,6 @@ export function useLabRangeState(onComplete: () => void) {
 
       if (data.type === "checkLsaProtection") {
         const result = data.result as { lsaDisabled?: boolean } | undefined
-        console.log("[ws] checkLsaProtection", { error: data.error, result })
         setTimelineItems((prev) =>
           prev.map((item) =>
             item.id === "win11-lsa-disable"

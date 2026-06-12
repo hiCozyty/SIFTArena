@@ -82,7 +82,7 @@ export function PlaybookContent({
   const [pendingSlotKey, setPendingSlotKey] = useState<string | null>(null)
   const [settings, setSettings] = useState<PlaybookSettings>(DEFAULT_SETTINGS)
 
-  const chat = useOpencodeChat({ baseUrl: "http://localhost:3112" })
+  const chat = useOpencodeChat({ baseUrl: import.meta.env.VITE_PLAYBOOK_OPENCODE_URL || "http://localhost:3112" })
 
   const currentPlaybookData = playbooks.find(p => p.name === pendingPlaybook) ?? null
 
@@ -285,6 +285,10 @@ export function PlaybookContent({
     onComplete()
   }, [pendingPlaybook, onComplete, currentPlaybookData])
 
+  const handleClearChat = useCallback(async () => {
+    await chat.resetSession()
+  }, [chat])
+
   const handleCancelNoiseSelection = useCallback(() => {
     setShowConfirmButton(false)
     setLeftTab("playbook")
@@ -385,7 +389,10 @@ export function PlaybookContent({
                   </TabsTrigger>
                 </TabsList>
                 <div className="flex items-center gap-2">
-                  {leftTab === "playbook" && (
+                  {activeTab === "chat" && (
+                    <Button onClick={handleClearChat}>Clear Chat Session</Button>
+                  )}
+                  {activeTab !== "chat" && leftTab === "playbook" && (
                     <>
                       <Button onClick={handleSavePlaybook}>
                         <Plus className="size-4" />
