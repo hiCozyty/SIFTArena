@@ -14,7 +14,7 @@ type FileEntry = {
   children?: FileEntry[]
 }
 
-type Workflow = {
+export type Workflow = {
   name: string
   config: Record<string, unknown> | null
   agentsContent: string | null
@@ -90,11 +90,13 @@ export function SiftAgentTree({
   onSelectFile,
   onResetSelection,
   selectedNodeId,
+  rootLabel = "Workflows",
 }: {
   workflows?: Workflow[] | null
   onSelectFile?: (path: string) => void
   onResetSelection?: (nodeId: string | null) => void
   selectedNodeId: string | null
+  rootLabel?: string
 }) {
 
   return (
@@ -110,7 +112,7 @@ export function SiftAgentTree({
             <TreeNode nodeId="workflows" isLast={true}>
               <div className="group relative mx-1 flex items-center rounded-4xl px-3 py-2">
                 <TreeIcon hasChildren />
-                <TreeLabel className="whitespace-normal break-words">Workflows</TreeLabel>
+                <TreeLabel className="whitespace-normal break-words">{rootLabel}</TreeLabel>
               </div>
               <TreeNodeContent hasChildren>
                 {workflows?.map((w, i) => (

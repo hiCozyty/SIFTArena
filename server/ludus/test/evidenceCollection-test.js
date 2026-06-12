@@ -1,4 +1,5 @@
 import { $ } from "bun"
+import { readdir } from "node:fs/promises"
 
 function getHost() {
   const url = process.env.PROXMOX_HOST
@@ -86,19 +87,58 @@ export async function cleanupRemote(host, playbookName) {
   console.log("  Cleaned up.")
 }
 
+export async function computeLocalHashes(playbookName, localBasePath = "./evidence") {
+  const dest = `${localBasePath}/${playbookName}`
+  const entries = await readdir(dest, { withFileTypes: true })
+  for (const entry of entries) {
+    if (!entry.isFile()) continue
+    if (entry.name.endsWith(".sha256")) continue
+    const filePath = `${dest}/${entry.name}`
+    const shaPath = `${filePath}.sha256`
+    if (await Bun.file(shaPath).exists()) {
+      const hash = await Bun.file(shaPath).text()
+      console.log(`SHA256 for ${entry.name}: sha256:${hash.trim()}`)
+      continue
+    }
+    console.log(`Computing SHA256 for ${entry.name}...`)
+    const hasher = new Bun.CryptoHasher("sha256")
+    const file = Bun.file(filePath)
+    for await (const chunk of file.stream()) {
+      hasher.update(chunk)
+    }
+    const hash = hasher.digest("hex")
+    await Bun.write(shaPath, hash)
+    console.log(`  sha256:${hash}`)
+  }
+}
+
 if (import.meta.main) {
   const HOST = getHost()
   const VMID = 107
   const PLAYBOOK = "test-playbook"
   const REMOTE_DEST = `/var/lib/vz/evidence/${PLAYBOOK}`
+  const LOCAL_DIR = `./evidence/${PLAYBOOK}`
 
   console.log(`Host: ${HOST}, VMID: ${VMID}, Playbook: ${PLAYBOOK}\n`)
 
-  await ensureEwfTools(HOST)
-  await collectMemoryDump(VMID, HOST, REMOTE_DEST)
-  await collectDiskImage(VMID, HOST, REMOTE_DEST)
-  await rsyncEvidence(HOST, VMID, PLAYBOOK)
-  await cleanupRemote(HOST, PLAYBOOK)
+  const memoryDump = Bun.file(`${LOCAL_DIR}/memory.dump`)
+  const diskImage = Bun.file(`${LOCAL_DIR}/disk-image.E01`)
+  const evidenceExists = await memoryDump.exists() && await diskImage.exists()
+
+  if (evidenceExists) {
+    console.log("Evidence files already exist, skipping collection and transfer...")
+  } else {
+    await ensureEwfTools(HOST)
+    await collectMemoryDump(VMID, HOST, REMOTE_DEST)
+    await collectDiskImage(VMID, HOST, REMOTE_DEST)
+    await rsyncEvidence(HOST, VMID, PLAYBOOK)
+  }
+
+  await computeLocalHashes(PLAYBOOK)
+
+  if (!evidenceExists) {
+    await cleanupRemote(HOST, PLAYBOOK)
+  }
 
   console.log("\nDone.")
 }

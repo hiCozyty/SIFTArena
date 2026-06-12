@@ -79,6 +79,8 @@ export function SiftAgentContent({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [fileContent, setFileContent] = useState<string | null>(null)
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null)
+  const [isStartingSession, setIsStartingSession] = useState(false)
+  const [sessionError, setSessionError] = useState<string | null>(null)
 
   useEffect(() => {
     if (fileContent === null) {
@@ -145,6 +147,23 @@ export function SiftAgentContent({
     setHighlightedHtml(null)
   }, [selectedNodeId])
 
+  const handleSelectWorkflow = useCallback(async () => {
+    if (!pendingWorkflowName) return
+    setIsStartingSession(true)
+    setSessionError(null)
+    try {
+      await executeWsOperation({
+        messageType: "initializeOpencodeSession",
+        sendFn: () => backendWs.send({ type: "initializeOpencodeSession", data: { workflowName: pendingWorkflowName } }),
+      })
+      setSelectedWorkflowName(pendingWorkflowName)
+    } catch (err) {
+      setSessionError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setIsStartingSession(false)
+    }
+  }, [pendingWorkflowName])
+
   return (
     <TabContentCard className="p-6 flex flex-col min-h-0">
       <div className="mb-4 flex items-center gap-3 shrink-0">
@@ -179,12 +198,17 @@ export function SiftAgentContent({
                   <Terminal className="size-4" />
                 </TabsTrigger>
               </TabsList>
-              <Button
-                disabled={!pendingWorkflowName}
-                onClick={() => setSelectedWorkflowName(pendingWorkflowName)}
-              >
-                Select Workflow
-              </Button>
+              <div className="flex items-center gap-2">
+                {sessionError && (
+                  <span className="text-xs text-destructive">{sessionError}</span>
+                )}
+                <Button
+                  disabled={!pendingWorkflowName || isStartingSession}
+                  onClick={handleSelectWorkflow}
+                >
+                  {isStartingSession ? "Starting..." : "Select Workflow"}
+                </Button>
+              </div>
             </div>
             <TabsContent value="notes" className="flex-1 min-h-0 rounded-4xl bg-muted shadow-sm">
               {fileContent !== null ? (

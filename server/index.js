@@ -12,7 +12,7 @@ import { createVncProxyHandler, getOrCreateVncSession } from "./ludus/proxmox.js
 import { createWinrmProxy } from "./ludus/winrm-proxy.js"
 import { createSshProxy } from "./ludus/ssh-proxy.js"
 import { getContainerBackend } from "./ludus/container-backends.js"
-import { listWorkflows, readWorkflowFile } from "./ludus/workflows.js"
+import { listWorkflows, readWorkflowFile, initializeOpencodeSessionFromDocker, listEvidence, getEvidenceFileInfo, mountEvidenceToSift } from "./ludus/workflows.js"
 
 const LUDUS_SERVER_URL = process.env.LUDUS_SERVER_URL + "/api/v2"
 const LUDUS_API_KEY = process.env.LUDUS_API_KEY
@@ -99,6 +99,10 @@ addOperation("deleteNoise", async (_, __, data) => deleteNoise(data.data.name))
 addOperation("getPlaybooks", async () => getPlaybooks())
 addOperation("listWorkflows", listWorkflows)
 addOperation("readWorkflowFile", readWorkflowFile)
+addOperation("initializeOpencodeSession", initializeOpencodeSessionFromDocker)
+addOperation("listEvidence", listEvidence)
+addOperation("getEvidenceFileInfo", getEvidenceFileInfo)
+addOperation("mountEvidenceToSift", mountEvidenceToSift)
 addOperation("createPlaybook", async (_, __, data) => createPlaybook(data.data))
 addOperation("updatePlaybook", async (_, __, data) => updatePlaybook(data.data.name, data.data.data))
 addOperation("deletePlaybook", async (_, __, data) => deletePlaybook(data.data.name))
