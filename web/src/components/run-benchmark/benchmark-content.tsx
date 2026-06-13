@@ -197,7 +197,7 @@ export function BenchmarkContent({
   }, [])
 
   useEffect(() => {
-    if (!playbookCompleted || !siftAgentConfigured) return
+    if (!siftAgentConfigured) return
     executeWsOperation<{ models: { id: string, name: string }[], default: string | null }>({
       messageType: "listOpencodeModels",
       sendFn: () => backendWs.send({ type: "listOpencodeModels" }),
@@ -205,7 +205,7 @@ export function BenchmarkContent({
       setModels(result.models)
       setSelectedModel(result.default ?? result.models[0]?.id ?? "")
     }).catch(() => {})
-  }, [playbookCompleted, siftAgentConfigured])
+  }, [siftAgentConfigured])
 
   return (
     <TabContentCard className="p-6">
@@ -222,57 +222,24 @@ export function BenchmarkContent({
         <AccordionItem value="playbook-settings">
           <AccordionTrigger>Playbook Settings</AccordionTrigger>
           <AccordionContent>
-            {!playbookCompleted || !siftAgentConfigured ? (
+            {!playbookCompleted ? (
               <div className="py-8 flex flex-col items-center justify-center">
                 <Lock className="mb-4 size-12 text-muted-foreground" />
                 <h3 className="mb-2 text-lg font-semibold">Playbook Settings locked</h3>
                 <p className="mb-6 text-sm text-muted-foreground">
-                  {!playbookCompleted && !siftAgentConfigured
-                    ? <>Complete <strong>Playbook</strong> and <strong>SIFT Agent</strong> setup first to unlock this section.</>
-                    : !playbookCompleted
-                    ? <>Complete <strong>Playbook</strong> setup first to unlock this section.</>
-                    : <>Complete <strong>SIFT Agent</strong> setup first to unlock this section.</>
-                  }
+                  Complete <strong>Playbook</strong> setup first to unlock this section.
                 </p>
                 <div className="flex items-center gap-2">
-                  {!playbookCompleted && (
-                    <Button onClick={() => navigate("/playbook", { replace: true })}>
-                      Go to Playbook
-                    </Button>
-                  )}
-                  {!siftAgentConfigured && (
-                    <Button onClick={() => navigate("/sift-agent", { replace: true })}>
-                      Go to SIFT Agent
-                    </Button>
-                  )}
+                  <Button onClick={() => navigate("/playbook", { replace: true })}>
+                    Go to Playbook
+                  </Button>
                 </div>
               </div>
             ) : (
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium">Select Model:</span>
-                  {models.length === 0 ? (
-                    <span className="text-muted-foreground text-sm">Loading models...</span>
-                  ) : (
-                    <Select value={selectedModel} onValueChange={setSelectedModel}>
-                      <SelectTrigger className="w-56">
-                        <SelectValue placeholder="Select a model" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {models.map((m) => (
-                          <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
                   <span className="text-sm font-medium">Current Playbook Selected:</span>
                   <span className="text-muted-foreground text-sm">{selectedPlaybookName ?? "None"}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium">Current Workflow Selected:</span>
-                  <span className="text-muted-foreground text-sm">{selectedWorkflowName ?? "None"}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button onClick={() => setShowRunPlaybookDialog(true)}>Run playbook</Button>
@@ -378,19 +345,60 @@ export function BenchmarkContent({
             </div>
           </AccordionContent>
         </AccordionItem>
-        <AccordionItem value="timeline-analysis" disabled={!mountedPlaybookName}>
+        <AccordionItem value="timeline-analysis">
           <AccordionTrigger>
             Timeline and Analysis
-            {!mountedPlaybookName && (
-              <span className="ml-1 text-muted-foreground/80 font-normal">(Select and Mount Evidence to SIFT)</span>
+            {siftAgentConfigured && !mountedPlaybookName && (
+              <span className="ml-1 text-muted-foreground/80 font-normal">(Mount Evidence to SIFT)</span>
+            )}
+            {!siftAgentConfigured && mountedPlaybookName && (
+              <span className="ml-1 text-muted-foreground/80 font-normal">(Configure SIFT Agent First)</span>
             )}
           </AccordionTrigger>
           <AccordionContent>
+            {!siftAgentConfigured || !mountedPlaybookName ? (
+              <div className="py-8 flex flex-col items-center justify-center">
+                <Lock className="mb-4 size-12 text-muted-foreground" />
+                <h3 className="mb-2 text-lg font-semibold">Timeline and Analysis locked</h3>
+                <p className="mb-6 text-sm text-muted-foreground">
+                  {!siftAgentConfigured && !mountedPlaybookName
+                    ? <>Configure <strong>SIFT Agent</strong> and <strong>mount evidence</strong> to unlock this section.</>
+                    : !siftAgentConfigured
+                    ? <>Configure <strong>SIFT Agent</strong> to unlock this section.</>
+                    : <><strong>Mount evidence</strong> to SIFT to unlock this section.</>
+                  }
+                </p>
+                {!siftAgentConfigured && (
+                  <Button onClick={() => navigate("/sift-agent", { replace: true })}>
+                    Go to SIFT Agent
+                  </Button>
+                )}
+              </div>
+            ) : (
             <div className="h-[calc(80vh-17rem)] overflow-auto rounded-xl border bg-muted/30 p-4">
-              <p className="text-muted-foreground text-sm">
-                Content for <strong>Timeline and Analysis</strong> goes here.
-              </p>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium">Current Workflow Selected:</span>
+                <span className="text-muted-foreground text-sm">{selectedWorkflowName ?? "None"}</span>
+              </div>
+              <div className="flex items-center gap-3 mt-3">
+                <span className="text-sm font-medium">Select Model:</span>
+                {models.length === 0 ? (
+                  <span className="text-muted-foreground text-sm">Loading models...</span>
+                ) : (
+                  <Select value={selectedModel} onValueChange={setSelectedModel}>
+                    <SelectTrigger className="w-56">
+                      <SelectValue placeholder="Select a model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {models.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
             </div>
+            )}
           </AccordionContent>
         </AccordionItem>
       </Accordion>

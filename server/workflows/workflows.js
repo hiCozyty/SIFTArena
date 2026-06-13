@@ -11,6 +11,7 @@ async function readDirTree(dirPath) {
   const entries = await readdir(dirPath, { withFileTypes: true })
   const result = []
   for (const entry of entries) {
+    if (entry.name === "node_modules" || entry.name === "bun.lock") continue
     if (entry.isDirectory()) {
       const children = await readDirTree(join(dirPath, entry.name))
       result.push({ name: entry.name, type: "directory", children })
