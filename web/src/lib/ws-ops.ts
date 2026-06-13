@@ -60,6 +60,7 @@ export async function executeWsOperation<T = unknown>(opts: {
     await new Promise((r) => requestAnimationFrame(r))
   }
 
+  const t0 = performance.now()
   return new Promise((resolve, reject) => {
     const unsub = backendWs.subscribe((data) => {
       if (data.type !== opts.messageType) return

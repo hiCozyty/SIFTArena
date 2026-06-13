@@ -152,12 +152,15 @@ export function SiftAgentContent({
   const handleSelectWorkflow = useCallback(async () => {
     if (!pendingWorkflowName) return
     if (pendingWorkflowName === selectedWorkflowName) return
+    const t0 = performance.now()
     setIsStartingSession(true)
     setSessionError(null)
     try {
       await executeWsOperation({
         messageType: "initializeOpencodeSession",
-        sendFn: () => backendWs.send({ type: "initializeOpencodeSession", data: { workflowName: pendingWorkflowName } }),
+        sendFn: () => {
+          backendWs.send({ type: "initializeOpencodeSession", data: { workflowName: pendingWorkflowName } })
+        },
       })
       setSelectedWorkflowName(pendingWorkflowName)
       onWorkflowNameChange(pendingWorkflowName)

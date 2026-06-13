@@ -139,7 +139,6 @@ export function BenchmarkContent({
   const handleMountEvidence = useCallback(async () => {
     if (!evidenceFileInfo?.path) return
     const playbookDir = evidenceFileInfo.path.split("/")[0]
-    console.log("[handleMountEvidence] Sending mount request for:", playbookDir)
     setMountStreamOutput("")
     setMountingEvidence(true)
     setMountResult(null)
@@ -149,14 +148,12 @@ export function BenchmarkContent({
         messageType: "mountEvidenceToSift",
         sendFn: () => backendWs.send({ type: "mountEvidenceToSift", data: { path: playbookDir } }),
       })
-      console.log("[handleMountEvidence] Mount response:", result)
       setMountResult(result.output)
       setMountedPlaybookName(playbookDir)
     } catch (err) {
       console.error("[handleMountEvidence] Mount error:", err)
       setMountError(err instanceof Error ? err.message : String(err))
     } finally {
-      console.log("[handleMountEvidence] Done, setting mountingEvidence=false")
       setMountingEvidence(false)
     }
   }, [evidenceFileInfo])

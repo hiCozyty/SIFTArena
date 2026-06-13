@@ -39,19 +39,19 @@ export type PlaybookData = {
 
 export type PlaybookSettings = {
   waitTimeBetweenEvents: number
-  jitterBetweenEvents: number
+  staggerBetweenEvents: number
   persistentBgRandomize: boolean
   persistentBgInterval: number
-  persistentBgJitter: number
+  persistentBgStagger: number
   signalToNoiseRatio: number
 }
 
 const DEFAULT_SETTINGS: PlaybookSettings = {
   waitTimeBetweenEvents: 1000,
-  jitterBetweenEvents: 0,
+  staggerBetweenEvents: 0,
   persistentBgRandomize: false,
   persistentBgInterval: 2000,
-  persistentBgJitter: 0,
+  persistentBgStagger: 0,
   signalToNoiseRatio: 1,
 }
 
@@ -125,10 +125,10 @@ export function PlaybookContent({
       const s = currentPlaybookData.settings as Record<string, unknown>
       setSettings({
         waitTimeBetweenEvents: typeof s.waitTimeBetweenEvents === "number" ? s.waitTimeBetweenEvents : DEFAULT_SETTINGS.waitTimeBetweenEvents,
-        jitterBetweenEvents: typeof s.jitterBetweenEvents === "number" ? s.jitterBetweenEvents : DEFAULT_SETTINGS.jitterBetweenEvents,
+        staggerBetweenEvents: typeof s.staggerBetweenEvents === "number" ? s.staggerBetweenEvents : DEFAULT_SETTINGS.staggerBetweenEvents,
         persistentBgRandomize: typeof s.persistentBgRandomize === "boolean" ? s.persistentBgRandomize : DEFAULT_SETTINGS.persistentBgRandomize,
         persistentBgInterval: typeof s.persistentBgInterval === "number" ? s.persistentBgInterval : DEFAULT_SETTINGS.persistentBgInterval,
-        persistentBgJitter: typeof s.persistentBgJitter === "number" ? s.persistentBgJitter : DEFAULT_SETTINGS.persistentBgJitter,
+        persistentBgStagger: typeof s.persistentBgStagger === "number" ? s.persistentBgStagger : DEFAULT_SETTINGS.persistentBgStagger,
         signalToNoiseRatio: typeof s.signalToNoiseRatio === "number" ? s.signalToNoiseRatio : DEFAULT_SETTINGS.signalToNoiseRatio,
       })
     } else {

@@ -1,0 +1,7 @@
+{
+  "name": "workflow1",
+  "private": true,
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  }
+}

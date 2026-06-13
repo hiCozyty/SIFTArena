@@ -26,13 +26,13 @@ export function PlaybookSettingsTab({
       </div>
       <Separator className="my-4" />
       <div className="flex items-center justify-between gap-4">
-        <Label htmlFor="jitter">Jitter between timeline events (ms)</Label>
+        <Label htmlFor="stagger">Stagger between timeline events (ms)</Label>
         <Input
-          id="jitter"
+          id="stagger"
           type="number"
           className="w-32 [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-          value={settings.jitterBetweenEvents}
-          onChange={(e) => onSettingsChange({ ...settings, jitterBetweenEvents: Number(e.target.value) })}
+          value={settings.staggerBetweenEvents}
+          onChange={(e) => onSettingsChange({ ...settings, staggerBetweenEvents: Number(e.target.value) })}
         />
       </div>
       <Separator className="my-4" />
@@ -57,13 +57,13 @@ export function PlaybookSettingsTab({
       </div>
       <Separator className="my-4" />
       <div className="flex items-center justify-between gap-4">
-        <Label htmlFor="bgJitter">Persistent background events jitter (ms)</Label>
+        <Label htmlFor="bgStagger">Persistent background events stagger (ms)</Label>
         <Input
-          id="bgJitter"
+          id="bgStagger"
           type="number"
           className="w-32 [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-          value={settings.persistentBgJitter}
-          onChange={(e) => onSettingsChange({ ...settings, persistentBgJitter: Number(e.target.value) })}
+          value={settings.persistentBgStagger}
+          onChange={(e) => onSettingsChange({ ...settings, persistentBgStagger: Number(e.target.value) })}
         />
       </div>
       <Separator className="my-4" />

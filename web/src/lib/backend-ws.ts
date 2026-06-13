@@ -54,7 +54,7 @@ export function send(msg: Record<string, unknown>) {
   const payload = JSON.stringify(msg)
   if (state === "connected") {
     ws?.send(payload)
-  } else {
+    } else {
     sendQueue.push(payload)
     if (state === "disconnected" && reconnectUrl) {
       connect(reconnectUrl, reconnectOnClose ?? undefined)

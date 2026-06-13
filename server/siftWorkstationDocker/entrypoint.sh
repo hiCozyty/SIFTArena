@@ -22,7 +22,19 @@ su - sift -c "vncserver :1 \
 
 nohup websockify 6901 localhost:5901 > /home/sift/.vnc/websockify.log 2>&1 &
 
-sleep 3
+for i in $(seq 1 30); do
+  ss -tlnp | grep -q :5901 && break
+  sleep 0.1
+done
+
+echo "Installing workflow dependencies..."
+for workflow_dir in /home/sift/workflows/*/; do
+  workflow_name=$(basename "$workflow_dir")
+  if [ -f "${workflow_dir}package.json" ]; then
+    echo "  -> ${workflow_name}"
+    cd "$workflow_dir" && bun install 2>&1 | sed 's/^/     /' || echo "     Warning: failed to install deps for ${workflow_name}"
+  fi
+done
 
 echo "Services started. Container is running."
 echo ""

@@ -54,6 +54,7 @@ export async function readWorkflowFile(_, __, data) {
 }
 
 export async function initializeOpencodeSessionFromDocker(_, __, data) {
+  const tTotal0 = performance.now()
   const { workflowName } = data.data || {}
 
   if (!workflowName || typeof workflowName !== "string" || !workflowName.trim()) {
@@ -70,33 +71,33 @@ export async function initializeOpencodeSessionFromDocker(_, __, data) {
     throw new Error(`Workflow "${workflowName}" not found`)
   }
 
-  const remoteCmd = `kill $(lsof -t -i:3113) 2>/dev/null; cd /home/sift/workflows/${workflowName} && ( setsid opencode serve --port 3113 --hostname 0.0.0.0 < /dev/null > /tmp/opencode-serve.log 2>&1 & ); ok=false; for i in $(seq 1 30); do curl -s http://localhost:3113/provider >/dev/null 2>&1 && { ok=true; break; }; sleep 0.2; done; $ok && echo OK || echo FAIL`
+  const remoteCmd = `kill $(lsof -t -i:3113) 2>/dev/null; cd /home/sift/workflows/${workflowName} && ( setsid opencode serve --port 3113 --hostname 0.0.0.0 < /dev/null > /tmp/opencode-serve.log 2>&1 & ); ok=false; for i in $(seq 1 30); do curl -s --head --max-time 3 http://localhost:3113/provider >/dev/null 2>&1 && { ok=true; break; }; sleep 0.2; done; $ok && echo OK || echo FAIL`
 
-  console.log(`[initializeOpencodeSessionFromDocker] spawning SSH for workflow "${workflowName}"`)
+  const tSpawn = performance.now()
   const proc = Bun.spawn([
     "sshpass", "-p", "forensics", "ssh",
     "-p", "2222",
     "-o", "StrictHostKeyChecking=no",
     "-o", "UserKnownHostsFile=/dev/null",
+    "-o", "ConnectTimeout=10",
     "-n",
     "sift@localhost",
     remoteCmd,
-  ], { stdin: "ignore" })
+  ], { stdin: "ignore", timeout: 30_000 })
 
-  console.log("[initializeOpencodeSessionFromDocker] waiting for stdout...")
   const stdout = await new Response(proc.stdout).text()
   const trimmed = stdout.trim()
-  console.log(`[initializeOpencodeSessionFromDocker] stdout: ${trimmed}`)
-
+  const stdoutElapsed = performance.now() - tSpawn
   if (trimmed.endsWith("OK")) {
     proc.kill()
+    const totalElapsed = performance.now() - tTotal0
     return { success: true, workflow: workflowName, message: "OK" }
   }
 
   const stderr = await new Response(proc.stderr).text()
   await proc.exited
   const exitCode = proc.exitCode
-  console.log(`[initializeOpencodeSessionFromDocker] stderr: ${stderr}`)
+  const totalElapsed = performance.now() - tTotal0
   throw new Error(`SSH command failed (exit ${exitCode}): ${stderr || stdout}`)
 }
 
@@ -141,7 +142,6 @@ export async function mountEvidenceToSift(_, __, data, ws) {
   const containerPath = `/home/sift/evidence/${path}`
 
   if (extractInode) {
-    console.log(`[mountEvidenceToSift] extractInode ${extractInode} for ${path}`)
     const offset = await detectPartitionOffset(containerPath)
     const e01Path = `${containerPath}/disk-image.E01`
 
@@ -172,8 +172,6 @@ export async function mountEvidenceToSift(_, __, data, ws) {
       data: base64,
     }
   }
-
-  console.log("[mountEvidenceToSift] Starting Sleuth Kit analysis for path:", path)
 
   const mountScript = `set -e
 echo "=== Analyzing E01 with Sleuth Kit ==="
@@ -252,8 +250,6 @@ async function detectPartitionOffset(containerPath) {
   }
 
   const e01Path = `${containerPath}/disk-image.E01`
-  console.log("[detectPartitionOffset] Detecting for:", containerPath)
-
   const proc = Bun.spawn([
     "sshpass", "-p", "forensics", "ssh",
     "-p", "2222",

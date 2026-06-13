@@ -54,9 +54,14 @@ export function createWsHandler(ludusUrl, apiKey) {
         if (handler) {
           const result = handler(ludusUrl, apiKey, data, ws)
           if (result instanceof Promise) {
+            const t0 = performance.now()
             result
-              .then(r => { if (r !== undefined) ws.send(JSON.stringify({ type: data.type, result: r })) })
-              .catch(err => ws.send(JSON.stringify({ type: data.type, error: err.message })))
+              .then(r => {
+                if (r !== undefined) ws.send(JSON.stringify({ type: data.type, result: r }))
+              })
+              .catch(err => {
+                ws.send(JSON.stringify({ type: data.type, error: err.message }))
+              })
           }
         }
       } catch {}
