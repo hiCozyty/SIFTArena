@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
-import { Lock } from "lucide-react"
+import { Lock, Info, Loader2, CheckCircle2, XCircle, Circle } from "lucide-react"
 import { BrandSpeedtestIcon } from "@/components/icons/tabler-brand-speedtest"
 import { TabContentCard } from "@/components/shared-ui-primitives/tab-content-card"
 import {
@@ -27,7 +27,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogOverlay,
+  DialogPortal,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
+import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { SiftAgentTree, type Workflow } from "@/components/sift-agent/sift-agent-tree"
+import { HorizontalTimeline } from "@/components/ui/horizontal-timeline"
 import * as backendWs from "@/lib/backend-ws"
 import { executeWsOperation } from "@/lib/ws-ops"
 
@@ -39,6 +49,45 @@ function formatSize(bytes: number): string {
   if (mb < 1024) return `${mb.toFixed(1)} MB`
   const gb = mb / 1024
   return `${gb.toFixed(1)} GB`
+}
+
+type PlaybookRunStep = {
+  id: string
+  label: string
+  status: "running" | "success" | "error"
+  message: string
+  description?: string
+  command?: string
+}
+
+const INFRA_LABELS: Record<string, string> = {
+  init: "Init",
+  revert: "Revert",
+  powerCheck: "Power Check",
+  cliCheck: "CLI Check",
+  cleanup: "Cleanup",
+}
+
+const EVIDENCE_STEP_LABELS: Record<string, string> = {
+  ewfTools: "EWF Tools",
+  memoryDump: "Memory Dump",
+  diskImage: "Disk Image",
+  rsync: "Transfer",
+  hashes: "Hashes",
+  groundTruth: "Ground Truth",
+  cleanup: "Cleanup",
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+function formatTime(epochMs: number): string {
+  const d = new Date(epochMs)
+  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true })
+    .toLowerCase()
+    .replace(/\s/g, "")
 }
 
 export function BenchmarkContent({
@@ -53,12 +102,11 @@ export function BenchmarkContent({
   selectedWorkflowName: string | null
 }) {
   const streamRef = useRef<HTMLPreElement>(null)
+  const evidenceScrollRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
-  const [playbookFinished, setPlaybookFinished] = useState(false)
-
   const [evidence, setEvidence] = useState<Workflow[]>([])
   const [selectedEvidenceNodeId, setSelectedEvidenceNodeId] = useState<string | null>(null)
-  const [evidenceFileInfo, setEvidenceFileInfo] = useState<{ name: string | null, path: string, size: number | null, hash: string | null, created: string | null } | null>(null)
+  const [evidenceFileInfo, setEvidenceFileInfo] = useState<{ name: string | null, path: string, size: number | null, hash: string | null, created: string | null, content: string | null } | null>(null)
   const [evidenceFileInfoLoading, setEvidenceFileInfoLoading] = useState(false)
   const [mountingEvidence, setMountingEvidence] = useState(false)
   const [mountResult, setMountResult] = useState<string | null>(null)
@@ -68,38 +116,105 @@ export function BenchmarkContent({
   const [mountStreamOutput, setMountStreamOutput] = useState("")
   const [collectingEvidence, setCollectingEvidence] = useState(false)
   const [evidenceCollectionError, setEvidenceCollectionError] = useState<string | null>(null)
+  const [evidenceCollectionDialogOpen, setEvidenceCollectionDialogOpen] = useState(false)
+  const [evidenceCollectionComplete, setEvidenceCollectionComplete] = useState(false)
   const [showCollectDialog, setShowCollectDialog] = useState(false)
   const [showRunPlaybookDialog, setShowRunPlaybookDialog] = useState(false)
+  const [isRunningPlaybook, setIsRunningPlaybook] = useState(false)
+  const [playbookRunSteps, setPlaybookRunSteps] = useState<PlaybookRunStep[]>([])
+  const [selectedAbilityStep, setSelectedAbilityStep] = useState<PlaybookRunStep | null>(null)
+  const [evidenceCollectionSteps, setEvidenceCollectionSteps] = useState<PlaybookRunStep[]>([])
+  const [evidenceReady, setEvidenceReady] = useState(false)
   const [models, setModels] = useState<{ id: string, name: string }[]>([])
   const [selectedModel, setSelectedModel] = useState("")
 
   useEffect(() => {
-    if (!playbookFinished) return
+    if (!evidenceReady) return
     executeWsOperation<Workflow[]>({
       messageType: "listEvidence",
       sendFn: () => backendWs.send({ type: "listEvidence" }),
     }).then(setEvidence).catch(() => setEvidence([]))
-  }, [playbookFinished])
+  }, [evidenceReady])
 
   useEffect(() => {
-    if (playbookCompleted) setPlaybookFinished(true)
-  }, [playbookCompleted])
-
-  useEffect(() => {
-    if (playbookFinished) return
     executeWsOperation<Workflow[]>({
       messageType: "listEvidence",
       sendFn: () => backendWs.send({ type: "listEvidence" }),
-    }).then((results) => {
-      setEvidence(results)
-      if (results?.length > 0) setPlaybookFinished(true)
-    }).catch(() => setEvidence([]))
+    }).then(setEvidence).catch(() => setEvidence([]))
   }, [])
 
   useEffect(() => {
     const unsub = backendWs.subscribe((data) => {
       if (data.type === "mountEvidenceToSift:stream" || data.type === "unmountEvidenceFromSift:stream") {
         setMountStreamOutput((prev) => prev + (data.text as string))
+      }
+    })
+    return unsub
+  }, [])
+
+  useEffect(() => {
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type === "runPlaybookStatus") {
+        const { step, status, message } = data as { step: string, status: "running" | "success" | "error", message: string }
+        if (step.startsWith("event-")) {
+          if (status !== "success") return
+          let entry: { type?: string, name?: string, durationMs?: number, startedAt?: number, finishedAt?: number, description?: string, command?: string }
+          try { entry = JSON.parse(message) } catch { return }
+          if (entry.type !== "ability") return
+          const range = entry.startedAt != null && entry.finishedAt != null
+            ? `${formatTime(entry.startedAt)} - ${formatTime(entry.finishedAt)}`
+            : entry.durationMs != null ? formatDuration(entry.durationMs) : ""
+          setPlaybookRunSteps((prev) => [...prev, {
+            id: step,
+            label: entry.name ?? step,
+            status: "success",
+            message: range,
+            description: entry.description,
+            command: entry.command,
+          }])
+          return
+        }
+        const label = INFRA_LABELS[step]
+        if (!label) return
+        setPlaybookRunSteps((prev) => {
+          const existing = prev.find((s) => s.id === step)
+          if (existing) {
+            return prev.map((s) => s.id === step ? { ...s, status, message } : s)
+          }
+          const prevCompleted = status === "running"
+            ? prev.map((s) => s.status === "running" ? { ...s, status: "success" as const } : s)
+            : prev
+          return [...prevCompleted, { id: step, label, status, message }]
+        })
+      }
+      if (data.type === "runPlaybook") {
+        setIsRunningPlaybook(false)
+        if (data.error) {
+          setPlaybookRunSteps((prev) => [...prev, {
+            id: "error",
+            label: "Error",
+            status: "error",
+            message: data.error as string,
+          }])
+        } else {
+          setEvidenceReady(true)
+        }
+      }
+      if (data.type === "evidenceCollectionStatus") {
+        const { step, status, message } = data as { step: string, status: "running" | "success" | "error", message: string }
+        console.log(`[evidence:client] status: step=${step} status=${status} message="${message}"`)
+        const label = EVIDENCE_STEP_LABELS[step]
+        if (!label) return
+        setEvidenceCollectionSteps((prev) => {
+          const existing = prev.find((s) => s.id === step)
+          if (existing) {
+            return prev.map((s) => s.id === step ? { ...s, status, message } : s)
+          }
+          const prevCompleted = status === "running"
+            ? prev.map((s) => s.status === "running" ? { ...s, status: "success" as const } : s)
+            : prev
+          return [...prevCompleted, { id: step, label, status, message }]
+        })
       }
     })
     return unsub
@@ -120,6 +235,12 @@ export function BenchmarkContent({
     }
   }, [mountStreamOutput])
 
+  useEffect(() => {
+    if (evidenceScrollRef.current) {
+      evidenceScrollRef.current.scrollTop = evidenceScrollRef.current.scrollHeight
+    }
+  }, [evidenceCollectionSteps])
+
   const handleSelectEvidenceFile = useCallback((nodeId: string) => {
     if (nodeId === selectedEvidenceNodeId) {
       setSelectedEvidenceNodeId(null)
@@ -130,7 +251,7 @@ export function BenchmarkContent({
     setEvidenceFileInfoLoading(true)
     setEvidenceFileInfo(null)
     const path = nodeId.startsWith("workflows/") ? nodeId.slice("workflows/".length) : nodeId
-    executeWsOperation<{ name: string | null, path: string, size: number | null, hash: string | null }>({
+    executeWsOperation<{ name: string | null, path: string, size: number | null, hash: string | null, content: string | null }>({
       messageType: "getEvidenceFileInfo",
       sendFn: () => backendWs.send({ type: "getEvidenceFileInfo", data: { path } }),
     }).then(setEvidenceFileInfo).catch(() => setEvidenceFileInfo(null)).finally(() => setEvidenceFileInfoLoading(false))
@@ -179,22 +300,64 @@ export function BenchmarkContent({
     }
   }, [evidenceFileInfo])
 
-  const handleConfirmCollect = useCallback(async () => {
-    setShowCollectDialog(false)
+  const beginCollection = useCallback((overwrite: boolean) => {
+    setEvidenceCollectionSteps([])
+    setEvidenceCollectionComplete(false)
     setCollectingEvidence(true)
     setEvidenceCollectionError(null)
-    try {
-      await executeWsOperation({
-        messageType: "collectEvidence",
-        sendFn: () => backendWs.send({ type: "collectEvidence", data: { playbookName: "test-playbook", vmid: 107, overwrite: true } }),
-      })
-      setPlaybookFinished(true)
-    } catch (err) {
+    setEvidenceCollectionDialogOpen(true)
+    executeWsOperation({
+      messageType: "collectEvidence",
+      sendFn: () => backendWs.send({ type: "collectEvidence", data: { playbookName: selectedPlaybookName, vmid: 107, overwrite } }),
+    }).then(() => {
+      executeWsOperation<Workflow[]>({
+        messageType: "listEvidence",
+        sendFn: () => backendWs.send({ type: "listEvidence" }),
+      }).then(setEvidence).catch(() => {})
+    }).catch((err) => {
       setEvidenceCollectionError(err instanceof Error ? err.message : String(err))
-    } finally {
+    }).finally(() => {
       setCollectingEvidence(false)
+      setEvidenceCollectionComplete(true)
+    })
+  }, [selectedPlaybookName])
+
+  const handleOpenCollectDialog = useCallback(async () => {
+    try {
+      const result = await executeWsOperation<{ exists: boolean }>({
+        messageType: "checkEvidenceExists",
+        sendFn: () => backendWs.send({ type: "checkEvidenceExists", data: { playbookName: selectedPlaybookName } }),
+      })
+      if (result?.exists) {
+        setShowCollectDialog(true)
+      } else {
+        beginCollection(false)
+      }
+    } catch {
+      beginCollection(false)
     }
+  }, [selectedPlaybookName, beginCollection])
+
+  const handleConfirmCollect = useCallback(() => {
+    setShowCollectDialog(false)
+    beginCollection(true)
+  }, [beginCollection])
+
+  const handleAbort = useCallback(() => {
+    console.log("[evidence:client] user requested abort")
+    backendWs.send({ type: "abortEvidenceCollection" })
+    setEvidenceCollectionError("Collection aborted by user")
+    setCollectingEvidence(false)
+    setEvidenceCollectionComplete(true)
   }, [])
+
+  const handleRunPlaybook = useCallback(() => {
+    setShowRunPlaybookDialog(false)
+    setPlaybookRunSteps([])
+    setEvidenceReady(false)
+    setIsRunningPlaybook(true)
+    backendWs.send({ type: "runPlaybook", data: { playbookName: selectedPlaybookName } })
+  }, [selectedPlaybookName])
 
   useEffect(() => {
     if (!siftAgentConfigured) return
@@ -242,31 +405,82 @@ export function BenchmarkContent({
                   <span className="text-muted-foreground text-sm">{selectedPlaybookName ?? "None"}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button onClick={() => setShowRunPlaybookDialog(true)}>Run playbook</Button>
+                  <Button disabled={isRunningPlaybook} onClick={() => setShowRunPlaybookDialog(true)}>
+                    {isRunningPlaybook ? "Running..." : "Run playbook"}
+                  </Button>
+                  {evidenceReady && (
+                    <Button
+                      onClick={() => { setPlaybookRunSteps([]); setEvidenceReady(false) }}
+                    >
+                      Clear timeline
+                    </Button>
+                  )}
+                </div>
+                {playbookRunSteps.length > 0 && (
+                  <HorizontalTimeline
+                    items={playbookRunSteps}
+                    renderNode={(step, _i, above) => (
+                      <div className={`text-xs p-2 ${above ? "mb-1" : "mt-1"} max-w-28`}>
+                        <p className="font-semibold flex items-center gap-1">
+                          {step.label}
+                          {step.id.startsWith("event-") && (
+                            <button
+                              type="button"
+                              className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                              onClick={(e) => { e.stopPropagation(); setSelectedAbilityStep(step) }}
+                            >
+                              <Info className="size-3" />
+                            </button>
+                          )}
+                        </p>
+                        <p className="text-muted-foreground line-clamp-3">{step.message}</p>
+                      </div>
+                    )}
+                    getItemStatus={(_step, index) => {
+                      if (!isRunningPlaybook) return undefined
+                      if (index === playbookRunSteps.length - 1) return "running"
+                      return undefined
+                    }}
+                    maxWidth="100%"
+                    className="overflow-x-auto"
+                  />
+                )}
+                {evidenceReady && (
                   <Button
                     disabled={collectingEvidence}
-                    onClick={() => setShowCollectDialog(true)}
+                    onClick={handleOpenCollectDialog}
                   >
                     {collectingEvidence ? "Collecting..." : "Collect evidence"}
                   </Button>
-                </div>
-                {evidenceCollectionError && (
-                  <p className="text-xs text-destructive">{evidenceCollectionError}</p>
                 )}
-                <Button
-                  variant="secondary"
-                  onClick={() => setPlaybookFinished(true)}
-                >
-                  Finish playbook
-                </Button>
+                <Dialog open={selectedAbilityStep !== null} onOpenChange={(open) => { if (!open) setSelectedAbilityStep(null) }}>
+                  <DialogPortal>
+                    <DialogOverlay className="backdrop-blur-sm" />
+                    <DialogPrimitive.Content
+                      className="fixed top-[50%] left-[50%] z-50 grid w-full max-w-sm translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:rounded-4xl"
+                    >
+                      <DialogHeader>
+                        <DialogTitle>{selectedAbilityStep?.label}</DialogTitle>
+                        {selectedAbilityStep?.description && (
+                          <DialogDescription>{selectedAbilityStep.description}</DialogDescription>
+                        )}
+                      </DialogHeader>
+                      {selectedAbilityStep?.command && (
+                        <p className="text-xs font-mono text-muted-foreground break-all bg-muted rounded-md p-2">
+                          {selectedAbilityStep.command}
+                        </p>
+                      )}
+                    </DialogPrimitive.Content>
+                  </DialogPortal>
+                </Dialog>
               </div>
             )}
           </AccordionContent>
         </AccordionItem>
-        <AccordionItem value="evidence-collection" disabled={!playbookFinished}>
+        <AccordionItem value="evidence-collection" disabled={!evidenceReady && evidence.length === 0}>
           <AccordionTrigger>
             Evidence Collection
-            {!playbookFinished && (
+            {!evidenceReady && evidence.length === 0 && (
               <span className="ml-1 text-muted-foreground/80 font-normal">(Run Playbook First)</span>
             )}
           </AccordionTrigger>
@@ -315,16 +529,25 @@ export function BenchmarkContent({
                       <div className="shrink-0 px-4 py-2 border-b border-border">
                         <span className="text-muted-foreground text-xs font-mono">{evidenceFileInfo.path}</span>
                       </div>
-                      <pre className="font-mono text-xs text-zinc-700 flex-1 overflow-auto p-3 dark:text-zinc-300">
-                        <code>{[
-                          `name:    ${evidenceFileInfo.name}`,
-                          `path:    ${evidenceFileInfo.path}`,
-                          `size:    ${evidenceFileInfo.size !== null ? formatSize(evidenceFileInfo.size) : "unknown"}`,
-                          evidenceFileInfo.created && `created: ${new Date(evidenceFileInfo.created).toLocaleString()}`,
-                          evidenceFileInfo.hash && `hash:    ${evidenceFileInfo.hash}`,
-                        ].filter(Boolean).join("\n")}</code>
-                      </pre>
-                       {(mountStreamOutput || mountResult) && (
+                      {evidenceFileInfo.content ? (
+                        <pre className="font-mono text-xs text-zinc-700 flex-1 overflow-auto p-3 dark:text-zinc-300">
+                          <code>{(() => {
+                            try { return JSON.stringify(JSON.parse(evidenceFileInfo.content), null, 2) }
+                            catch { return evidenceFileInfo.content }
+                          })()}</code>
+                        </pre>
+                      ) : (
+                        <pre className="font-mono text-xs text-zinc-700 flex-1 overflow-auto p-3 dark:text-zinc-300">
+                          <code>{[
+                            `name:    ${evidenceFileInfo.name}`,
+                            `path:    ${evidenceFileInfo.path}`,
+                            `size:    ${evidenceFileInfo.size !== null ? formatSize(evidenceFileInfo.size) : "unknown"}`,
+                            evidenceFileInfo.created && `created: ${new Date(evidenceFileInfo.created).toLocaleString()}`,
+                            evidenceFileInfo.hash && `hash:    ${evidenceFileInfo.hash}`,
+                          ].filter(Boolean).join("\n")}</code>
+                        </pre>
+                      )}
+                       {isE01File && (mountStreamOutput || mountResult) && (
                          <pre ref={streamRef} className="mx-3 mb-2 rounded-4xl bg-zinc-100 p-2 font-mono text-xs text-zinc-900 max-h-48 overflow-auto shrink-0 min-w-0 w-full whitespace-pre-wrap dark:bg-zinc-900 dark:text-green-400">{mountStreamOutput || mountResult}</pre>
                       )}
                       {mountError && (
@@ -412,7 +635,7 @@ export function BenchmarkContent({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction>
+            <AlertDialogAction onClick={handleRunPlaybook}>
               OK
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -421,16 +644,51 @@ export function BenchmarkContent({
       <AlertDialog open={showCollectDialog} onOpenChange={setShowCollectDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Collect Evidence</AlertDialogTitle>
+            <AlertDialogTitle>Evidence Already Exists</AlertDialogTitle>
             <AlertDialogDescription>
-              You are about to dump the memory and collect full disk image. Are you sure you completed a playbook run?
+              Evidence already exists for this playbook. Overwrite and re-collect?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmCollect}>
-              Yes I completed a playbook run
+              Yes, overwrite
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={evidenceCollectionDialogOpen} onOpenChange={(open) => { if (!open) setEvidenceCollectionDialogOpen(false) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Collect Evidence</AlertDialogTitle>
+            <AlertDialogDescription>
+              {evidenceCollectionError
+                ? evidenceCollectionError
+                : collectingEvidence
+                  ? "Collecting evidence..."
+                  : "Evidence collection complete"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div ref={evidenceScrollRef} className="space-y-3 py-2 max-h-[132px] overflow-y-auto [scrollbar-width:thin]">
+            {evidenceCollectionSteps.map((step, i) => (
+              <div key={i} className="flex items-start gap-3">
+                {step.status === "running"
+                  ? <Loader2 className="size-4 animate-spin text-primary mt-0.5 shrink-0" />
+                  : step.status === "success"
+                    ? <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
+                    : step.status === "error"
+                      ? <XCircle className="size-4 text-red-500 mt-0.5 shrink-0" />
+                      : <Circle className="size-4 text-muted-foreground/40 mt-0.5 shrink-0" />}
+                <div>
+                  <p className="text-sm font-medium">{step.label}</p>
+                  {step.message && <p className="text-xs text-muted-foreground">{step.message}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <AlertDialogFooter>
+            <Button variant="destructive" onClick={handleAbort} disabled={!collectingEvidence}>Abort</Button>
+            <Button onClick={() => setEvidenceCollectionDialogOpen(false)} disabled={!evidenceCollectionComplete}>Close</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

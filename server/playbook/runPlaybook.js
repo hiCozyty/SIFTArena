@@ -4,6 +4,8 @@ import { restoreToBaseClean } from "../ludus/range.js"
 
 const RANGE_ID = process.env.LUDUS_RANGE_ID || "ty"
 
+export let lastPlaybookResult = null
+
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms))
 }
@@ -375,8 +377,8 @@ export async function runPlaybook(ludusUrl, apiKey, data, ws) {
 
     sendStatus(ws, "cleanup", "success", `Removed ${taskNames.length} scheduled tasks`)
 
-
-    return { playbookName, startedAt: runStartedAt, finishedAt: Date.now(), timeline: timelineResults }
+    lastPlaybookResult = { playbookName, startedAt: runStartedAt, finishedAt: Date.now(), timeline: timelineResults }
+    return lastPlaybookResult
 
   } catch (err) {
 

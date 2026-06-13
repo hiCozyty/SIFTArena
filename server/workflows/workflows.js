@@ -1,6 +1,6 @@
 import { readdir, stat } from "node:fs/promises"
 import { join, basename } from "node:path"
-import { collectEvidence as runEvidenceCollection } from "../benchmark/evidenceCollection.js"
+import { collectEvidence as runEvidenceCollection, abortEvidenceCollection as abortRunningCollection } from "../benchmark/evidenceCollection.js"
 
 const WORKFLOWS_DIR = join(import.meta.dir, "..", "..", "workflows")
 const EVIDENCE_DIR = join(import.meta.dir, "..", "..", "evidence")
@@ -129,12 +129,20 @@ export async function getEvidenceFileInfo(_, __, data) {
     hash = `sha256:${(await Bun.file(fullPath + ".sha256").text()).trim()}`
   } catch {}
 
+  let content = null
+  if (path.endsWith(".json")) {
+    try {
+      content = await Bun.file(fullPath).text()
+    } catch {}
+  }
+
   return {
     name: basename(path),
     path,
     size: s.size,
     hash,
     created: s.birthtime.toISOString(),
+    content,
   }
 }
 
@@ -285,9 +293,17 @@ export async function unmountEvidenceFromSift() {
   return { success: true, output: "No kernel mount to clean up — Sleuth Kit reads E01 directly." }
 }
 
-export async function collectEvidence(_, __, data) {
+export async function collectEvidence(_, __, data, ws) {
   const { playbookName, vmid, overwrite } = data.data || {}
-  return runEvidenceCollection({ playbookName, vmid, overwrite })
+  const sendStatus = (step, status, message) => {
+    if (ws) ws.send(JSON.stringify({ type: "evidenceCollectionStatus", step, status, message }))
+  }
+  return runEvidenceCollection({ playbookName, vmid, overwrite }, sendStatus)
+}
+
+export async function abortEvidenceCollection() {
+  abortRunningCollection()
+  return { success: true }
 }
 
 export async function checkEvidenceExists(_, __, data) {
