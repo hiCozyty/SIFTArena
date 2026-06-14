@@ -141,6 +141,7 @@ export async function runPlaybook(ludusUrl, apiKey, data, ws) {
   let bgRunning = false
   const runStartedAt = Date.now()
   const timelineResults = []
+  const bgResults = []
 
   try {
     const { playbookName } = data.data || {}
@@ -222,11 +223,24 @@ export async function runPlaybook(ludusUrl, apiKey, data, ws) {
             usedBgNames.add(taskName)
             taskNames.push(taskName)
             runCount++
+            const startedAt = Date.now()
             try {
               sendStatus(ws, "bg-random", "running", `BG "${bg.name}" run #${runCount} starting`)
               await runScheduledTask(winIp, taskName, bg.command, false)
+              const finishedAt = Date.now()
+              bgResults.push({
+                name: bg.name, command: bg.command, taskName,
+                startedAt, finishedAt, durationMs: finishedAt - startedAt,
+                status: "success", error: null, runIndex: runCount - 1,
+              })
               sendStatus(ws, "bg-random", "success", `BG "${bg.name}" run #${runCount} completed`)
             } catch (err) {
+              const finishedAt = Date.now()
+              bgResults.push({
+                name: bg.name, command: bg.command, taskName,
+                startedAt, finishedAt, durationMs: finishedAt - startedAt,
+                status: "error", error: err.message, runIndex: runCount - 1,
+              })
               sendStatus(ws, "bg-random", "error", `BG "${bg.name}" run #${runCount} failed: ${err.message}`)
             }
             if (!bgRunning) break
@@ -248,11 +262,24 @@ export async function runPlaybook(ludusUrl, apiKey, data, ws) {
           let runCount = 0
           while (bgRunning) {
             runCount++
+            const startedAt = Date.now()
             try {
               sendStatus(ws, `bg-${i}`, "running", `BG "${bg.name}" run #${runCount} starting`)
               await runScheduledTask(winIp, bgTaskName, bg.command, false)
+              const finishedAt = Date.now()
+              bgResults.push({
+                name: bg.name, command: bg.command, taskName: bgTaskName,
+                startedAt, finishedAt, durationMs: finishedAt - startedAt,
+                status: "success", error: null, runIndex: runCount - 1,
+              })
               sendStatus(ws, `bg-${i}`, "success", `BG "${bg.name}" run #${runCount} completed`)
             } catch (err) {
+              const finishedAt = Date.now()
+              bgResults.push({
+                name: bg.name, command: bg.command, taskName: bgTaskName,
+                startedAt, finishedAt, durationMs: finishedAt - startedAt,
+                status: "error", error: err.message, runIndex: runCount - 1,
+              })
               sendStatus(ws, `bg-${i}`, "error", `BG "${bg.name}" run #${runCount} failed: ${err.message}`)
             }
             if (!bgRunning) {
@@ -377,7 +404,7 @@ export async function runPlaybook(ludusUrl, apiKey, data, ws) {
 
     sendStatus(ws, "cleanup", "success", `Removed ${taskNames.length} scheduled tasks`)
 
-    lastPlaybookResult = { playbookName, startedAt: runStartedAt, finishedAt: Date.now(), timeline: timelineResults }
+    lastPlaybookResult = { playbookName, startedAt: runStartedAt, finishedAt: Date.now(), timeline: timelineResults, backgroundEvents: bgResults }
     return lastPlaybookResult
 
   } catch (err) {

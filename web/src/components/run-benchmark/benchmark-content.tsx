@@ -78,6 +78,16 @@ const EVIDENCE_STEP_LABELS: Record<string, string> = {
   cleanup: "Cleanup",
 }
 
+const STAGING_LABELS: Record<string, string> = {
+  inodes: "Locating Artifacts",
+  evtx: "Parsing EVTX Logs",
+  usn: "Parsing USN Journal",
+  mft: "Building MFT Timeline",
+  prefetch: "Parsing Prefetch Files",
+  volatility: "Running Volatility Plugins",
+  complete: "Complete",
+}
+
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`
   return `${(ms / 1000).toFixed(1)}s`
@@ -127,6 +137,13 @@ export function BenchmarkContent({
   const [evidenceReady, setEvidenceReady] = useState(false)
   const [models, setModels] = useState<{ id: string, name: string }[]>([])
   const [selectedModel, setSelectedModel] = useState("")
+  const [isStaging, setIsStaging] = useState(false)
+  const [stagingSteps, setStagingSteps] = useState<PlaybookRunStep[]>([])
+  const [stagingError, setStagingError] = useState<string | null>(null)
+  const [stagingComplete, setStagingComplete] = useState(false)
+  const [stagingDialogOpen, setStagingDialogOpen] = useState(false)
+  const [showConfirmStagingDialog, setShowConfirmStagingDialog] = useState(false)
+  const [stagedExists, setStagedExists] = useState(false)
 
   useEffect(() => {
     if (!evidenceReady) return
@@ -206,6 +223,20 @@ export function BenchmarkContent({
         const label = EVIDENCE_STEP_LABELS[step]
         if (!label) return
         setEvidenceCollectionSteps((prev) => {
+          const existing = prev.find((s) => s.id === step)
+          if (existing) {
+            return prev.map((s) => s.id === step ? { ...s, status, message } : s)
+          }
+          const prevCompleted = status === "running"
+            ? prev.map((s) => s.status === "running" ? { ...s, status: "success" as const } : s)
+            : prev
+          return [...prevCompleted, { id: step, label, status, message }]
+        })
+      }
+      if (data.type === "preAgentStagingStatus") {
+        const { step, status, message } = data as { step: string, status: "running" | "success" | "error", message: string }
+        const label = STAGING_LABELS[step] ?? step
+        setStagingSteps((prev) => {
           const existing = prev.find((s) => s.id === step)
           if (existing) {
             return prev.map((s) => s.id === step ? { ...s, status, message } : s)
@@ -358,6 +389,38 @@ export function BenchmarkContent({
     setIsRunningPlaybook(true)
     backendWs.send({ type: "runPlaybook", data: { playbookName: selectedPlaybookName } })
   }, [selectedPlaybookName])
+
+  const handleExtractArtifacts = useCallback(async () => {
+    if (!mountedPlaybookName) return
+    try {
+      const result = await executeWsOperation<{ exists: boolean }>({
+        messageType: "checkStagedOutputExists",
+        sendFn: () => backendWs.send({ type: "checkStagedOutputExists", data: { playbookName: mountedPlaybookName } }),
+      })
+      setStagedExists(!!result?.exists)
+    } catch {
+      setStagedExists(false)
+    }
+    setShowConfirmStagingDialog(true)
+  }, [mountedPlaybookName])
+
+  const handleConfirmStaging = useCallback(() => {
+    setShowConfirmStagingDialog(false)
+    setStagingSteps([])
+    setStagingComplete(false)
+    setIsStaging(true)
+    setStagingError(null)
+    setStagingDialogOpen(true)
+    executeWsOperation({
+      messageType: "preAgentStagingPipeline",
+      sendFn: () => backendWs.send({ type: "preAgentStagingPipeline", data: { playbookName: mountedPlaybookName } }),
+    }).catch((err) => {
+      setStagingError(err instanceof Error ? err.message : String(err))
+    }).finally(() => {
+      setIsStaging(false)
+      setStagingComplete(true)
+    })
+  }, [mountedPlaybookName])
 
   useEffect(() => {
     if (!siftAgentConfigured) return
@@ -520,6 +583,13 @@ export function BenchmarkContent({
                       onClick={handleMountEvidence}
                     >
                       {mountingEvidence ? "Mounting..." : "Mount Evidence to SIFT"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={isStaging || !mountedPlaybookName}
+                      onClick={handleExtractArtifacts}
+                    >
+                      {isStaging ? "Extracting..." : "Extract Artifacts"}
                     </Button>
                   </div>
                 </div>
@@ -689,6 +759,58 @@ export function BenchmarkContent({
           <AlertDialogFooter>
             <Button variant="destructive" onClick={handleAbort} disabled={!collectingEvidence}>Abort</Button>
             <Button onClick={() => setEvidenceCollectionDialogOpen(false)} disabled={!evidenceCollectionComplete}>Close</Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={showConfirmStagingDialog} onOpenChange={setShowConfirmStagingDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Extract Artifacts</AlertDialogTitle>
+            <AlertDialogDescription>
+              {stagedExists
+                ? "Existing extracted artifact data found. Overwrite?"
+                : "Perform pre-agent staging and extract artifacts?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmStaging}>
+              {stagedExists ? "Overwrite" : "OK"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={stagingDialogOpen} onOpenChange={(open) => { if (!open) setStagingDialogOpen(false) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Extract Artifacts</AlertDialogTitle>
+            <AlertDialogDescription>
+              {stagingError
+                ? stagingError
+                : isStaging
+                  ? "Extracting artifacts..."
+                  : "Artifact extraction complete"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3 py-2 max-h-[132px] overflow-y-auto [scrollbar-width:thin]">
+            {stagingSteps.map((step, i) => (
+              <div key={i} className="flex items-start gap-3">
+                {step.status === "running"
+                  ? <Loader2 className="size-4 animate-spin text-primary mt-0.5 shrink-0" />
+                  : step.status === "success"
+                    ? <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
+                    : step.status === "error"
+                      ? <XCircle className="size-4 text-red-500 mt-0.5 shrink-0" />
+                      : <Circle className="size-4 text-muted-foreground/40 mt-0.5 shrink-0" />}
+                <div>
+                  <p className="text-sm font-medium">{step.label}</p>
+                  {step.message && <p className="text-xs text-muted-foreground">{step.message}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <AlertDialogFooter>
+            <Button onClick={() => setStagingDialogOpen(false)} disabled={!stagingComplete}>Close</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
