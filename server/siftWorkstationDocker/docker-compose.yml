@@ -28,6 +28,6 @@ services:
     volumes:
       - ../../evidence:/home/sift/evidence
       - ../../workflows:/home/sift/workflows
-      - ../../playbooks:/home/sift/playbooks
+      - ../../results:/home/sift/results
 
 

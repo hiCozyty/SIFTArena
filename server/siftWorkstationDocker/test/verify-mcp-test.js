@@ -1,7 +1,7 @@
 import { initializeOpencodeSessionFromDocker } from "../../workflows/workflows.js"
 
 async function main() {
-  const workflowName = "workflow1"
+  const workflowName = "five_phase_workflow_with_mcp"
   console.log(`Initializing opencode session for "${workflowName}"...`)
   const initResult = await initializeOpencodeSessionFromDocker(null, null, { data: { workflowName } })
   console.log(`  -> ${initResult.message}`)

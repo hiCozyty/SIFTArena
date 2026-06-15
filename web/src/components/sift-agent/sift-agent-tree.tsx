@@ -8,6 +8,7 @@ import {
   TreeView,
   useTree,
 } from "@/components/kibo-ui/tree"
+import { Trash2 } from "lucide-react"
 type FileEntry = {
   name: string
   type: "file" | "directory"
@@ -30,6 +31,7 @@ function FileTreeRow({
   level,
   onSelectFile,
   onResetSelection,
+  onDeleteFolder,
 }: {
   name: string
   isDirectory: boolean
@@ -39,6 +41,7 @@ function FileTreeRow({
   level: number
   onSelectFile?: (path: string) => void
   onResetSelection?: (nodeId: string | null) => void
+  onDeleteFolder?: (name: string) => void
 }) {
   const { expandedIds } = useTree()
 
@@ -63,6 +66,18 @@ function FileTreeRow({
       >
         <TreeIcon hasChildren={isDirectory && (children?.length ?? 0) > 0} />
         <TreeLabel className="whitespace-normal break-words text-xs">{name}</TreeLabel>
+        {level === 1 && onDeleteFolder && (
+          <button
+            className="ml-auto hover:text-destructive"
+            onClick={(e) => {
+              e.stopPropagation()
+              onDeleteFolder(name)
+            }}
+            aria-label={`Delete ${name}`}
+          >
+            <Trash2 className="size-3" />
+          </button>
+        )}
       </TreeNodeTrigger>
       {isDirectory && children && children.length > 0 && (
         <TreeNodeContent hasChildren>
@@ -77,6 +92,7 @@ function FileTreeRow({
               level={level + 1}
               onSelectFile={onSelectFile}
               onResetSelection={onResetSelection}
+              onDeleteFolder={onDeleteFolder}
             />
           ))}
         </TreeNodeContent>
@@ -102,12 +118,14 @@ export function SiftAgentTree({
   onResetSelection,
   selectedNodeId,
   rootLabel = "Workflows",
+  onDeleteFolder,
 }: {
   workflows?: Workflow[] | null
   onSelectFile?: (path: string) => void
   onResetSelection?: (nodeId: string | null) => void
   selectedNodeId: string | null
   rootLabel?: string
+  onDeleteFolder?: (name: string) => void
 }) {
 
   return (
@@ -143,6 +161,7 @@ export function SiftAgentTree({
                     level={1}
                     onSelectFile={onSelectFile}
                     onResetSelection={onResetSelection}
+                    onDeleteFolder={onDeleteFolder}
                   />
                 ))}
               </TreeNodeContent>

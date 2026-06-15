@@ -1,5 +1,5 @@
 {
-  "name": "workflow1",
+  "name": "five_phase_workflow_with_mcp",
   "private": true,
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0"

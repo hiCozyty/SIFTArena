@@ -16,6 +16,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import {
   AlertDialog,
@@ -38,6 +43,13 @@ import {
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { SiftAgentTree, type Workflow } from "@/components/sift-agent/sift-agent-tree"
 import { HorizontalTimeline } from "@/components/ui/horizontal-timeline"
+import {
+  TreeProvider,
+  TreeView,
+  TreeNode,
+  TreeNodeTrigger,
+  TreeLabel,
+} from "@/components/kibo-ui/tree"
 import * as backendWs from "@/lib/backend-ws"
 import { executeWsOperation } from "@/lib/ws-ops"
 
@@ -138,12 +150,14 @@ export function BenchmarkContent({
   const [models, setModels] = useState<{ id: string, name: string }[]>([])
   const [selectedModel, setSelectedModel] = useState("")
   const [isStaging, setIsStaging] = useState(false)
-  const [stagingSteps, setStagingSteps] = useState<PlaybookRunStep[]>([])
   const [stagingError, setStagingError] = useState<string | null>(null)
-  const [stagingComplete, setStagingComplete] = useState(false)
-  const [stagingDialogOpen, setStagingDialogOpen] = useState(false)
   const [showConfirmStagingDialog, setShowConfirmStagingDialog] = useState(false)
   const [stagedExists, setStagedExists] = useState(false)
+  const [hasStagedEvidence, setHasStagedEvidence] = useState(false)
+  const [selectedToolCallId, setSelectedToolCallId] = useState<string | null>(null)
+  const [leftTab, setLeftTab] = useState("tool-call")
+  const [deleteEvidenceDialogOpen, setDeleteEvidenceDialogOpen] = useState(false)
+  const [pendingDeleteEvidenceName, setPendingDeleteEvidenceName] = useState<string | null>(null)
 
   useEffect(() => {
     if (!evidenceReady) return
@@ -219,7 +233,6 @@ export function BenchmarkContent({
       }
       if (data.type === "evidenceCollectionStatus") {
         const { step, status, message } = data as { step: string, status: "running" | "success" | "error", message: string }
-        console.log(`[evidence:client] status: step=${step} status=${status} message="${message}"`)
         const label = EVIDENCE_STEP_LABELS[step]
         if (!label) return
         setEvidenceCollectionSteps((prev) => {
@@ -234,18 +247,9 @@ export function BenchmarkContent({
         })
       }
       if (data.type === "preAgentStagingStatus") {
-        const { step, status, message } = data as { step: string, status: "running" | "success" | "error", message: string }
+        const { step, message } = data as { step: string, status: "running" | "success" | "error", message: string }
         const label = STAGING_LABELS[step] ?? step
-        setStagingSteps((prev) => {
-          const existing = prev.find((s) => s.id === step)
-          if (existing) {
-            return prev.map((s) => s.id === step ? { ...s, status, message } : s)
-          }
-          const prevCompleted = status === "running"
-            ? prev.map((s) => s.status === "running" ? { ...s, status: "success" as const } : s)
-            : prev
-          return [...prevCompleted, { id: step, label, status, message }]
-        })
+        setMountStreamOutput((prev) => prev + (message ? `${label}: ${message}\n` : `${label}\n`))
       }
     })
     return unsub
@@ -257,6 +261,15 @@ export function BenchmarkContent({
       sendFn: () => backendWs.send({ type: "getMountedEvidence" }),
     }).then((playbookName) => {
       if (playbookName) setMountedPlaybookName(playbookName as string)
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    executeWsOperation<{ hasStagedEvidence: boolean }>({
+      messageType: "checkAnyStagedEvidence",
+      sendFn: () => backendWs.send({ type: "checkAnyStagedEvidence" }),
+    }).then((result) => {
+      setHasStagedEvidence(!!result?.hasStagedEvidence)
     }).catch(() => {})
   }, [])
 
@@ -287,6 +300,28 @@ export function BenchmarkContent({
       sendFn: () => backendWs.send({ type: "getEvidenceFileInfo", data: { path } }),
     }).then(setEvidenceFileInfo).catch(() => setEvidenceFileInfo(null)).finally(() => setEvidenceFileInfoLoading(false))
   }, [selectedEvidenceNodeId])
+
+  const handleDeleteEvidence = useCallback(async () => {
+    if (!pendingDeleteEvidenceName) return
+    setDeleteEvidenceDialogOpen(false)
+    try {
+      await executeWsOperation({
+        messageType: "deleteEvidence",
+        sendFn: () => backendWs.send({ type: "deleteEvidence", data: { name: pendingDeleteEvidenceName } }),
+      })
+      if (mountedPlaybookName === pendingDeleteEvidenceName) {
+        setMountedPlaybookName(null)
+      }
+    } catch (err) {
+      console.error("[deleteEvidence] Error:", err)
+    } finally {
+      setPendingDeleteEvidenceName(null)
+      executeWsOperation<Workflow[]>({
+        messageType: "listEvidence",
+        sendFn: () => backendWs.send({ type: "listEvidence" }),
+      }).then(setEvidence).catch(() => setEvidence([]))
+    }
+  }, [pendingDeleteEvidenceName, mountedPlaybookName])
 
   const handleMountEvidence = useCallback(async () => {
     if (!evidenceFileInfo?.path) return
@@ -375,7 +410,6 @@ export function BenchmarkContent({
   }, [beginCollection])
 
   const handleAbort = useCallback(() => {
-    console.log("[evidence:client] user requested abort")
     backendWs.send({ type: "abortEvidenceCollection" })
     setEvidenceCollectionError("Collection aborted by user")
     setCollectingEvidence(false)
@@ -406,19 +440,25 @@ export function BenchmarkContent({
 
   const handleConfirmStaging = useCallback(() => {
     setShowConfirmStagingDialog(false)
-    setStagingSteps([])
-    setStagingComplete(false)
     setIsStaging(true)
     setStagingError(null)
-    setStagingDialogOpen(true)
     executeWsOperation({
       messageType: "preAgentStagingPipeline",
       sendFn: () => backendWs.send({ type: "preAgentStagingPipeline", data: { playbookName: mountedPlaybookName } }),
     }).catch((err) => {
-      setStagingError(err instanceof Error ? err.message : String(err))
+      const msg = err instanceof Error ? err.message : String(err)
+      setStagingError(msg)
+      setMountStreamOutput((prev) => prev + "[ERROR] " + msg + "\n")
     }).finally(() => {
       setIsStaging(false)
-      setStagingComplete(true)
+      executeWsOperation<Workflow[]>({
+        messageType: "listEvidence",
+        sendFn: () => backendWs.send({ type: "listEvidence" }),
+      }).then(setEvidence).catch(() => setEvidence([]))
+      executeWsOperation<{ hasStagedEvidence: boolean }>({
+        messageType: "checkAnyStagedEvidence",
+        sendFn: () => backendWs.send({ type: "checkAnyStagedEvidence" }),
+      }).then((result) => setHasStagedEvidence(!!result?.hasStagedEvidence)).catch(() => {})
     })
   }, [mountedPlaybookName])
 
@@ -561,6 +601,10 @@ export function BenchmarkContent({
                     }
                   }}
                   rootLabel="Evidence"
+                  onDeleteFolder={(name) => {
+                    setPendingDeleteEvidenceName(name)
+                    setDeleteEvidenceDialogOpen(true)
+                  }}
                 />
               </div>
               <div className="flex flex-col min-h-0">
@@ -572,17 +616,17 @@ export function BenchmarkContent({
                     <Button
                       size="sm"
                       variant="secondary"
-                      disabled={unmountingEvidence || !mountedPlaybookName}
+                      disabled={unmountingEvidence || !mountedPlaybookName || isStaging}
                       onClick={handleUnmountEvidence}
                     >
                       {unmountingEvidence ? "Unmounting..." : "Unmount"}
                     </Button>
                     <Button
                       size="sm"
-                      disabled={mountingEvidence || !isE01File}
+                      disabled={mountingEvidence || !isE01File || isStaging}
                       onClick={handleMountEvidence}
                     >
-                      {mountingEvidence ? "Mounting..." : "Mount Evidence to SIFT"}
+                      {mountingEvidence ? "Mounting..." : "Mount"}
                     </Button>
                     <Button
                       size="sm"
@@ -617,7 +661,7 @@ export function BenchmarkContent({
                           ].filter(Boolean).join("\n")}</code>
                         </pre>
                       )}
-                       {isE01File && (mountStreamOutput || mountResult) && (
+                       {(isE01File || isStaging) && (mountStreamOutput || mountResult) && (
                          <pre ref={streamRef} className="mx-3 mb-2 rounded-4xl bg-zinc-100 p-2 font-mono text-xs text-zinc-900 max-h-48 overflow-auto shrink-0 min-w-0 w-full whitespace-pre-wrap dark:bg-zinc-900 dark:text-green-400">{mountStreamOutput || mountResult}</pre>
                       )}
                       {mountError && (
@@ -641,24 +685,24 @@ export function BenchmarkContent({
         <AccordionItem value="timeline-analysis">
           <AccordionTrigger>
             Timeline and Analysis
-            {siftAgentConfigured && !mountedPlaybookName && (
-              <span className="ml-1 text-muted-foreground/80 font-normal">(Mount Evidence to SIFT)</span>
+            {siftAgentConfigured && !hasStagedEvidence && (
+              <span className="ml-1 text-muted-foreground/80 font-normal">(Extract Artifacts)</span>
             )}
-            {!siftAgentConfigured && mountedPlaybookName && (
+            {!siftAgentConfigured && hasStagedEvidence && (
               <span className="ml-1 text-muted-foreground/80 font-normal">(Configure SIFT Agent First)</span>
             )}
           </AccordionTrigger>
           <AccordionContent>
-            {!siftAgentConfigured || !mountedPlaybookName ? (
+            {!siftAgentConfigured || !hasStagedEvidence ? (
               <div className="py-8 flex flex-col items-center justify-center">
                 <Lock className="mb-4 size-12 text-muted-foreground" />
                 <h3 className="mb-2 text-lg font-semibold">Timeline and Analysis locked</h3>
                 <p className="mb-6 text-sm text-muted-foreground">
-                  {!siftAgentConfigured && !mountedPlaybookName
-                    ? <>Configure <strong>SIFT Agent</strong> and <strong>mount evidence</strong> to unlock this section.</>
+                  {!siftAgentConfigured && !hasStagedEvidence
+                    ? <>Configure <strong>SIFT Agent</strong> and <strong>Mount and Extract artifacts</strong> from at least ONE playbook evidence folder to unlock this section.</>
                     : !siftAgentConfigured
                     ? <>Configure <strong>SIFT Agent</strong> to unlock this section.</>
-                    : <><strong>Mount evidence</strong> to SIFT to unlock this section.</>
+                    : <><strong>Mount and Extract artifacts</strong> from at least ONE playbook evidence folder to unlock this section.</>
                   }
                 </p>
                 {!siftAgentConfigured && (
@@ -668,27 +712,232 @@ export function BenchmarkContent({
                 )}
               </div>
             ) : (
-            <div className="h-[calc(80vh-17rem)] overflow-auto rounded-xl border bg-muted/30 p-4">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium">Current Workflow Selected:</span>
-                <span className="text-muted-foreground text-sm">{selectedWorkflowName ?? "None"}</span>
+            <div className="h-[calc(80vh-17rem)] flex flex-col border border-white/30 rounded-md p-4">
+              <div className="shrink-0">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium">Current Workflow Selected:</span>
+                  <span className="text-muted-foreground text-sm">{selectedWorkflowName ?? "None"}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3 mt-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium">Select Model:</span>
+                    {models.length === 0 ? (
+                      <span className="text-muted-foreground text-sm">Loading models...</span>
+                    ) : (
+                      <Select value={selectedModel} onValueChange={setSelectedModel}>
+                        <SelectTrigger className="w-48">
+                          <SelectValue placeholder="Select a model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {models.map((m) => (
+                            <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                  {leftTab === "tool-call" ? (
+                    <div className="flex items-center gap-2">
+                      <Button size="sm">Abort</Button>
+                      <Button size="sm">Run Workflow</Button>
+                    </div>
+                  ) : (
+                    <Button size="sm">Benchmark with LLM</Button>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-3 mt-3">
-                <span className="text-sm font-medium">Select Model:</span>
-                {models.length === 0 ? (
-                  <span className="text-muted-foreground text-sm">Loading models...</span>
+              <div className="flex gap-3 mt-4 flex-1 min-h-0">
+                <div className="w-1/3 min-h-0 flex flex-col">
+                  <div className="shrink-0 px-3 pb-2 flex justify-center">
+                    <Tabs value={leftTab} onValueChange={setLeftTab}>
+                      <TabsList>
+                        <TabsTrigger value="tool-call" className="text-xs">Tool-call</TabsTrigger>
+                        <TabsTrigger value="results" className="text-xs">Results</TabsTrigger>
+                      </TabsList>
+                    </Tabs>
+                  </div>
+                  <div className="flex-1 min-h-0 px-3 pb-3">
+                    <div className="h-full overflow-auto">
+                    {leftTab === "tool-call" ? (
+                      <TreeProvider
+                        selectedIds={selectedToolCallId ? [selectedToolCallId] : []}
+                        onSelectionChange={(ids) => setSelectedToolCallId(ids[0] ?? null)}
+                        showLines={false}
+                        showIcons={false}
+                        selectable={true}
+                        collapseDisabled={true}
+                        className="flex-1 min-h-0"
+                      >
+                        <TreeView className="p-0 overflow-auto h-full">
+                          <TreeNode nodeId="tool-1">
+                            <TreeNodeTrigger>
+                              <TreeLabel>get_process_list</TreeLabel>
+                            </TreeNodeTrigger>
+                          </TreeNode>
+                          <TreeNode nodeId="tool-2">
+                            <TreeNodeTrigger>
+                              <TreeLabel>read_registry_key</TreeLabel>
+                            </TreeNodeTrigger>
+                          </TreeNode>
+                          <TreeNode nodeId="tool-3">
+                            <TreeNodeTrigger>
+                              <TreeLabel>enumerate_network_connections</TreeLabel>
+                            </TreeNodeTrigger>
+                          </TreeNode>
+                          <TreeNode nodeId="tool-4">
+                            <TreeNodeTrigger>
+                              <TreeLabel>parse_event_logs</TreeLabel>
+                            </TreeNodeTrigger>
+                          </TreeNode>
+                          <TreeNode nodeId="tool-5">
+                            <TreeNodeTrigger>
+                              <TreeLabel>dump_process_memory</TreeLabel>
+                            </TreeNodeTrigger>
+                          </TreeNode>
+                          <TreeNode nodeId="tool-6">
+                            <TreeNodeTrigger>
+                              <TreeLabel>scan_file_system</TreeLabel>
+                            </TreeNodeTrigger>
+                          </TreeNode>
+                          <TreeNode nodeId="tool-7">
+                            <TreeNodeTrigger>
+                              <TreeLabel>analyze_prefetch_files</TreeLabel>
+                            </TreeNodeTrigger>
+                          </TreeNode>
+                      <TreeNode nodeId="tool-8">
+                        <TreeNodeTrigger>
+                          <TreeLabel>extract_usn_journal</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                      <TreeNode nodeId="tool-9">
+                        <TreeNodeTrigger>
+                          <TreeLabel>parse_mft_timeline</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                      <TreeNode nodeId="tool-10">
+                        <TreeNodeTrigger>
+                          <TreeLabel>volatility_pstree</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                      <TreeNode nodeId="tool-11">
+                        <TreeNodeTrigger>
+                          <TreeLabel>volatility_malfind</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                      <TreeNode nodeId="tool-12">
+                        <TreeNodeTrigger>
+                          <TreeLabel>volatility_dlllist</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                      <TreeNode nodeId="tool-13">
+                        <TreeNodeTrigger>
+                          <TreeLabel>volatility_handles</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                      <TreeNode nodeId="tool-14">
+                        <TreeNodeTrigger>
+                          <TreeLabel>volatility_netscan</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                      <TreeNode nodeId="tool-15">
+                        <TreeNodeTrigger>
+                          <TreeLabel>parse_security_evtx</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                      <TreeNode nodeId="tool-16">
+                        <TreeNodeTrigger>
+                          <TreeLabel>parse_sysmon_evtx</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                      <TreeNode nodeId="tool-17">
+                        <TreeNodeTrigger>
+                          <TreeLabel>parse_powershell_evtx</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                      <TreeNode nodeId="tool-18">
+                        <TreeNodeTrigger>
+                          <TreeLabel>extract_lsass_dump</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                      <TreeNode nodeId="tool-19">
+                        <TreeNodeTrigger>
+                          <TreeLabel>correlate_attack_window</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                      <TreeNode nodeId="tool-20">
+                        <TreeNodeTrigger>
+                          <TreeLabel>generate_forensic_report</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                      <TreeNode nodeId="tool-21">
+                        <TreeNodeTrigger>
+                          <TreeLabel>validate_artifact_integrity</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                      <TreeNode nodeId="tool-22">
+                        <TreeNodeTrigger>
+                          <TreeLabel>extract_kernel_modules</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                      <TreeNode nodeId="tool-23">
+                        <TreeNodeTrigger>
+                          <TreeLabel>audit_scheduled_tasks</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                      <TreeNode nodeId="tool-24">
+                        <TreeNodeTrigger>
+                          <TreeLabel>parse_wmi_activity</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                      <TreeNode nodeId="tool-25">
+                        <TreeNodeTrigger>
+                          <TreeLabel>reconstruct_user_sessions</TreeLabel>
+                        </TreeNodeTrigger>
+                      </TreeNode>
+                    </TreeView>
+                  </TreeProvider>
                 ) : (
-                  <Select value={selectedModel} onValueChange={setSelectedModel}>
-                    <SelectTrigger className="w-56">
-                      <SelectValue placeholder="Select a model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {models.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+                    No results yet. Run a workflow to see output here.
+                  </div>
                 )}
+              </div>
+            </div>
+            </div>
+                <div className="w-2/3">
+                   <pre className="h-full overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+{`Select a playbook and extract artifacts to begin timeline analysis.
+
+Line 2 — Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+Line 3 — Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+Line 4 — Ut enim ad minim veniam, quis nostrud exercitation ullamco.
+Line 5 — Duis aute irure dolor in reprehenderit in voluptate velit.
+Line 6 — Excepteur sint occaecat cupidatat non proident, sunt in culpa.
+Line 7 — Nemo enim ipsam voluptatem quia voluptas sit aspernatur.
+Line 8 — Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet.
+Line 9 — Consectetur, adipisci velit, sed quia non numquam eius modi.
+Line 10 — Ut enim ad minima veniam, quis nostrum exercitationem ullam.
+Line 11 — Corporis suscipit laboriosam, nisi ut aliquid ex ea commodi.
+Line 12 — Quis autem vel eum iure reprehenderit qui in ea voluptate.
+Line 13 — Velit esse quam nihil molestiae consequatur, vel illum.
+Line 14 — Qui dolorem eum fugiat quo voluptas nulla pariatur.
+Line 15 — At vero eos et accusamus et iusto odio dignissimos ducimus.
+Line 16 — Qui blanditiis praesentium voluptatum deleniti atque corrupti.
+Line 17 — Quos dolores et quas molestias excepturi sint occaecati.
+Line 18 — Cupiditate non provident, similique sunt in culpa qui officia.
+Line 19 — Deserunt mollitia animi, id est laborum et dolorum fuga.
+Line 20 — Et harum quidem rerum facilis est et expedita distinctio.
+Line 21 — Temporibus autem quibusdam et aut officiis debitis aut rerum necessitatibus saepe eveniet ut et voluptates repudiandae sint et molestiae non recusandae.
+Line 22 — Itaque earum rerum hic tenetur a sapiente delectus, ut aut reiciendis voluptatibus maiores alias.
+Line 23 — On the other hand, we denounce with righteous indignation and dislike men who are so beguiled and demoralized by the charms of pleasure of the moment, so blinded by desire.
+Line 24 — In a free hour, when our power of choice is untrammelled and when nothing prevents our being able to do what we like best, every pleasure is to be welcomed.
+Line 25 — But in certain circumstances and owing to the claims of duty or the obligations of business it will frequently occur that pleasures have to be repudiated.
+Line 26 — No one rejects, dislikes, or avoids pleasure itself, because it is pleasure, but because those who do not know how to pursue pleasure rationally encounter consequences.
+Line 27 — Nor again is there anyone who loves or pursues or desires to obtain pain of itself, because it is pain, but occasionally circumstances occur in which toil and pain can procure great pleasure.
+Line 28 — To take a trivial example, which of us ever undertakes laborious physical exercise, except to obtain some advantage from it? But who has any right to find fault with a man who chooses.
+Line 29 — Unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore.`}
+                  </pre>
+                </div>
               </div>
             </div>
             )}
@@ -780,37 +1029,19 @@ export function BenchmarkContent({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AlertDialog open={stagingDialogOpen} onOpenChange={(open) => { if (!open) setStagingDialogOpen(false) }}>
+      <AlertDialog open={deleteEvidenceDialogOpen} onOpenChange={setDeleteEvidenceDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Extract Artifacts</AlertDialogTitle>
+            <AlertDialogTitle>Delete Evidence</AlertDialogTitle>
             <AlertDialogDescription>
-              {stagingError
-                ? stagingError
-                : isStaging
-                  ? "Extracting artifacts..."
-                  : "Artifact extraction complete"}
+              Delete &ldquo;{pendingDeleteEvidenceName}&rdquo; and all its evidence files?
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="space-y-3 py-2 max-h-[132px] overflow-y-auto [scrollbar-width:thin]">
-            {stagingSteps.map((step, i) => (
-              <div key={i} className="flex items-start gap-3">
-                {step.status === "running"
-                  ? <Loader2 className="size-4 animate-spin text-primary mt-0.5 shrink-0" />
-                  : step.status === "success"
-                    ? <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
-                    : step.status === "error"
-                      ? <XCircle className="size-4 text-red-500 mt-0.5 shrink-0" />
-                      : <Circle className="size-4 text-muted-foreground/40 mt-0.5 shrink-0" />}
-                <div>
-                  <p className="text-sm font-medium">{step.label}</p>
-                  {step.message && <p className="text-xs text-muted-foreground">{step.message}</p>}
-                </div>
-              </div>
-            ))}
-          </div>
           <AlertDialogFooter>
-            <Button onClick={() => setStagingDialogOpen(false)} disabled={!stagingComplete}>Close</Button>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleDeleteEvidence}>
+              Delete
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

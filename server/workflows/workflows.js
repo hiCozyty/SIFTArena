@@ -1,4 +1,4 @@
-import { readdir, stat } from "node:fs/promises"
+import { readdir, stat, rm } from "node:fs/promises"
 import { join, basename } from "node:path"
 import { collectEvidence as runEvidenceCollection, abortEvidenceCollection as abortRunningCollection } from "../benchmark/evidenceCollection.js"
 
@@ -31,14 +31,15 @@ async function writeJsonRemote(filePath, data, timeoutMs = 120_000) {
     "-o", "StrictHostKeyChecking=no",
     "-o", "UserKnownHostsFile=/dev/null",
     "-o", "LogLevel=ERROR",
-    "-n",
     "sift@localhost",
     `bun -e 'const json = JSON.parse(await Bun.stdin.text()); await Bun.write("${filePath}", JSON.stringify(json, null, 2));'`
   ], { stdin: "pipe", timeout: timeoutMs })
   proc.stdin.write(JSON.stringify(data))
   proc.stdin.end()
+  const stderr = await new Response(proc.stderr).text()
   await proc.exited
-  if (proc.exitCode !== 0) throw new Error(`writeJsonRemote failed for ${filePath}`)
+  const exitCode = proc.exitCode
+  if (exitCode !== 0) throw new Error(`writeJsonRemote failed for ${filePath} (exit ${exitCode}): ${stderr}`)
 }
 
 export async function preAgentStagingPipeline(_, __, data, ws) {
@@ -50,11 +51,10 @@ export async function preAgentStagingPipeline(_, __, data, ws) {
   const memoryPath = `${evidencePath}/memory.dump`
   const outputDir = `${evidencePath}/staged`
 
+  // Clear existing staged output before re-extracting
+  await sshExec(`sudo rm -rf ${outputDir} 2>/dev/null`)
   // Create output directory on SIFT
-  const { stderr: mkdirErr } = await sshExec(`mkdir -p ${outputDir} 2>/dev/null`)
-  if (mkdirErr && !mkdirErr.includes("File exists")) {
-    throw new Error(`Failed to create output dir: ${mkdirErr}`)
-  }
+  await sshExec(`mkdir -p ${outputDir}`)
 
   // Determine attack window
   let windowStart = attackWindowStartMs
@@ -67,19 +67,32 @@ export async function preAgentStagingPipeline(_, __, data, ws) {
         const gt = JSON.parse(gtContent)
         windowStart = gt.attackStart || gt.WINDOW_START_MS
         windowEnd = gt.attackEnd || gt.WINDOW_END_MS
-      } catch {}
+        if (!windowStart || !windowEnd) {
+          const timeline = gt.timeline || gt.abilities || []
+          if (timeline.length) {
+            const start = timeline[0].startedAt
+            const end = timeline[timeline.length - 1].finishedAt
+            if (start != null && end != null) {
+              windowStart = start
+              windowEnd = end
+            }
+          }
+        }
+      } catch (e) {
+        }
     }
   }
   if (!windowStart || !windowEnd) {
     throw new Error("Attack window not provided and groundTruth.json missing start/end")
   }
 
+  // Apply 5s buffer to catch events slightly outside ability timestamps
+  windowStart = windowStart - 5000
+  windowEnd = windowEnd + 5000
   const windowStartS = Math.floor(windowStart / 1000)
   const windowEndS = Math.ceil(windowEnd / 1000)
-
   // Get NTFS offset (reuse existing detection)
   const offset = await detectPartitionOffset(evidencePath)
-
   const sendStatus = (step, status, message) => {
     if (ws) ws.send(JSON.stringify({ type: "preAgentStagingStatus", step, status, message }))
   }
@@ -87,7 +100,8 @@ export async function preAgentStagingPipeline(_, __, data, ws) {
   sendStatus("inodes", "start", "Locating forensic artifacts")
 
   // Get inodes for all required files
-  const { stdout: flsOut } = await sshExec(`sudo fls -r -o ${offset} "${e01Path}" 2>/dev/null | grep -iE "Sysmon%4Operational.evtx|Security.evtx|PowerShell%4Operational.evtx|\\.pf$|\\$MFT|UsnJrnl"`, 180_000)
+  const flsCmd = `sudo fls -r -o ${offset} "${e01Path}" 2>/dev/null | grep -iE "Sysmon%4Operational.evtx|Security.evtx|PowerShell%4Operational.evtx|\\.pf$|[$]MFT|[$]UsnJrnl"`
+  const { stdout: flsOut } = await sshExec(flsCmd, 180_000)
   const lines = flsOut.split("\n")
   const inodes = { sysmon: null, security: null, powershell: null, prefetch: [], mft: null, usn: null }
   for (const line of lines) {
@@ -95,22 +109,31 @@ export async function preAgentStagingPipeline(_, __, data, ws) {
     if (!match) continue
     const inode = match[1]
     const name = match[2].toLowerCase()
-    if (name.includes("sysmon") && name.includes("operational")) inodes.sysmon = inode
-    if (name === "security.evtx") inodes.security = inode
-    if (name.includes("powershell") && name.includes("operational")) inodes.powershell = inode
-    if (name.endsWith(".pf")) inodes.prefetch.push(inode)
-    if (name === "$mft") inodes.mft = inode
-    if (name === "$usnjrnl" || name === "usnjrnl") inodes.usn = inode
+    if (name.includes("sysmon") && name.includes("operational")) {  inodes.sysmon = inode }
+    if (name === "security.evtx") {  inodes.security = inode }
+    if (name.includes("powershell") && name.includes("operational")) {  inodes.powershell = inode }
+    if (name.endsWith(".pf")) {  inodes.prefetch.push(inode) }
+    if (name === "$mft") {  inodes.mft = inode }
+    if (name === "$usnjrnl" || name === "usnjrnl") {  inodes.usn = inode }
   }
   if (!inodes.sysmon || !inodes.security || !inodes.mft) {
     throw new Error(`Missing essential inodes: sysmon=${inodes.sysmon} security=${inodes.security} mft=${inodes.mft}`)
   }
-  sendStatus("inodes", "done", `Found: sysmon=${inodes.sysmon}, security=${inodes.security}, mft=${inodes.mft}`)
+  // Find any .dmp files (e.g. lsass dump)
+  const dmpFlsCmd = `sudo fls -r -o ${offset} "${e01Path}" 2>/dev/null | grep -i "\\.dmp$"`
+  const { stdout: dmpFlsOut } = await sshExec(dmpFlsCmd, 60_000)
+  const dumpFiles = []
+  for (const line of dmpFlsOut.split("\n")) {
+    const m = line.match(/(\d+)-\d+-\d+:\s+(.+\.dmp)$/i)
+    if (m) dumpFiles.push({ inode: m[1], fileName: m[2] })
+  }
+  await writeJsonRemote(`${outputDir}/dump_files.json`, dumpFiles)
+  sendStatus("inodes", "done", `Found: sysmon=${inodes.sysmon}, security=${inodes.security}, mft=${inodes.mft}, dumps: ${dumpFiles.map(d => d.fileName).join(", ") || "none"}`)
 
   // Helper to extract and parse EVTX
   async function parseEvtx(inode, logName) {
     const tmpEvtx = `/tmp/${logName}.evtx`
-    await sshExec(`sudo icat -o ${offset} "${e01Path}" ${inode} > ${tmpEvtx} 2>/dev/null`)
+    const { exitCode: icatExit } = await sshExec(`sudo icat -o ${offset} "${e01Path}" ${inode} > ${tmpEvtx} 2>/dev/null`)
     const { stdout: xml } = await sshExec(`evtxexport -f xml ${tmpEvtx} 2>/dev/null | head -500000`, 120_000)
     const events = []
     const eventBlocks = xml.split(/(?=<\?xml|<Event)/)
@@ -125,7 +148,7 @@ export async function preAgentStagingPipeline(_, __, data, ws) {
         timestamp = new Date(tsStr).getTime()
       }
       if (timestamp && timestamp >= windowStart && timestamp <= windowEnd) {
-        events.push({ eventId: parseInt(eidMatch[1], 10), timestamp, rawPreview: block.slice(0, 500) })
+        events.push({ eventId: parseInt(eidMatch[1], 10), timestamp, rawPreview: block.slice(0, 3000) })
       }
     }
     await writeJsonRemote(`${outputDir}/${logName}.json`, events)
@@ -136,11 +159,15 @@ export async function preAgentStagingPipeline(_, __, data, ws) {
   const sysmonCount = await parseEvtx(inodes.sysmon, "sysmon")
   const securityCount = await parseEvtx(inodes.security, "security")
   let powershellCount = 0
-  if (inodes.powershell) powershellCount = await parseEvtx(inodes.powershell, "powershell")
+  if (inodes.powershell) {
+    powershellCount = await parseEvtx(inodes.powershell, "powershell")
+    }
   sendStatus("evtx", "done", `EVTX: sysmon=${sysmonCount}, security=${securityCount}, ps=${powershellCount} events in window`)
 
-  sendStatus("usn", "start", "Parsing USN journal")
-  const { stdout: usnJson } = await sshExec(`sudo icat -o ${offset} "${e01Path}" ${inodes.usn} 2>/dev/null | python3 -c "
+  let usnRecords = []
+  if (inodes.usn) {
+    sendStatus("usn", "start", "Parsing USN journal")
+    const { stdout: usnJson } = await sshExec(`sudo icat -o ${offset} "${e01Path}" ${inodes.usn} 2>/dev/null | python3 -c "
 import sys, struct, json, datetime
 WINDOW_START = ${windowStartS}
 WINDOW_END = ${windowEndS}
@@ -174,58 +201,117 @@ while offset < len(data) - 60:
         offset += 8
 print(json.dumps(records))
 "`, 120_000)
-  const usnRecords = JSON.parse(usnJson || "[]")
-  await writeJsonRemote(`${outputDir}/usn_journal.json`, usnRecords)
-  sendStatus("usn", "done", `USN: ${usnRecords.length} records`)
+    usnRecords = JSON.parse(usnJson || "[]")
+    await writeJsonRemote(`${outputDir}/usn_journal.json`, usnRecords)
+    sendStatus("usn", "done", `USN: ${usnRecords.length} records`)
+  }
 
   sendStatus("mft", "start", "Building MFT timeline")
-  const { stdout: mftLines } = await sshExec(`sudo fls -m "C:" -o ${offset} "${e01Path}" 2>/dev/null | mactime -d -b - 2>/dev/null | awk -v start=${windowStartS} -v end=${windowEndS} '$2 >= start && $2 <= end' | head -100000`, 180_000)
-  const mftEntries = mftLines.split("\n").filter(l => l.trim()).map(line => {
-    const parts = line.split("|")
-    if (parts.length < 10) return null
-    return { timestamp: parseInt(parts[1], 10), name: parts[0], file: parts[9], size: parseInt(parts[6], 10) }
+  const mftCmd = `sudo fls -m "C:" -o ${offset} "${e01Path}" 2>/dev/null | mactime -d -y -b - 2>/dev/null | head -200000`
+  const { stdout: mftLines } = await sshExec(mftCmd, 180_000)
+  const mftEntries = mftLines.split("\n").filter(l => l.trim() && !l.startsWith("Date,")).map(line => {
+    const parts = line.split(",")
+    if (parts.length < 8) return null
+    // mactime -d -y format: Date,Size,Type,Mode,UID,GID,Meta,File Name
+    const dateStr = parts[0]
+    const ts = new Date(dateStr).getTime()
+    if (isNaN(ts)) return null
+    if (ts < windowStart || ts > windowEnd) return null
+    const size = parseInt(parts[1], 10)
+    const type = parts[2]
+    const meta = parts[6]
+    const fileName = parts.slice(7).join(",").replace(/^"|"$/g, "")
+    return { timestamp: ts, timestampUtc: dateStr, size, type, meta, file: fileName }
   }).filter(Boolean)
   await writeJsonRemote(`${outputDir}/mft_timeline.json`, mftEntries)
   sendStatus("mft", "done", `MFT: ${mftEntries.length} entries`)
 
   sendStatus("prefetch", "start", "Parsing Prefetch files")
+
+  // First get named prefetch inodes so we have filenames
+  const pfFlsCmd = `sudo fls -r -o ${offset} "${e01Path}" 2>/dev/null | grep -i "\\.pf$"`
+  const { stdout: pfFlsOut } = await sshExec(pfFlsCmd, 60_000)
+  const namedPrefetch = {}
+  for (const line of pfFlsOut.split("\n")) {
+    const m = line.match(/(\d+)-\d+-\d+:\s+(.+\.pf)$/i)
+    if (m) namedPrefetch[m[1]] = m[2]
+  }
+
   const prefetchResults = []
   for (const pfInode of inodes.prefetch.slice(0, 50)) {
-    const { stdout: stringsOut } = await sshExec(`sudo icat -o ${offset} "${e01Path}" ${pfInode} 2>/dev/null | strings | head -20`, 30_000)
-    let toolName = null
-    const match = stringsOut.match(/([A-Z0-9]+)\.EXE/i)
-    if (match) toolName = match[1]
-    const { stdout: lastRunOut } = await sshExec(`sudo icat -o ${offset} "${e01Path}" ${pfInode} 2>/dev/null | python3 -c "
-import sys, struct
+    const fileName = namedPrefetch[pfInode] || null
+    const { stdout: pfJson } = await sshExec(`sudo icat -o ${offset} "${e01Path}" ${pfInode} 2>/dev/null | python3 -c "
+import sys, json, tempfile, os
+import pyscca
+
 data = sys.stdin.buffer.read()
-if len(data) < 0x80: sys.exit(0)
-if data[0:4] != b'SCCA': sys.exit(0)
-version = struct.unpack_from('<I', data, 4)[0]
-if version >= 17:
-    ft = struct.unpack_from('<Q', data, 0x78)[0]
-    epoch = (ft - 116444736000000000) // 10000000
-    print(epoch)
+result = {'toolName': None, 'lastRunEpoch': None, 'allRunEpochs': [], 'runCount': None, 'error': None}
+
+with tempfile.NamedTemporaryFile(suffix='.pf', delete=False) as f:
+    f.write(data)
+    tmppath = f.name
+
+try:
+    pf = pyscca.open(tmppath)
+    result['toolName'] = pf.executable_filename
+    result['runCount'] = pf.get_run_count()
+    for i in range(8):
+        try:
+            ft = pf.get_last_run_time_as_integer(i)
+            if ft and ft > 0:
+                epoch = (ft - 116444736000000000) // 10000000
+                result['allRunEpochs'].append(epoch)
+        except:
+            break
+    if result['allRunEpochs']:
+        result['lastRunEpoch'] = result['allRunEpochs'][0]
+except Exception as e:
+    result['error'] = str(e)
+finally:
+    os.unlink(tmppath)
+
+print(json.dumps(result))
 "`, 30_000)
-    const lastRunEpoch = parseInt(lastRunOut, 10)
-    const inWindow = !isNaN(lastRunEpoch) && lastRunEpoch >= windowStartS && lastRunEpoch <= windowEndS
-    prefetchResults.push({ inode: pfInode, toolName, lastRunEpoch: lastRunEpoch || null, inWindow, stringsSample: stringsOut.slice(0, 200) })
+
+    let parsed = { toolName: null, lastRunEpoch: null, allRunEpochs: [], runCount: null, error: null }
+    try { parsed = JSON.parse(pfJson) } catch {}
+
+    const inWindow = parsed.allRunEpochs?.some(e => e >= windowStartS && e <= windowEndS) ?? false
+
+    prefetchResults.push({
+      inode: pfInode,
+      fileName,
+      toolName: parsed.toolName,
+      lastRunEpoch: parsed.lastRunEpoch,
+      lastRunUtc: parsed.lastRunEpoch ? new Date(parsed.lastRunEpoch * 1000).toISOString() : null,
+      allRunEpochs: parsed.allRunEpochs,
+      runCount: parsed.runCount,
+      inWindow,
+      error: parsed.error,
+    })
   }
   await writeJsonRemote(`${outputDir}/prefetch.json`, prefetchResults)
   sendStatus("prefetch", "done", `Prefetch: ${prefetchResults.filter(p => p.inWindow).length} in window`)
 
   sendStatus("volatility", "start", "Running Volatility plugins")
   async function runVolPlugin(plugin, args = "") {
-    const { stdout } = await sshExec(`vol -f "${memoryPath}" ${plugin} ${args} 2>/dev/null`, 300_000)
+    const cmd = `vol -f "${memoryPath}" ${plugin} ${args} 2>/dev/null`
+    const { stdout } = await sshExec(cmd, 300_000)
     return stdout
   }
 
   // pstree
   const pstreeRaw = await runVolPlugin("windows.pstree")
-  const processes = pstreeRaw.split("\n").slice(2).filter(l => l.trim()).map(line => {
-    const parts = line.trim().split(/\s+/)
-    if (parts.length >= 3) return { pid: parseInt(parts[0], 10), ppid: parseInt(parts[1], 10), name: parts[2] }
-    return null
-  }).filter(Boolean)
+  const processes = pstreeRaw.split("\n")
+    .filter(l => l.trim() && !l.startsWith("PID") && !l.startsWith("Volatility"))
+    .map(line => {
+      const parts = line.replace(/^[*\s]+/, "").split("\t")
+      const pid = parseInt(parts[0], 10)
+      const ppid = parseInt(parts[1], 10)
+      const name = parts[2]
+      if (isNaN(pid) || isNaN(ppid) || !name) return null
+      return { pid, ppid, name: name.trim() }
+    }).filter(Boolean)
   await writeJsonRemote(`${outputDir}/volatility_pstree.json`, processes)
 
   // lsass handles
@@ -235,9 +321,18 @@ if version >= 17:
     const handlesRaw = await runVolPlugin("windows.handles", `--pid ${lsass.pid}`)
     const lines = handlesRaw.split("\n").slice(1).filter(l => l.trim())
     lsassHandles = lines.map(l => {
-      const parts = l.trim().split(/\s+/)
-      return { handle: parts[0], type: parts[1], access: parts[2], name: parts.slice(3).join(" ") }
-    })
+      const parts = l.split("\t")
+      if (parts.length < 6) return null
+      return {
+        pid: parseInt(parts[0], 10),
+        process: parts[1],
+        offset: parts[2],
+        handle: parts[3],
+        type: parts[4],
+        access: parts[5],
+        name: parts[6]?.trim() || ""
+      }
+    }).filter(Boolean)
   }
   await writeJsonRemote(`${outputDir}/volatility_handles_lsass.json`, lsassHandles)
 
@@ -277,7 +372,7 @@ if version >= 17:
       sysmonEvents: sysmonCount,
       securityEvents: securityCount,
       powershellEvents: powershellCount,
-      usnRecords: usnRecords.length,
+      usnRecords: usnRecords?.length ?? 0,
       mftEntries: mftEntries.length,
       prefetchFiles: prefetchResults.length,
       processes: processes.length,
@@ -384,6 +479,14 @@ export async function initializeOpencodeSessionFromDocker(_, __, data) {
   const exitCode = proc.exitCode
   const totalElapsed = performance.now() - tTotal0
   throw new Error(`SSH command failed (exit ${exitCode}): ${stderr || stdout}`)
+}
+
+export async function deleteEvidence(_, __, data) {
+  const targetDir = join(EVIDENCE_DIR, data.data.name)
+  console.log(`[deleteEvidence] Removing ${targetDir}`)
+  await rm(targetDir, { recursive: true, force: true })
+  console.log(`[deleteEvidence] Done`)
+  return { success: true }
 }
 
 export async function listEvidence() {
@@ -580,8 +683,29 @@ export async function unmountEvidenceFromSift() {
 export async function checkStagedOutputExists(_, __, data) {
   const { playbookName } = data.data || {}
   if (!playbookName) throw new Error("playbookName is required")
-  const { exitCode } = await sshExec(`test -d /home/sift/evidence/${playbookName}/staged && echo "exists" || echo "none"`)
+  const { exitCode } = await sshExec(`test -d /home/sift/evidence/${playbookName}/staged`)
   return { exists: exitCode === 0 }
+}
+
+export async function checkAnyStagedEvidence() {
+  try {
+    const entries = await readdir(EVIDENCE_DIR, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const stagedDir = join(EVIDENCE_DIR, entry.name, "staged")
+      try {
+        const stagedFiles = await readdir(stagedDir)
+        if (stagedFiles.length > 0) {
+          return { hasStagedEvidence: true, playbookName: entry.name }
+        }
+      } catch {
+        continue
+      }
+    }
+    return { hasStagedEvidence: false, playbookName: null }
+  } catch {
+    return { hasStagedEvidence: false, playbookName: null }
+  }
 }
 
 export async function collectEvidence(_, __, data, ws) {
@@ -615,12 +739,16 @@ export async function listOpencodeModels() {
     const res = await fetch("http://localhost:3113/provider")
     if (!res.ok) return { models: [], default: null }
     const data = await res.json()
-    const provider = (data.all ?? []).find((p) => p.id === "opencode-go")
-    if (!provider) return { models: [], default: null }
-    const models = Object.values(provider.models ?? {}).map((m) => ({
-      id: `${m.providerID}/${m.id}`,
-      name: m.name,
-    }))
+    const providerIds = ["opencode-go", "opencode"]
+    const models = []
+    for (const providerId of providerIds) {
+      const provider = (data.all ?? []).find((p) => p.id === providerId)
+      if (!provider) continue
+      for (const m of Object.values(provider.models ?? {})) {
+        models.push({ id: `${m.providerID}/${m.id}`, name: m.name })
+      }
+    }
+    if (models.length === 0) return { models: [], default: null }
     return { models, default: "opencode-go/deepseek-v4-flash" }
   } catch {
     return { models: [], default: null }

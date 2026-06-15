@@ -743,6 +743,28 @@ export async function restoreToBaseClean(ludusUrl, apiKey, data) {
   if (!readyPort) throw new Error(`Timeout: ports ${ports.join(",")} not reachable on ${ip} (${vm.name})`)
   timings.tcpPortWait_ms = performance.now() - tTcp
 
+  const tNtp = performance.now()
+  if (isWindows) {
+    const now = new Date()
+    const pad = n => String(n).padStart(2, '0')
+    const dt = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
+    const psCmd = `Set-Date -Date (Get-Date '${dt}')`
+    const psCmdSafe = psCmd.replace(/'/g, "\\'")
+    try {
+      const py = `
+import winrm
+s = winrm.Session('${ip}', auth=('localuser', 'password'), transport='ssl', server_cert_validation='ignore')
+r = s.run_cmd('powershell -Command "${psCmdSafe}"')
+exit(r.status_code)
+`
+      const result = await $`uv run python -c ${py}`.nothrow().quiet()
+      if (result.exitCode !== 0) console.warn(`[restoreToBaseClean] Set-Date failed for ${vm.name}`)
+    } catch {
+      console.warn(`[restoreToBaseClean] Set-Date failed for ${vm.name}`)
+    }
+  }
+  timings.ntpSync_ms = performance.now() - tNtp
+
   timings.connectivityWait_ms = timings.tcpPortWait_ms
   timings.totalDowntime_ms = performance.now() - tStart
 

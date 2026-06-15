@@ -36,6 +36,8 @@ for workflow_dir in /home/sift/workflows/*/; do
   fi
 done
 
+python3 -c "import pyscca; print('ok')" 2>/dev/null || pip install libscca-python
+
 echo "Services started. Container is running."
 echo ""
 
