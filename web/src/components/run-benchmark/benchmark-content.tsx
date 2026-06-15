@@ -142,6 +142,8 @@ export function BenchmarkContent({
   const [evidenceCollectionComplete, setEvidenceCollectionComplete] = useState(false)
   const [showCollectDialog, setShowCollectDialog] = useState(false)
   const [showRunPlaybookDialog, setShowRunPlaybookDialog] = useState(false)
+  const [showConfirmAbortDialog, setShowConfirmAbortDialog] = useState(false)
+  const [showConfirmRunWorkflowDialog, setShowConfirmRunWorkflowDialog] = useState(false)
   const [isRunningPlaybook, setIsRunningPlaybook] = useState(false)
   const [playbookRunSteps, setPlaybookRunSteps] = useState<PlaybookRunStep[]>([])
   const [selectedAbilityStep, setSelectedAbilityStep] = useState<PlaybookRunStep | null>(null)
@@ -154,14 +156,32 @@ export function BenchmarkContent({
   const [showConfirmStagingDialog, setShowConfirmStagingDialog] = useState(false)
   const [stagedExists, setStagedExists] = useState(false)
   const [hasStagedEvidence, setHasStagedEvidence] = useState(false)
-  const [selectedToolCallId, setSelectedToolCallId] = useState<string | null>(null)
   const [leftTab, setLeftTab] = useState("tool-call")
   const [deleteEvidenceDialogOpen, setDeleteEvidenceDialogOpen] = useState(false)
   const [pendingDeleteEvidenceName, setPendingDeleteEvidenceName] = useState<string | null>(null)
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false)
-  const [toolCalls, setToolCalls] = useState<{ callID: string, tool: string, status: string, input?: Record<string, unknown>, output?: string, error?: string }[]>([])
-  const [workflowOutput, setWorkflowOutput] = useState("")
+
+  type ToolCallEntry = { callID: string, tool: string, status: string, input?: Record<string, unknown>, output?: string, error?: string }
+  type RoundEntry = {
+    key: string
+    label: string
+    thinking: string
+    text: string
+    toolCalls: ToolCallEntry[]
+  }
+  const [rounds, setRounds] = useState<RoundEntry[]>([])
+  const [selectedRoundKey, setSelectedRoundKey] = useState<string | null>(null)
+  const [userSelectedRound, setUserSelectedRound] = useState(false)
   const [workflowTokens, setWorkflowTokens] = useState<{ input: number, output: number, reasoning: number, cost: number } | null>(null)
+  const [stagedEvidenceFolders, setStagedEvidenceFolders] = useState<string[]>([])
+  const [selectedEvidenceFolder, setSelectedEvidenceFolder] = useState<string>("")
+
+  type ResultModelEntry = { providerID: string, modelName: string, timestamps: { timestamp: string, files: string[] }[] }
+  type ResultTreeEntry = { playbookName: string, models: ResultModelEntry[] }
+  const [resultTree, setResultTree] = useState<ResultTreeEntry[] | null>(null)
+  const [selectedResultFilePath, setSelectedResultFilePath] = useState<string | null>(null)
+  const [resultFileContent, setResultFileContent] = useState<{ content: string | null, size: number | null } | null>(null)
+  const [resultFileLoading, setResultFileLoading] = useState(false)
 
   useEffect(() => {
     if (!evidenceReady) return
@@ -176,6 +196,13 @@ export function BenchmarkContent({
       messageType: "listEvidence",
       sendFn: () => backendWs.send({ type: "listEvidence" }),
     }).then(setEvidence).catch(() => setEvidence([]))
+  }, [])
+
+  useEffect(() => {
+    executeWsOperation<ResultTreeEntry[]>({
+      messageType: "listWorkflowResults",
+      sendFn: () => backendWs.send({ type: "listWorkflowResults" }),
+    }).then(setResultTree).catch(() => setResultTree([]))
   }, [])
 
   useEffect(() => {
@@ -263,39 +290,84 @@ export function BenchmarkContent({
     const unsub = backendWs.subscribe((data) => {
       if (data.type === "runOpencodeWorkflow:start") {
         setIsWorkflowRunning(true)
-        setWorkflowOutput("")
-        setToolCalls([])
+        setRounds([])
+        setSelectedRoundKey(null)
+        setUserSelectedRound(false)
         setWorkflowTokens(null)
+        setWorkflowDone(false)
       }
       if (data.type === "runOpencodeWorkflow:thinking") {
-        setWorkflowOutput((prev) => prev + `[thinking] ${data.text}\n`)
-      }
-      if (data.type === "runOpencodeWorkflow:text") {
-        setWorkflowOutput((prev) => prev + (data.text as string))
-      }
-      if (data.type === "runOpencodeWorkflow:tool") {
-        const tc = data as { callID: string, tool: string, status: string, input?: Record<string, unknown>, output?: string, error?: string }
-        setToolCalls((prev) => {
-          const existing = prev.find((t) => t.callID === tc.callID)
+        const { text, round } = data as { text: string, round: number }
+        setRounds((prev) => {
+          const key = String(round)
+          const existing = prev.find((r) => r.key === key)
           if (existing) {
-            return prev.map((t) => t.callID === tc.callID ? { ...t, ...tc } : t)
+            return prev.map((r) => r.key === key ? { ...r, thinking: r.thinking + text } : r)
           }
-          return [...prev, { callID: tc.callID, tool: tc.tool, status: tc.status, input: tc.input, output: tc.output, error: tc.error }]
+          return [...prev, { key, label: `Round ${round}`, thinking: text, text: "", toolCalls: [] }]
         })
       }
-      if (data.type === "runOpencodeWorkflow:usage") {
-        setWorkflowTokens(data as { input: number, output: number, reasoning: number, cost: number })
+      if (data.type === "runOpencodeWorkflow:text") {
+        const { text, round } = data as { text: string, round: number }
+        const key = String(round || 1)
+        setRounds((prev) =>
+          prev.map((r) => r.key === key ? { ...r, text: r.text + text } : r)
+        )
+      }
+      if (data.type === "runOpencodeWorkflow:tool") {
+        const tc = data as ToolCallEntry & { round: number }
+        const key = String(tc.round || 1)
+        setRounds((prev) =>
+          prev.map((r) => {
+            if (r.key !== key) return r
+            const existing = r.toolCalls.find((t) => t.callID === tc.callID)
+            if (existing) {
+              return { ...r, toolCalls: r.toolCalls.map((t) => t.callID === tc.callID ? { ...t, ...tc } : t) }
+            }
+            return { ...r, toolCalls: [...r.toolCalls, { callID: tc.callID, tool: tc.tool, status: tc.status, input: tc.input, output: tc.output, error: tc.error }] }
+          })
+        )
+      }
+      if (data.type === "runOpencodeWorkflow:roundComplete") {
+        const { round, thinking, text, toolCalls } = data as { round: number, thinking: string, text: string, toolCalls: ToolCallEntry[] }
+        const key = String(round)
+        setRounds((prev) =>
+          prev.map((r) => r.key === key ? { ...r, thinking, text, toolCalls } : r)
+        )
+      }
+      if (data.type === "runOpencodeWorkflow:final") {
+        const { thinking, text } = data as { thinking: string, text: string }
+        setRounds((prev) =>
+          prev.some((r) => r.key === "final")
+            ? prev.map((r) => r.key === "final" ? { ...r, thinking, text } : r)
+            : [...prev, { key: "final", label: "Final", thinking, text, toolCalls: [] }]
+        )
+        setIsWorkflowRunning(false)
+        setWorkflowDone(true)
       }
       if (data.type === "runOpencodeWorkflow:done") {
+        const d = data as { tokens?: { input: number, output: number, reasoning: number } | null, cost: number | null }
+        if (d.tokens) {
+          setWorkflowTokens({ input: d.tokens.input, output: d.tokens.output, reasoning: d.tokens.reasoning, cost: d.cost ?? 0 })
+        }
         setIsWorkflowRunning(false)
+        setWorkflowDone(true)
       }
       if (data.type === "runOpencodeWorkflow:error") {
-        setWorkflowOutput((prev) => prev + `\n[error] ${data.error}\n`)
         setIsWorkflowRunning(false)
+        setWorkflowDone(true)
       }
     })
     return unsub
   }, [])
+
+  useEffect(() => {
+    if (rounds.length === 0) return
+    if (!userSelectedRound) {
+      const last = rounds[rounds.length - 1]
+      setSelectedRoundKey(last.key)
+    }
+  }, [rounds, userSelectedRound])
 
   useEffect(() => {
     executeWsOperation<string | null>({
@@ -314,6 +386,19 @@ export function BenchmarkContent({
       setHasStagedEvidence(!!result?.hasStagedEvidence)
     }).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!hasStagedEvidence) return
+    executeWsOperation<string[]>({
+      messageType: "listStagedEvidenceFolders",
+      sendFn: () => backendWs.send({ type: "listStagedEvidenceFolders" }),
+    }).then((folders) => {
+      setStagedEvidenceFolders(folders)
+      if (folders.length > 0 && !selectedEvidenceFolder) {
+        setSelectedEvidenceFolder(folders[0])
+      }
+    }).catch(() => {})
+  }, [hasStagedEvidence])
 
   useEffect(() => {
     if (streamRef.current) {
@@ -756,11 +841,26 @@ export function BenchmarkContent({
             ) : (
             <div className="h-[calc(80vh-17rem)] flex flex-col rounded-md p-4">
               <div className="shrink-0">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-sm font-medium">Current Workflow Selected:</span>
                   <span className="text-muted-foreground text-sm">{selectedWorkflowName ?? "None"}</span>
+                  <span className="text-sm font-medium ml-4">Current Evidence Folder Selected:</span>
+                  {stagedEvidenceFolders.length === 0 ? (
+                    <span className="text-muted-foreground text-sm">No staged evidence available</span>
+                  ) : (
+                    <Select value={selectedEvidenceFolder} onValueChange={setSelectedEvidenceFolder}>
+                      <SelectTrigger className="w-48">
+                        <SelectValue placeholder="Select folder" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {stagedEvidenceFolders.map((name) => (
+                          <SelectItem key={name} value={name}>{name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
-                <div className="flex items-center justify-between gap-3 mt-3">
+                 <div className="flex items-center justify-between gap-3 mt-3">
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-medium">Select Model:</span>
                     {models.length === 0 ? (
@@ -777,15 +877,17 @@ export function BenchmarkContent({
                         </SelectContent>
                       </Select>
                     )}
+                    {workflowTokens && (
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span>Tokens: {workflowTokens.input + workflowTokens.output + workflowTokens.reasoning}</span>
+                        <span>Cost: ${workflowTokens.cost.toFixed(6)}</span>
+                      </div>
+                    )}
                   </div>
                   {leftTab === "tool-call" ? (
                     <div className="flex items-center gap-2">
-                      <Button size="sm" onClick={() => {
-                        executeWsOperation({ messageType: "abortOpencodeWorkflow", sendFn: () => backendWs.send({ type: "abortOpencodeWorkflow" }) }).catch(() => {})
-                      }} disabled={!isWorkflowRunning}>Abort</Button>
-                      <Button size="sm" onClick={() => {
-                        executeWsOperation({ messageType: "runOpencodeWorkflow", sendFn: () => backendWs.send({ type: "runOpencodeWorkflow", data: { playbookName: selectedPlaybookName, workflowName: selectedWorkflowName, model: selectedModel } }) }).catch(() => {})
-                      }} disabled={!selectedPlaybookName || !selectedWorkflowName || !selectedModel || isWorkflowRunning}>Run Workflow</Button>
+                      <Button size="sm" onClick={() => setShowConfirmAbortDialog(true)} disabled={!isWorkflowRunning}>Abort</Button>
+                      <Button size="sm" onClick={() => setShowConfirmRunWorkflowDialog(true)} disabled={!selectedEvidenceFolder || !selectedWorkflowName || !selectedModel || isWorkflowRunning}>Run Workflow</Button>
                     </div>
                   ) : (
                     <Button size="sm">Benchmark with LLM</Button>
@@ -797,7 +899,7 @@ export function BenchmarkContent({
                   <div className="shrink-0 px-3 pb-2 flex justify-center">
                     <Tabs value={leftTab} onValueChange={setLeftTab}>
                       <TabsList>
-                        <TabsTrigger value="tool-call" className="text-xs">Tool-call</TabsTrigger>
+                        <TabsTrigger value="tool-call" className="text-xs">Rounds</TabsTrigger>
                         <TabsTrigger value="results" className="text-xs">Results</TabsTrigger>
                       </TabsList>
                     </Tabs>
@@ -805,51 +907,263 @@ export function BenchmarkContent({
                   <div className="flex-1 min-h-0 px-3 pb-3">
                     <div className="h-full overflow-auto">
                     {leftTab === "tool-call" ? (
-                      <TreeProvider
-                        selectedIds={selectedToolCallId ? [selectedToolCallId] : []}
-                        onSelectionChange={(ids) => setSelectedToolCallId(ids[0] ?? null)}
-                        showLines={false}
-                        showIcons={false}
-                        selectable={true}
-                        collapseDisabled={true}
-                        className="flex-1 min-h-0"
-                      >
-                        <TreeView className="p-0 overflow-auto h-full">
-                          {toolCalls.length === 0 && !isWorkflowRunning ? (
-                            <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
-                              No tool calls yet. Run a workflow to see output here.
-                            </div>
-                          ) : (
-                            toolCalls.map((tc) => (
-                              <TreeNode key={tc.callID} nodeId={tc.callID}>
-                                <TreeNodeTrigger>
-                                  <TreeLabel>{tc.tool}</TreeLabel>
-                                </TreeNodeTrigger>
-                              </TreeNode>
-                            ))
-                          )}
-                        </TreeView>
-                      </TreeProvider>
-                    ) : (
-                      <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
-                        {workflowTokens ? (
-                          <div className="text-center space-y-1">
+                      <div className="h-full flex flex-col">
+                        <TreeProvider
+                          selectedIds={selectedRoundKey ? [selectedRoundKey] : []}
+                          onSelectionChange={(ids) => {
+                            setSelectedRoundKey(ids[0] ?? null)
+                            setUserSelectedRound(true)
+                          }}
+                          showLines={false}
+                          showIcons={false}
+                          selectable={true}
+                          collapseDisabled={true}
+                          className="flex-1 min-h-0"
+                        >
+                          <TreeView className="p-0 overflow-auto flex-1">
+                            {rounds.length === 0 && !isWorkflowRunning ? (
+                              <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+                                No tool calls yet. Run a workflow to see output here.
+                              </div>
+                            ) : (
+                              rounds.map((r) => (
+                                <TreeNode key={r.key} nodeId={r.key}>
+                                  <TreeNodeTrigger>
+                                    <TreeLabel>{r.label}</TreeLabel>
+                                  </TreeNodeTrigger>
+                                </TreeNode>
+                              ))
+                            )}
+                          </TreeView>
+                        </TreeProvider>
+                        {workflowTokens && (
+                          <div className="shrink-0 border-t pt-2 px-3 pb-1 text-xs text-muted-foreground space-y-0.5">
                             <div>Tokens: {workflowTokens.input} in / {workflowTokens.output} out / {workflowTokens.reasoning} reasoning</div>
                             <div>Cost: ${workflowTokens.cost.toFixed(6)}</div>
                           </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="h-full overflow-auto">
+                        {!resultTree ? (
+                          <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Loading...</div>
+                        ) : resultTree.length === 0 ? (
+                          <div className="h-full flex items-center justify-center text-xs text-muted-foreground">No results yet.</div>
                         ) : (
-                          "No results yet. Run a workflow to see output here."
+                          <TreeProvider
+                            selectedIds={selectedResultFilePath ? [selectedResultFilePath] : []}
+                            onSelectionChange={(ids) => {
+                              const id = ids[0]
+                              if (id && id.startsWith("resultFile:")) {
+                                setSelectedResultFilePath(id)
+                                const filePath = id.slice("resultFile:".length)
+                                setResultFileLoading(true)
+                                setResultFileContent(null)
+                                executeWsOperation<{ content: string | null, size: number | null }>({
+                                  messageType: "getResultFile",
+                                  sendFn: () => backendWs.send({ type: "getResultFile", data: { path: filePath } }),
+                                }).then((res) => {
+                                  setResultFileContent(res)
+                                }).catch(() => setResultFileContent(null)).finally(() => setResultFileLoading(false))
+                              } else {
+                                setSelectedResultFilePath(null)
+                                setResultFileContent(null)
+                              }
+                            }}
+                            showLines={true}
+                            showIcons={true}
+                            selectable={true}
+                            collapseDisabled={true}
+                            className="flex-1 min-h-0"
+                          >
+                            <TreeView className="p-0 overflow-auto h-full">
+                              {resultTree.map((pb) => (
+                                <TreeNode key={`pb:${pb.playbookName}`} nodeId={`pb:${pb.playbookName}`}>
+                                  <TreeNodeTrigger>
+                                    <TreeLabel>{pb.playbookName}</TreeLabel>
+                                  </TreeNodeTrigger>
+                                  {pb.models.map((m) => (
+                                    <TreeNode key={`model:${pb.playbookName}/${m.providerID}/${m.modelName}`} nodeId={`model:${pb.playbookName}/${m.providerID}/${m.modelName}`} level={1}>
+                                      <TreeNodeTrigger>
+                                        <TreeLabel>{m.modelName}</TreeLabel>
+                                      </TreeNodeTrigger>
+                                      {m.timestamps.map((ts) => (
+                                        <TreeNode key={`ts:${pb.playbookName}/${m.providerID}/${m.modelName}/${ts.timestamp}`} nodeId={`ts:${pb.playbookName}/${m.providerID}/${m.modelName}/${ts.timestamp}`} level={2}>
+                                          <TreeNodeTrigger>
+                                            <TreeLabel>{new Date(parseInt(ts.timestamp)).toLocaleString()}</TreeLabel>
+                                          </TreeNodeTrigger>
+                                          {ts.files.map((file) => {
+                                            const filePath = `${pb.playbookName}/${m.providerID}/${m.modelName}/${ts.timestamp}/${file}`
+                                            return (
+                                              <TreeNode key={`resultFile:${filePath}`} nodeId={`resultFile:${filePath}`} level={3}>
+                                                <TreeNodeTrigger>
+                                                  <TreeLabel>{file}</TreeLabel>
+                                                </TreeNodeTrigger>
+                                              </TreeNode>
+                                            )
+                                          })}
+                                        </TreeNode>
+                                      ))}
+                                    </TreeNode>
+                                  ))}
+                                </TreeNode>
+                              ))}
+                            </TreeView>
+                          </TreeProvider>
                         )}
                       </div>
                     )}
               </div>
             </div>
             </div>
-                <div className="w-2/3">
-                   <pre className="h-full overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
-{workflowOutput || "Select a playbook and extract artifacts to begin timeline analysis."}
-                   </pre>
-                </div>
+                <div className="w-2/3 flex flex-col gap-2 min-h-0">
+                   {(() => {
+                     if (leftTab === "results" && selectedResultFilePath) {
+                       if (resultFileLoading) {
+                         return (
+                           <pre className="h-full overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                             Loading...
+                           </pre>
+                         )
+                       }
+                       if (!resultFileContent || resultFileContent.content === null) {
+                         return (
+                           <pre className="h-full overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                             Could not load file content.
+                           </pre>
+                         )
+                       }
+                       const fileName = selectedResultFilePath.split("/").pop()
+                       try {
+                          const parsed = JSON.parse(resultFileContent.content)
+                          if (fileName === "rounds.json") {
+                            const data = Array.isArray(parsed) ? { rounds: parsed } : parsed
+                            return (
+                             <div className="flex-1 flex flex-col gap-2 min-h-0">
+                               <div className="shrink-0 text-xs text-muted-foreground space-x-2">
+                                  {data.tokens && (
+                                    <>
+                                      <span>Tokens: {data.tokens.input} in / {data.tokens.output} out / {data.tokens.reasoning} reasoning</span>
+                                      {data.cost != null && <span>Cost: ${Number(data.cost).toFixed(6)}</span>}
+                                    </>
+                                  )}
+                                </div>
+                                {Array.isArray(data.rounds) && data.rounds.length > 0 ? (
+                                  <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-auto">
+                                    {data.rounds.map((r: any, idx: number) => (
+                                     <div key={idx} className="flex flex-col gap-1 shrink-0">
+                                       <div className="text-xs font-medium text-muted-foreground">Round {r.round ?? idx + 1}</div>
+                                       {r.thinking && (
+                                         <details className="text-xs">
+                                           <summary className="text-muted-foreground cursor-pointer">Thinking ({r.thinking.length} chars)</summary>
+                                           <pre className="mt-1 overflow-auto max-h-32 rounded-md border bg-muted/50 p-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">{r.thinking}</pre>
+                                         </details>
+                                       )}
+                                       {r.text && (
+                                         <details className="text-xs">
+                                           <summary className="text-muted-foreground cursor-pointer">Response ({r.text.length} chars)</summary>
+                                           <pre className="mt-1 overflow-auto max-h-32 rounded-md border bg-muted/50 p-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">{r.text}</pre>
+                                         </details>
+                                       )}
+                                       {Array.isArray(r.toolCalls) && r.toolCalls.length > 0 && (
+                                         <details className="text-xs">
+                                           <summary className="text-muted-foreground cursor-pointer">Tool Calls ({r.toolCalls.length})</summary>
+                                           <pre className="mt-1 overflow-auto max-h-32 rounded-md border bg-muted/50 p-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                                              {r.toolCalls.map((tc: any) => typeof tc === "string" ? tc : `${tc.tool}: ${tc.status}`).join("\n")}
+                                           </pre>
+                                         </details>
+                                       )}
+                                     </div>
+                                   ))}
+                                 </div>
+                               ) : (
+                                 <div className="text-xs text-muted-foreground">No rounds data.</div>
+                               )}
+                             </div>
+                           )
+                         }
+                         if (fileName === "reconstruction.json") {
+                           return (
+                             <div className="flex-1 flex flex-col min-h-0">
+                               <div className="shrink-0 text-xs font-medium text-muted-foreground mb-1">Findings ({Array.isArray(parsed) ? parsed.length : 0})</div>
+                               <div className="flex-1 overflow-auto">
+                                 {Array.isArray(parsed) && parsed.length > 0 ? (
+                                   parsed.map((finding: any, idx: number) => (
+                                     <div key={idx} className="mb-3 p-2 rounded-md border bg-muted/30 text-xs">
+                                       <div className="font-medium">{finding.technique || `Finding ${idx + 1}`}</div>
+                                       <div className="text-muted-foreground space-x-2">
+                                         {finding.mitre && <span>MITRE: {finding.mitre}</span>}
+                                         {finding.timestampUtc && <span>{finding.timestampUtc}</span>}
+                                       </div>
+                                       {finding.description && <div className="mt-1 text-muted-foreground">{finding.description}</div>}
+                                       {Array.isArray(finding.evidence) && finding.evidence.length > 0 && (
+                                         <div className="mt-1 text-muted-foreground">Sources: {finding.evidence.join(", ")}</div>
+                                       )}
+                                     </div>
+                                   ))
+                        ) : (
+                                   <div className="text-xs text-muted-foreground">Empty reconstruction data.</div>
+                                 )}
+                               </div>
+                             </div>
+                           )
+                         }
+                       } catch {}
+                       return (
+                         <pre className="h-full overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                           {resultFileContent.content}
+                         </pre>
+                       )
+                     }
+
+                     if (leftTab === "results" && !selectedResultFilePath) {
+                       return (
+                         <pre className="h-full overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                           Select a result file to view its contents.
+                         </pre>
+                       )
+                     }
+
+                     const selected = rounds.find(r => r.key === selectedRoundKey)
+                     if (!selected) {
+                       return (
+                         <pre className="h-full overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                           Select a round to view details.
+                         </pre>
+                       )
+                     }
+                      return (
+                        <>
+                          <div className="flex-1 flex flex-col min-h-0">
+                            <div className="shrink-0 text-xs font-medium text-muted-foreground mb-1">Tool Calls</div>
+                            <pre className="flex-1 overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                              {selected.toolCalls.length > 0
+                                ? selected.toolCalls.map((tc) => JSON.stringify({
+                                    tool: tc.tool,
+                                    status: tc.status,
+                                    input: tc.input,
+                                    output: tc.output,
+                                    error: tc.error,
+                                  }, null, 2)).join("\n\n")
+                                : "No tool calls in this round."}
+                            </pre>
+                          </div>
+                          <div className="flex-1 flex flex-col min-h-0">
+                            <div className="shrink-0 text-xs font-medium text-muted-foreground mb-1">Thinking</div>
+                            <pre className="flex-1 overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                              {selected.thinking || "No thinking in this round."}
+                            </pre>
+                          </div>
+                          <div className="flex-1 flex flex-col min-h-0">
+                            <div className="shrink-0 text-xs font-medium text-muted-foreground mb-1">Response</div>
+                            <pre className="flex-1 overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                              {selected.text || "No text output in this round."}
+                            </pre>
+                          </div>
+                        </>
+                      )
+                   })()}
+                 </div>
               </div>
             </div>
             )}
@@ -953,6 +1267,45 @@ export function BenchmarkContent({
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={handleDeleteEvidence}>
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={showConfirmAbortDialog} onOpenChange={setShowConfirmAbortDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Abort Workflow</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to abort the running workflow? This will cancel all in-progress operations.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              executeWsOperation({ messageType: "abortOpencodeWorkflow", sendFn: () => backendWs.send({ type: "abortOpencodeWorkflow" }) }).catch(() => {})
+              setShowConfirmAbortDialog(false)
+            }}>
+              Abort
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={showConfirmRunWorkflowDialog} onOpenChange={setShowConfirmRunWorkflowDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Run Workflow</AlertDialogTitle>
+            <AlertDialogDescription>
+              Run the workflow <strong>{selectedWorkflowName ?? "None"}</strong> against evidence folder <strong>{selectedEvidenceFolder || "None"}</strong> with model <strong>{selectedModel || "None"}</strong>?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              console.log("[runWorkflow] sending request", { evidenceFolder: selectedEvidenceFolder, workflow: selectedWorkflowName, model: selectedModel })
+              backendWs.send({ type: "runOpencodeWorkflow", data: { playbookName: selectedEvidenceFolder, workflowName: selectedWorkflowName, model: selectedModel } })
+              setShowConfirmRunWorkflowDialog(false)
+            }}>
+              Run
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

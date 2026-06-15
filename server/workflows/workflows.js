@@ -4,6 +4,7 @@ import { collectEvidence as runEvidenceCollection, abortEvidenceCollection as ab
 
 const WORKFLOWS_DIR = join(import.meta.dir, "..", "..", "workflows")
 const EVIDENCE_DIR = join(import.meta.dir, "..", "..", "evidence")
+const RESULTS_DIR = join(import.meta.dir, "..", "..", "results")
 
 let currentMountedEvidence = null
 
@@ -508,8 +509,12 @@ export async function listEvidence() {
 export async function getEvidenceFileInfo(_, __, data) {
   const { path } = data.data
   const fullPath = join(EVIDENCE_DIR, path)
+  console.log("[getEvidenceFileInfo] request path:", path, "→ fullPath:", fullPath)
   const s = await stat(fullPath).catch(() => null)
-  if (!s || !s.isFile()) return { name: null, path, size: null, hash: null, created: null }
+  if (!s || !s.isFile()) {
+    console.log("[getEvidenceFileInfo] file not found or not a file:", fullPath)
+    return { name: null, path, size: null, hash: null, created: null }
+  }
 
   let hash = null
   try {
@@ -520,9 +525,13 @@ export async function getEvidenceFileInfo(_, __, data) {
   if (path.endsWith(".json")) {
     try {
       content = await Bun.file(fullPath).text()
-    } catch {}
+      console.log("[getEvidenceFileInfo] read JSON content, length:", content.length)
+    } catch (err) {
+      console.log("[getEvidenceFileInfo] failed to read JSON content:", err.message)
+    }
   }
 
+  console.log("[getEvidenceFileInfo] returning:", { name: basename(path), size: s.size, hasContent: !!content })
   return {
     name: basename(path),
     path,
@@ -531,6 +540,57 @@ export async function getEvidenceFileInfo(_, __, data) {
     created: s.birthtime.toISOString(),
     content,
   }
+}
+
+export async function listWorkflowResults() {
+  const result = []
+  try {
+    const playbooks = await readdir(RESULTS_DIR, { withFileTypes: true })
+    for (const pb of playbooks) {
+      if (!pb.isDirectory()) continue
+      const pbPath = join(RESULTS_DIR, pb.name)
+      const providers = await readdir(pbPath, { withFileTypes: true })
+      const models = []
+      for (const prov of providers) {
+        if (!prov.isDirectory()) continue
+        const provPath = join(pbPath, prov.name)
+        const modelDirs = await readdir(provPath, { withFileTypes: true })
+        for (const mdl of modelDirs) {
+          if (!mdl.isDirectory()) continue
+          const mdlPath = join(provPath, mdl.name)
+          const timestampDirs = await readdir(mdlPath, { withFileTypes: true })
+          const timestamps = []
+          for (const ts of timestampDirs) {
+            if (!ts.isDirectory()) continue
+            const tsPath = join(mdlPath, ts.name)
+            try {
+              const files = await readdir(tsPath)
+              timestamps.push({ timestamp: ts.name, files: files.filter(f => f.endsWith(".json")) })
+            } catch { continue }
+          }
+          if (timestamps.length > 0) {
+            models.push({ providerID: prov.name, modelName: mdl.name, timestamps })
+          }
+        }
+      }
+      if (models.length > 0) {
+        result.push({ playbookName: pb.name, models })
+      }
+    }
+  } catch {}
+  return result
+}
+
+export async function getResultFile(_, __, data) {
+  const { path } = data.data
+  const fullPath = join(RESULTS_DIR, path)
+  const s = await stat(fullPath).catch(() => null)
+  if (!s || !s.isFile()) return { content: null, size: null }
+  let content = null
+  try {
+    content = await Bun.file(fullPath).text()
+  } catch {}
+  return { content, size: s.size }
 }
 
 export async function mountEvidenceToSift(_, __, data, ws) {
@@ -705,6 +765,28 @@ export async function checkAnyStagedEvidence() {
     return { hasStagedEvidence: false, playbookName: null }
   } catch {
     return { hasStagedEvidence: false, playbookName: null }
+  }
+}
+
+export async function listStagedEvidenceFolders() {
+  try {
+    const entries = await readdir(EVIDENCE_DIR, { withFileTypes: true })
+    const staged = []
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const stagedDir = join(EVIDENCE_DIR, entry.name, "staged")
+      try {
+        const stagedFiles = await readdir(stagedDir)
+        if (stagedFiles.some(f => f.endsWith(".json"))) {
+          staged.push(entry.name)
+        }
+      } catch {
+        continue
+      }
+    }
+    return staged
+  } catch {
+    return []
   }
 }
 

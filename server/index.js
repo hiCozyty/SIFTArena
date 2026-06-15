@@ -12,7 +12,7 @@ import { createVncProxyHandler, getOrCreateVncSession } from "./ludus/proxmox.js
 import { createWinrmProxy } from "./ludus/winrm-proxy.js"
 import { createSshProxy } from "./ludus/ssh-proxy.js"
 import { getContainerBackend } from "./ludus/container-backends.js"
-import { listWorkflows, readWorkflowFile, initializeOpencodeSessionFromDocker, listEvidence, deleteEvidence, getEvidenceFileInfo, mountEvidenceToSift, unmountEvidenceFromSift, collectEvidence, abortEvidenceCollection, checkEvidenceExists, getMountedEvidence, listOpencodeModels, preAgentStagingPipeline, checkStagedOutputExists, checkAnyStagedEvidence } from "./workflows/workflows.js"
+import { listWorkflows, readWorkflowFile, initializeOpencodeSessionFromDocker, listEvidence, deleteEvidence, getEvidenceFileInfo, mountEvidenceToSift, unmountEvidenceFromSift, collectEvidence, abortEvidenceCollection, checkEvidenceExists, getMountedEvidence, listOpencodeModels, preAgentStagingPipeline, checkStagedOutputExists, checkAnyStagedEvidence, listStagedEvidenceFolders, listWorkflowResults, getResultFile } from "./workflows/workflows.js"
 import { runOpencodeWorkflow, abortOpencodeWorkflow } from "./workflows/runWorkflow.js"
 import { runPlaybook } from "./playbook/runPlaybook.js"
 
@@ -115,6 +115,9 @@ addOperation("listOpencodeModels", listOpencodeModels)
 addOperation("preAgentStagingPipeline", preAgentStagingPipeline)
 addOperation("checkStagedOutputExists", checkStagedOutputExists)
 addOperation("checkAnyStagedEvidence", checkAnyStagedEvidence)
+addOperation("listStagedEvidenceFolders", listStagedEvidenceFolders)
+addOperation("listWorkflowResults", listWorkflowResults)
+addOperation("getResultFile", getResultFile)
 addOperation("runOpencodeWorkflow", runOpencodeWorkflow)
 addOperation("abortOpencodeWorkflow", abortOpencodeWorkflow)
 addOperation("createPlaybook", async (_, __, data) => createPlaybook(data.data))
