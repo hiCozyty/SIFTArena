@@ -57,34 +57,10 @@ export async function preAgentStagingPipeline(_, __, data, ws) {
   // Create output directory on SIFT
   await sshExec(`mkdir -p ${outputDir}`)
 
-  // Determine attack window
   let windowStart = attackWindowStartMs
   let windowEnd = attackWindowEndMs
   if (!windowStart || !windowEnd) {
-    const gtPath = `${evidencePath}/groundTruth.json`
-    const { stdout: gtContent } = await sshExec(`cat ${gtPath} 2>/dev/null || echo '{}'`)
-    if (gtContent && gtContent !== '{}') {
-      try {
-        const gt = JSON.parse(gtContent)
-        windowStart = gt.attackStart || gt.WINDOW_START_MS
-        windowEnd = gt.attackEnd || gt.WINDOW_END_MS
-        if (!windowStart || !windowEnd) {
-          const timeline = gt.timeline || gt.abilities || []
-          if (timeline.length) {
-            const start = timeline[0].startedAt
-            const end = timeline[timeline.length - 1].finishedAt
-            if (start != null && end != null) {
-              windowStart = start
-              windowEnd = end
-            }
-          }
-        }
-      } catch (e) {
-        }
-    }
-  }
-  if (!windowStart || !windowEnd) {
-    throw new Error("Attack window not provided and groundTruth.json missing start/end")
+    throw new Error("Attack window not provided")
   }
 
   // Apply 5s buffer to catch events slightly outside ability timestamps
@@ -488,9 +464,7 @@ export async function initializeOpencodeSessionFromDocker(_, __, data) {
 
 export async function deleteEvidence(_, __, data) {
   const targetDir = join(EVIDENCE_DIR, data.data.name)
-  console.log(`[deleteEvidence] Removing ${targetDir}`)
   await rm(targetDir, { recursive: true, force: true })
-  console.log(`[deleteEvidence] Done`)
   return { success: true }
 }
 
@@ -513,10 +487,8 @@ export async function listEvidence() {
 export async function getEvidenceFileInfo(_, __, data) {
   const { path } = data.data
   const fullPath = join(EVIDENCE_DIR, path)
-  console.log("[getEvidenceFileInfo] request path:", path, "→ fullPath:", fullPath)
   const s = await stat(fullPath).catch(() => null)
   if (!s || !s.isFile()) {
-    console.log("[getEvidenceFileInfo] file not found or not a file:", fullPath)
     return { name: null, path, size: null, hash: null, created: null }
   }
 
@@ -529,13 +501,10 @@ export async function getEvidenceFileInfo(_, __, data) {
   if (path.endsWith(".json")) {
     try {
       content = await Bun.file(fullPath).text()
-      console.log("[getEvidenceFileInfo] read JSON content, length:", content.length)
-    } catch (err) {
-      console.log("[getEvidenceFileInfo] failed to read JSON content:", err.message)
-    }
+      } catch (err) {
+      }
   }
 
-  console.log("[getEvidenceFileInfo] returning:", { name: basename(path), size: s.size, hasContent: !!content })
   return {
     name: basename(path),
     path,

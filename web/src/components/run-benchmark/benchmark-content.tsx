@@ -1330,7 +1330,6 @@ export function BenchmarkContent({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => {
-              console.log("[runWorkflow] sending request", { evidenceFolder: selectedEvidenceFolder, workflow: selectedWorkflowName, model: selectedModel })
               backendWs.send({ type: "runOpencodeWorkflow", data: { playbookName: selectedEvidenceFolder, workflowName: selectedWorkflowName, model: selectedModel } })
               setShowConfirmRunWorkflowDialog(false)
             }}>

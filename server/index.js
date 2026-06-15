@@ -15,8 +15,10 @@ import { getContainerBackend } from "./ludus/container-backends.js"
 import { listWorkflows, readWorkflowFile, initializeOpencodeSessionFromDocker, listEvidence, deleteEvidence, getEvidenceFileInfo, mountEvidenceToSift, unmountEvidenceFromSift, collectEvidence, abortEvidenceCollection, checkEvidenceExists, getMountedEvidence, listOpencodeModels, preAgentStagingPipeline, checkStagedOutputExists, checkAnyStagedEvidence, listStagedEvidenceFolders, listWorkflowResults, getResultFile } from "./workflows/workflows.js"
 import { runOpencodeWorkflow, abortOpencodeWorkflow } from "./workflows/runWorkflow.js"
 import { runPlaybook } from "./playbook/runPlaybook.js"
+import { join } from "node:path"
 
 const LUDUS_SERVER_URL = process.env.LUDUS_SERVER_URL + "/api/v2"
+const GROUND_TRUTH_DIR = join(import.meta.dir, "..", "groundTruth")
 const LUDUS_API_KEY = process.env.LUDUS_API_KEY
 const BUN_SERVER_PORT = parseInt(process.env.BUN_SERVER_PORT)
 console.log("CWD:", process.cwd())
@@ -112,7 +114,25 @@ addOperation("abortEvidenceCollection", abortEvidenceCollection)
 addOperation("checkEvidenceExists", checkEvidenceExists)
 addOperation("getMountedEvidence", async () => getMountedEvidence())
 addOperation("listOpencodeModels", listOpencodeModels)
-addOperation("preAgentStagingPipeline", preAgentStagingPipeline)
+
+async function preAgentStagingPipelineWithWindow(_, __, data, ws) {
+  const { playbookName, attackWindowStartMs, attackWindowEndMs } = data.data || {}
+  let start = attackWindowStartMs
+  let end = attackWindowEndMs
+  if ((!start || !end) && playbookName) {
+    try {
+      const gt = JSON.parse(await Bun.file(join(GROUND_TRUTH_DIR, playbookName, "groundTruth.json")).text())
+      start = gt.timeline?.[0]?.startedAt
+      end = gt.timeline?.[gt.timeline.length - 1]?.finishedAt
+    } catch {}
+  }
+  return preAgentStagingPipeline(_, __, {
+    ...data,
+    data: { ...data.data, attackWindowStartMs: start, attackWindowEndMs: end }
+  }, ws)
+}
+
+addOperation("preAgentStagingPipeline", preAgentStagingPipelineWithWindow)
 addOperation("checkStagedOutputExists", checkStagedOutputExists)
 addOperation("checkAnyStagedEvidence", checkAnyStagedEvidence)
 addOperation("listStagedEvidenceFolders", listStagedEvidenceFolders)

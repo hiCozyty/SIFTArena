@@ -266,7 +266,7 @@ export async function collectEvidence({ playbookName, vmid = 107, overwrite = fa
       checkAbort(currentStep)
       if (sendStatus) sendStatus("groundTruth", "running", "Writing ground truth...")
       if (lastPlaybookResult) {
-        await writeFile(`${LOCAL_DIR}/groundTruth.json`, JSON.stringify(lastPlaybookResult, null, 2))
+        await writeFile(`./groundTruth/${playbookName}/groundTruth.json`, JSON.stringify(lastPlaybookResult, null, 2))
         if (sendStatus) sendStatus("groundTruth", "success", "Ground truth written")
       } else {
         if (sendStatus) sendStatus("groundTruth", "success", "No playbook result to record")

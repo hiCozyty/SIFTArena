@@ -10,24 +10,18 @@ let currentRunAbort = null
 export async function runOpencodeWorkflow(_, __, data, ws) {
   const { playbookName, workflowName, model } = data.data || {}
 
-  console.log("[runWorkflow] handler invoked", { playbookName, workflowName, model })
-
   if (!playbookName || !workflowName || !model) {
     console.error("[runWorkflow] missing required params")
     throw new Error("playbookName, workflowName, and model are required")
   }
 
-  console.log("[runWorkflow] initializing opencode session for workflow:", workflowName)
   await initializeOpencodeSessionFromDocker(_, __, { data: { workflowName } })
 
-  const gtPath = join(ROOT_DIR, "evidence", playbookName, "groundTruth.json")
-  console.log("[runWorkflow] reading ground truth:", gtPath)
+  const gtPath = join(ROOT_DIR, "groundTruth", playbookName, "groundTruth.json")
   const gtRaw = await Bun.file(gtPath).text()
   const gt = JSON.parse(gtRaw)
   const startMs = gt.timeline[0].startedAt
   const endMs = gt.timeline[gt.timeline.length - 1].finishedAt
-  console.log("[runWorkflow] attack window:", { startMs, endMs })
-
   if (!startMs || !endMs) {
     throw new Error("Attack window not found in ground truth")
   }
@@ -50,26 +44,16 @@ Attack window: ${startMs} - ${endMs}`
   }
 
   const client = createOpencodeClient({ baseUrl: "http://localhost:3113" })
-  console.log("[runWorkflow] setting auth...")
   await client.auth.set({ providerID: "opencode-go", auth: { type: "api", key: API_KEY } })
   await client.auth.set({ providerID: "opencode", auth: { type: "api", key: API_KEY } })
-  console.log("[runWorkflow] auth set, creating session...")
   const { data: { id: sessionId } } = await client.session.create()
-  console.log("[runWorkflow] session created:", sessionId)
-
   const abortController = new AbortController()
   currentRunAbort = abortController
 
   ws.send(JSON.stringify({ type: "runOpencodeWorkflow:start", sessionId }))
-  console.log("[runWorkflow] sent start event, subscribing to events...")
-
   const events = await client.event.subscribe()
-  console.log("[runWorkflow] subscribed to events, sending prompt...")
-
   const resultsDir = join(ROOT_DIR, "results", playbookName, providerID, modelID, String(timestamp))
   await mkdir(resultsDir, { recursive: true })
-  console.log("[runWorkflow] results directory ensured:", resultsDir)
-
   const pollTimer = setInterval(async () => {
     if (abortController.signal.aborted) return
     try {
@@ -90,14 +74,12 @@ Attack window: ${startMs} - ${endMs}`
     }
   }, 1000)
 
-  console.log("[runWorkflow] firing promptAsync with session:", sessionId)
   client.session.promptAsync({
     sessionID: sessionId,
     model: { providerID, modelID },
     parts: [{ type: "text", text: prompt }],
   }).then(() => {
-    console.log("[runWorkflow] promptAsync resolved successfully")
-  }).catch(err => {
+    }).catch(err => {
     if (!abortController.signal.aborted) {
       console.error("[runWorkflow] promptAsync error:", err.message)
       ws.send(JSON.stringify({ type: "runOpencodeWorkflow:error", error: err.message }))
@@ -116,10 +98,7 @@ Attack window: ${startMs} - ${endMs}`
 
   const watchdogTimer = setInterval(() => {
     if (abortController.signal.aborted) return
-    console.log("[runWorkflow] watchdog: event loop alive, events received:", eventCount)
-  }, 10000)
-
-  console.log("[runWorkflow] entering event loop...")
+    }, 10000)
 
   try {
     for await (const event of events.stream) {
@@ -129,8 +108,7 @@ Attack window: ${startMs} - ${endMs}`
       const et = event.type
 
       if (eventCount <= 5 || eventCount % 50 === 0) {
-        console.log(`[runWorkflow] event #${eventCount}: type=${et}`, eventCount <= 3 ? JSON.stringify(event).slice(0, 200) : "")
-      }
+        }
 
       if (et === "message.part.updated") {
         const props = event.properties || {}
@@ -235,11 +213,8 @@ Attack window: ${startMs} - ${endMs}`
   } finally {
     clearInterval(watchdogTimer)
     clearInterval(pollTimer)
-    console.log("[runWorkflow] exiting event loop, total events:", eventCount)
     currentRunAbort = null
   }
-
-  console.log("[runWorkflow] event loop finished, fetching final tokens...")
 
   let tokens = null
   let cost = null
@@ -256,13 +231,11 @@ Attack window: ${startMs} - ${endMs}`
   try {
     try {
       await Bun.write(join(resultsDir, "groundTruth.json"), await Bun.file(gtPath).text())
-      console.log("[runWorkflow] wrote groundTruth.json to", resultsDir)
-    } catch (gtErr) {
+      } catch (gtErr) {
       console.error("[runWorkflow] failed to write groundTruth.json:", gtErr.message)
     }
     await Bun.write(join(resultsDir, "rounds.json"), JSON.stringify({ rounds, tokens, cost }, null, 2))
-    console.log("[runWorkflow] wrote rounds.json to", resultsDir)
-  } catch (writeErr) {
+    } catch (writeErr) {
     console.error("[runWorkflow] failed to write rounds.json:", writeErr.message)
   }
 }

@@ -5,7 +5,6 @@
     "edit": "allow",
     "bash": "allow",
     "external_directory": {
-        "/home/sift/evidence/**/groundTruth.json": "deny",
         "/home/sift/evidence/**": "allow",
         "/home/sift/results/**": "allow"
     }
