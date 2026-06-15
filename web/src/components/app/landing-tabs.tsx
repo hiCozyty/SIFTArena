@@ -130,7 +130,7 @@ function LockedContent({
 
   return (
     <TabContentCard className="py-16 flex flex-col items-center justify-center">
-      <Lock className="mb-4 size-12 text-muted-foreground" />
+      <Lock className="mb-4 size-12 text-primary" />
       <h3 className="mb-2 text-lg font-semibold">{section} is locked</h3>
       <p className="mb-6 text-sm text-muted-foreground">
         {prerequisite === "Attack Configuration"

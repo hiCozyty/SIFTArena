@@ -27,6 +27,12 @@ for i in $(seq 1 30); do
   sleep 0.1
 done
 
+mkdir -p /home/sift/evidence
+chown sift:sift /home/sift/evidence
+
+echo "Installing sshpass for MCP SSH connectivity..."
+apt-get update -qq && apt-get install -y -qq sshpass && echo "  -> done"
+
 echo "Installing workflow dependencies..."
 for workflow_dir in /home/sift/workflows/*/; do
   workflow_name=$(basename "$workflow_dir")

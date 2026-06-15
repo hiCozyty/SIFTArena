@@ -6,22 +6,27 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { $ } from "bun";
 
-// Dynamic evidence path – set on first call to scan_disk_artifacts
 let cachedEvidencePath: string | null = null;
 function getE01Path(): string {
-  if (!cachedEvidencePath) throw new Error("Evidence path not set. Call scan_disk_artifacts first.");
-  return `${cachedEvidencePath}/disk-image.E01`;
+  const path = cachedEvidencePath ?? process.env.EVIDENCE_PATH;
+  if (!path) throw new Error("Evidence path not set. Call scan_disk_artifacts first or set EVIDENCE_PATH env var.");
+  return `${path}/disk-image.E01`;
 }
 function getMemoryPath(): string {
-  if (!cachedEvidencePath) throw new Error("Evidence path not set. Call scan_disk_artifacts first.");
-  return `${cachedEvidencePath}/memory.dump`;
+  const path = cachedEvidencePath ?? process.env.EVIDENCE_PATH;
+  if (!path) throw new Error("Evidence path not set. Call scan_disk_artifacts first or set EVIDENCE_PATH env var.");
+  return `${path}/memory.dump`;
 }
 
 async function sift(cmd: string): Promise<string> {
-  const result = await $`sshpass -p forensics ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -n sift@localhost ${cmd}`
-    .quiet()
-    .text();
-  return result.trim();
+  try {
+    const result = await $`sudo su - sift -c ${cmd}`
+      .quiet()
+      .text();
+    return result.trim();
+  } catch (e: any) {
+    throw new Error(`SIFT_CMD_ERROR: ${e.stderr ?? e.message ?? e}`);
+  }
 }
 
 async function vol3(plugin: string, extra: string = ""): Promise<string> {
@@ -55,6 +60,14 @@ async function extractEvtx(filename: string, offset: number): Promise<string> {
   return sift(`sudo icat -o ${offset} "${e01}" ${inode} 2>/dev/null | strings | head -1000`);
 }
 
+function maybeSetPath(args: any) {
+  const evidencePath = args?.evidencePath;
+  if (evidencePath && typeof evidencePath === "string") {
+    if (evidencePath !== cachedEvidencePath) cachedOffset = null;
+    cachedEvidencePath = evidencePath;
+  }
+}
+
 const server = new Server(
   { name: "customMCP", version: "1.0.0" },
   { capabilities: { tools: {} } }
@@ -65,7 +78,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "scan_disk_artifacts",
       description: `First tool. Extracts Sysmon, Security, Prefetch, USN Journal, and PowerShell logs from the E01.
-IMPORTANT: Provide the evidencePath exactly as received in your session message (e.g. /home/sift/evidence/playbook-name).
+Provide the evidencePath exactly as received in your session message (e.g. /home/sift/evidence/playbook-name).
 The server will locate disk-image.E01 and memory.dump automatically.`,
       inputSchema: {
         type: "object",
@@ -83,45 +96,52 @@ The server will locate disk-image.E01 and memory.dump automatically.`,
     {
       name: "scan_process_list",
       description: `Call after scan_disk_artifacts. Runs windows.pstree against the memory dump.
-Flags processes matching known dump tool binaries. Cross-reference with Sysmon Event 1 records.`,
-      inputSchema: { type: "object", properties: {}, required: [] },
+Returns raw process tree output. Cross-reference with Sysmon Event 1 records to identify what executed.`,
+      inputSchema: {
+        type: "object",
+        properties: {
+          evidencePath: { type: "string", description: "Optional. Full path to the evidence directory if not already set." },
+        },
+        required: [],
+      },
     },
     {
       name: "inspect_memory_regions",
       description: `Call after scan_process_list. Runs windows.malfind and windows.dlllist on given PIDs.
-Corroboration only.`,
+Returns raw volatility output for the caller to interpret. Corroboration only.`,
       inputSchema: {
         type: "object",
-        properties: { pids: { type: "array", items: { type: "number" } } },
+        properties: {
+          pids: { type: "array", items: { type: "number" } },
+          evidencePath: { type: "string", description: "Optional. Full path to the evidence directory if not already set." },
+        },
         required: ["pids"],
       },
     },
     {
       name: "check_handle_table",
-      description: `Call after inspect_memory_regions. Runs windows.handles filtered to lsass targets.
-Flags handles with dump-relevant access masks.`,
-      inputSchema: { type: "object", properties: {}, required: [] },
-    },
-    {
-      name: "correlate_lsass_indicators",
-      description: `Call after check_handle_table. Correlates all findings into technique clusters with confidence levels.
-Only attribute actual LSASS dump abilities.`,
+      description: `Call after inspect_memory_regions. Runs windows.handles filtered to Process-type objects.
+Returns all handles referencing lsass.exe. The caller is responsible for interpreting access masks and attributing techniques.`,
       inputSchema: {
         type: "object",
         properties: {
-          findings: { type: "object", description: "Aggregated output from previous tools." },
+          evidencePath: { type: "string", description: "Optional. Full path to the evidence directory if not already set." },
         },
-        required: ["findings"],
+        required: [],
       },
     },
     {
       name: "generate_report",
-      description: `Final tool. Produces a timeline of LSASS dump abilities (not noise) from artifact analysis only.
-Sections: RECONSTRUCTED TIMELINE, VERIFIED FINDINGS, INFERRED FINDINGS, UNATTRIBUTED ARTIFACTS, COVERAGE GAPS, EVIDENCE INTEGRITY, KNOWN DETECTION LIMITS.`,
+      description: `Final tool. Accepts the caller's correlated findings and structures them into a report scaffold.
+The caller must supply all attribution — this tool does not interpret or pattern-match findings.`,
       inputSchema: {
         type: "object",
         properties: {
-          correlatedFindings: { type: "object", description: "Output from correlate_lsass_indicators." },
+          correlatedFindings: {
+            type: "object",
+            description: "The agent's own attributed findings, keyed however the agent chooses.",
+          },
+          evidencePath: { type: "string", description: "Optional. Full path to the evidence directory if not already set." },
         },
         required: ["correlatedFindings"],
       },
@@ -129,120 +149,132 @@ Sections: RECONSTRUCTED TIMELINE, VERIFIED FINDINGS, INFERRED FINDINGS, UNATTRIB
   ],
 }));
 
-const DUMP_TOOL_NAMES = [
-  "rundll32.exe", "procdump.exe", "procdump64.exe", "xordump.exe",
-  "nanodump.x64.exe", "Outflank-Dumpert.exe", "createdump.exe",
-  "WerFault.exe", "python.exe", "powershell.exe",
-];
-
-const TECHNIQUE_SIGNATURES = [
-  { id: "comsvcs-rundll32", name: "comsvcs.dll via rundll32", mitre: "T1003.001", indicators: ["comsvcs.dll", "rundll32.exe", "MiniDump"] },
-  { id: "xordump", name: "xordump (imported MS DLLs)", mitre: "T1003.001", indicators: ["xordump.exe", "dbghelp.dll", "dbgcore.dll"], note: "Deletes dump immediately. FileCreate plus FileDelete is expected." },
-  { id: "createdump-dotnet", name: "createdump from .NET runtime", mitre: "T1003.001", indicators: ["createdump.exe", "dotnet"] },
-  { id: "procdump-full", name: "ProcDump full dump (-ma)", mitre: "T1003.001", indicators: ["procdump.exe", "procdump64.exe", "-ma"] },
-  { id: "procdump-mini", name: "ProcDump mini dump (-mm)", mitre: "T1003.001", indicators: ["procdump.exe", "procdump64.exe", "-mm"] },
-  { id: "dumpert", name: "Outflank Dumpert (direct syscalls)", mitre: "T1003.001", indicators: ["Outflank-Dumpert.exe", "dumpert.dmp"] },
-  { id: "nanodump", name: "NanoDump (invalid dump signature)", mitre: "T1003.001", indicators: ["nanodump.x64.exe", "nanodump.dmp"] },
-  { id: "silent-process-exit", name: "SilentProcessExit via WerFault", mitre: "T1003.001", indicators: ["nanodump.x64.exe", "--silent-process-exit", "WerFault.exe", "SilentProcessExit"] },
-  { id: "pypykatz", name: "pypykatz live LSA read", mitre: "T1003.001", indicators: ["pypykatz", "python.exe", "live lsa"] },
-  { id: "out-minidump-ps1", name: "Out-Minidump.ps1 via PowerShell IEX", mitre: "T1003.001", indicators: ["Out-Minidump", "MiniDumpWriteDump", "powershell.exe", "IEX"] },
-];
-
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { name, arguments: args } = req.params;
+
   const handlers: Record<string, () => Promise<{ content: { type: "text"; text: string }[] }>> = {
     scan_disk_artifacts: async () => {
       const evidencePath = (args as any)?.evidencePath;
-      if (!evidencePath || typeof evidencePath !== "string") return ok(JSON.stringify({ error: "evidencePath is required" }));
+      if (!evidencePath || typeof evidencePath !== "string") {
+        return ok(JSON.stringify({ error: "evidencePath is required" }));
+      }
+      if (evidencePath !== cachedEvidencePath) cachedOffset = null;
       cachedEvidencePath = evidencePath;
-      cachedOffset = null;
+
       let offset: number;
-      try { offset = await getPartitionOffset(); } catch (e: any) { return ok(JSON.stringify({ error: e.message })); }
+      try {
+        offset = await getPartitionOffset();
+      } catch (e: any) {
+        return ok(JSON.stringify({ error: e.message }));
+      }
 
       const sources: string[] = (args as any)?.sources ?? ["all"];
       const all = sources.includes("all");
       const results: Record<string, string> = { partitionOffsetSectors: String(offset) };
 
-      if (all || sources.includes("sysmon")) {
-        results.sysmon = await extractEvtx("Microsoft-Windows-Sysmon%4Operational.evtx", offset);
-        if (!results.sysmon) results.sysmon = "COVERAGE GAP: Sysmon log not found or empty";
+      try {
+        if (all || sources.includes("sysmon")) {
+          results.sysmon = await extractEvtx("Microsoft-Windows-Sysmon%4Operational.evtx", offset);
+          if (!results.sysmon) results.sysmon = "COVERAGE GAP: Sysmon log not found or empty";
+        }
+        if (all || sources.includes("security")) {
+          results.security = await extractEvtx("Security.evtx", offset);
+          if (!results.security) results.security = "COVERAGE GAP: Security log not found or empty";
+        }
+        if (all || sources.includes("prefetch")) {
+          results.prefetch = await sift(`sudo fls -r -o ${offset} "${getE01Path()}" | grep -i "\\.pf$" | head -100`);
+          if (!results.prefetch) results.prefetch = "COVERAGE GAP: No prefetch files found";
+        }
+        if (all || sources.includes("usn")) {
+          results.usn = await sift(`sudo fls -r -o ${offset} "${getE01Path()}" | grep -i "UsnJrnl" | head -20`);
+          if (!results.usn) results.usn = "COVERAGE GAP: USN Journal not found";
+        }
+        if (all || sources.includes("powershell")) {
+          results.powershell = await extractEvtx("Microsoft-Windows-PowerShell%4Operational.evtx", offset);
+          if (!results.powershell) results.powershell = "COVERAGE GAP: PowerShell log not found or empty";
+        }
+      } catch (e: any) {
+        return ok(JSON.stringify({ error: e.message, partialResults: results }));
       }
-      if (all || sources.includes("security")) {
-        results.security = await extractEvtx("Security.evtx", offset);
-        if (!results.security) results.security = "COVERAGE GAP: Security log not found or empty";
-      }
-      if (all || sources.includes("prefetch")) {
-        results.prefetch = await sift(`sudo fls -r -o ${offset} "${getE01Path()}" | grep -i "\\.pf$" | head -100`);
-        if (!results.prefetch) results.prefetch = "COVERAGE GAP: No prefetch files found";
-      }
-      if (all || sources.includes("usn")) {
-        results.usn = await sift(`sudo fls -r -o ${offset} "${getE01Path()}" | grep -i "UsnJrnl" | head -20`);
-        if (!results.usn) results.usn = "COVERAGE GAP: USN Journal not found";
-      }
-      if (all || sources.includes("powershell")) {
-        results.powershell = await extractEvtx("Microsoft-Windows-PowerShell%4Operational.evtx", offset);
-        if (!results.powershell) results.powershell = "COVERAGE GAP: PowerShell log not found or empty";
-      }
+
       return ok(JSON.stringify({ evidencePath, e01: getE01Path(), offset, artifacts: results }, null, 2));
     },
 
     scan_process_list: async () => {
-      const pstree = await vol3("windows.pstree");
-      const flagged = pstree.split("\n").filter(line => DUMP_TOOL_NAMES.some(n => line.toLowerCase().includes(n.toLowerCase())));
-      return ok(JSON.stringify({ source: "volatility3 windows.pstree", memoryPath: getMemoryPath(), note: "Point-in-time snapshot. Timestamps are EPROCESS creation times. Disk artifacts are authoritative.", flaggedProcesses: flagged, fullOutput: pstree }, null, 2));
+      maybeSetPath(args);
+      let pstree: string;
+      try {
+        pstree = await vol3("windows.pstree");
+      } catch (e: any) {
+        return ok(JSON.stringify({ error: e.message, hint: "SSH connection failed or memory path not set" }));
+      }
+      return ok(JSON.stringify({
+        source: "volatility3 windows.pstree",
+        memoryPath: getMemoryPath(),
+        note: "Point-in-time snapshot. EPROCESS creation times only. Disk artifacts are authoritative for timing. Interpret this output yourself.",
+        fullOutput: pstree,
+      }, null, 2));
     },
 
     inspect_memory_regions: async () => {
+      maybeSetPath(args);
       const pids: number[] = (args as any)?.pids ?? [];
       if (pids.length === 0) return ok(JSON.stringify({ note: "No PIDs provided. Skipping." }));
-      const SUSPICIOUS_DLLS = ["dbghelp.dll", "dbgcore.dll", "comsvcs.dll"];
+
       const results: Record<number, any> = {};
       for (const pid of pids) {
-        const malfind = await vol3("windows.malfind", `--pid ${pid}`);
-        const dlls = await vol3("windows.dlllist", `--pid ${pid}`);
-        results[pid] = { malfind, dlls, suspiciousDlls: SUSPICIOUS_DLLS.filter(d => dlls.toLowerCase().includes(d.toLowerCase())) };
+        try {
+          const malfind = await vol3("windows.malfind", `--pid ${pid}`);
+          const dlls = await vol3("windows.dlllist", `--pid ${pid}`);
+          results[pid] = { malfind, dlls };
+        } catch (e: any) {
+          results[pid] = { error: e.message };
+        }
       }
-      return ok(JSON.stringify({ source: "volatility3 windows.malfind + windows.dlllist", note: "Corroboration only.", results }, null, 2));
+      return ok(JSON.stringify({
+        source: "volatility3 windows.malfind + windows.dlllist",
+        note: "Raw output. Corroboration only. Interpret loaded modules and memory regions yourself.",
+        results,
+      }, null, 2));
     },
 
     check_handle_table: async () => {
-      const handles = await vol3("windows.handles", "--object-type Process");
+      maybeSetPath(args);
+      let handles: string;
+      try {
+        handles = await vol3("windows.handles", "--object-type Process");
+      } catch (e: any) {
+        return ok(JSON.stringify({ error: e.message, hint: "SSH connection failed or memory path not set" }));
+      }
       const lsassHandles = handles.split("\n").filter(line => line.toLowerCase().includes("lsass"));
-      const DUMP_ACCESS_MASKS = ["0x1fffff", "0x1010", "0x400"];
-      const flagged = lsassHandles.filter(line => DUMP_ACCESS_MASKS.some(mask => line.toLowerCase().includes(mask.toLowerCase())));
-      return ok(JSON.stringify({ source: "volatility3 windows.handles", note: "Handles opened/closed before capture not visible. Security 4656/4663 authoritative.", allLsassHandles: lsassHandles, flaggedDumpAccessHandles: flagged }, null, 2));
-    },
-
-    correlate_lsass_indicators: async () => {
-      const findings = (args as any)?.findings ?? {};
-      const findingsStr = JSON.stringify(findings).toLowerCase();
-      const attributed = TECHNIQUE_SIGNATURES.map(sig => {
-        const matched = sig.indicators.filter(ind => findingsStr.includes(ind.toLowerCase()));
-        const confidence = matched.length >= 2 ? "HIGH" : matched.length === 1 ? "MEDIUM" : null;
-        if (!confidence) return null;
-        return { ...sig, matchedIndicators: matched, confidence };
-      }).filter(Boolean);
-      return ok(JSON.stringify({ attributed, note: "Only actual abilities. Pass to generate_report." }, null, 2));
+      return ok(JSON.stringify({
+        source: "volatility3 windows.handles",
+        note: "Handles opened and closed before memory capture are not visible here. Security EventIDs 4656 and 4663 are authoritative for handle activity. Interpret access masks yourself.",
+        allLsassHandles: lsassHandles,
+      }, null, 2));
     },
 
     generate_report: async () => {
+      maybeSetPath(args);
+      const path = cachedEvidencePath ?? process.env.EVIDENCE_PATH;
       const correlatedFindings = (args as any)?.correlatedFindings ?? {};
       const report = {
-        e01: cachedEvidencePath ? `${cachedEvidencePath}/disk-image.E01` : "not set",
-        memoryDump: cachedEvidencePath ? `${cachedEvidencePath}/memory.dump` : "not set",
+        e01: path ? `${path}/disk-image.E01` : "not set",
+        memoryDump: path ? `${path}/memory.dump` : "not set",
         note: "Reconstructed from artifact analysis only. No ground truth used. Only LSASS dump abilities reported.",
+        findings: correlatedFindings,
         sections: {
           reconstructedTimeline: "Agent to populate chronologically",
-          verifiedFindings: (correlatedFindings?.attributed ?? []).filter((a: any) => a?.confidence === "HIGH"),
-          inferredFindings: (correlatedFindings?.attributed ?? []).filter((a: any) => a?.confidence === "MEDIUM"),
-          unattributedArtifacts: "Agent to populate",
-          coverageGaps: "Agent to populate from COVERAGE GAP entries",
+          verifiedFindings: "Agent to populate — findings with two or more corroborating artifact sources",
+          inferredFindings: "Agent to populate — findings with a single artifact source",
+          unattributedArtifacts: "Agent to populate — artifacts that could not be tied to a specific technique",
+          coverageGaps: "Agent to populate from COVERAGE GAP entries returned by scan_disk_artifacts",
           evidenceIntegrity: "E01 and memory dump accessed read-only.",
           knownDetectionLimits: [
-            "xordump deletes dump immediately — FileCreate plus FileDelete is expected signal",
-            "Prereq DNS artifacts may precede technique execution",
-            "Multiple .dmp files must be attributed per PID",
-            "Technique-adjacent binaries require full command line analysis",
+            "Memory is a point-in-time snapshot. Processes and handles that exited before capture are not visible.",
+            "Some techniques delete their dump file immediately after creation.",
+            "Multiple dump files must each be attributed individually.",
+            "Command line arguments are required to distinguish legitimate from malicious use of system binaries.",
           ],
         },
       };
@@ -257,4 +289,4 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-console.error(`[customMCP] Started. Evidence path will be set by scan_disk_artifacts.`);
+console.error(`[customMCP] Started. Evidence path will be set by scan_disk_artifacts or EVIDENCE_PATH env var.`);

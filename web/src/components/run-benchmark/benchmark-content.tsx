@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
-import { Lock, Info, Loader2, CheckCircle2, XCircle, Circle } from "lucide-react"
+import { Lock, Info, Loader2, CheckCircle2, XCircle, Circle, FolderOpen } from "lucide-react"
 import { BrandSpeedtestIcon } from "@/components/icons/tabler-brand-speedtest"
 import { TabContentCard } from "@/components/shared-ui-primitives/tab-content-card"
 import {
@@ -172,6 +172,9 @@ export function BenchmarkContent({
   const [rounds, setRounds] = useState<RoundEntry[]>([])
   const [selectedRoundKey, setSelectedRoundKey] = useState<string | null>(null)
   const [userSelectedRound, setUserSelectedRound] = useState(false)
+  const roundsBottomRef = useRef<HTMLDivElement>(null)
+  const toolCallsPreRef = useRef<HTMLPreElement>(null)
+  const thinkingResponsePreRef = useRef<HTMLPreElement>(null)
   const [workflowTokens, setWorkflowTokens] = useState<{ input: number, output: number, reasoning: number, cost: number } | null>(null)
   const [stagedEvidenceFolders, setStagedEvidenceFolders] = useState<string[]>([])
   const [selectedEvidenceFolder, setSelectedEvidenceFolder] = useState<string>("")
@@ -199,11 +202,12 @@ export function BenchmarkContent({
   }, [])
 
   useEffect(() => {
+    if (leftTab !== "results") return
     executeWsOperation<ResultTreeEntry[]>({
       messageType: "listWorkflowResults",
       sendFn: () => backendWs.send({ type: "listWorkflowResults" }),
     }).then(setResultTree).catch(() => setResultTree([]))
-  }, [])
+  }, [leftTab])
 
   useEffect(() => {
     const unsub = backendWs.subscribe((data) => {
@@ -353,6 +357,12 @@ export function BenchmarkContent({
         setIsWorkflowRunning(false)
         setWorkflowDone(true)
       }
+      if (data.type === "runOpencodeWorkflow:tokens") {
+        const d = data as { tokens: { input: number, output: number, reasoning: number, cost: number } }
+        if (d.tokens) {
+          setWorkflowTokens(d.tokens)
+        }
+      }
       if (data.type === "runOpencodeWorkflow:error") {
         setIsWorkflowRunning(false)
         setWorkflowDone(true)
@@ -368,6 +378,29 @@ export function BenchmarkContent({
       setSelectedRoundKey(last.key)
     }
   }, [rounds, userSelectedRound])
+
+  // Auto-scroll rounds tree to bottom when new rounds are added and user hasn't manually selected
+  useEffect(() => {
+    if (!userSelectedRound) {
+      roundsBottomRef.current?.scrollIntoView({ behavior: "instant" })
+    }
+  }, [rounds.length, userSelectedRound])
+
+  // Auto-scroll tool calls to bottom
+  useEffect(() => {
+    const sel = rounds.find((r) => r.key === selectedRoundKey)
+    if (sel && toolCallsPreRef.current) {
+      toolCallsPreRef.current.scrollTop = toolCallsPreRef.current.scrollHeight
+    }
+  }, [rounds, selectedRoundKey])
+
+  // Auto-scroll thinking/response to bottom
+  useEffect(() => {
+    const sel = rounds.find((r) => r.key === selectedRoundKey)
+    if (sel && thinkingResponsePreRef.current) {
+      thinkingResponsePreRef.current.scrollTop = thinkingResponsePreRef.current.scrollHeight
+    }
+  }, [rounds, selectedRoundKey])
 
   useEffect(() => {
     executeWsOperation<string | null>({
@@ -617,7 +650,7 @@ export function BenchmarkContent({
           <AccordionContent>
             {!playbookCompleted ? (
               <div className="py-8 flex flex-col items-center justify-center">
-                <Lock className="mb-4 size-12 text-muted-foreground" />
+                <Lock className="mb-4 size-12 text-primary" />
                 <h3 className="mb-2 text-lg font-semibold">Playbook Settings locked</h3>
                 <p className="mb-6 text-sm text-muted-foreground">
                   Complete <strong>Playbook</strong> setup first to unlock this section.
@@ -820,26 +853,50 @@ export function BenchmarkContent({
             )}
           </AccordionTrigger>
           <AccordionContent>
-            {!siftAgentConfigured || !hasStagedEvidence ? (
-              <div className="py-8 flex flex-col items-center justify-center">
-                <Lock className="mb-4 size-12 text-muted-foreground" />
-                <h3 className="mb-2 text-lg font-semibold">Timeline and Analysis locked</h3>
-                <p className="mb-6 text-sm text-muted-foreground">
-                  {!siftAgentConfigured && !hasStagedEvidence
-                    ? <>Configure <strong>SIFT Agent</strong> and <strong>Mount and Extract artifacts</strong> from at least ONE playbook evidence folder to unlock this section.</>
-                    : !siftAgentConfigured
-                    ? <>Configure <strong>SIFT Agent</strong> to unlock this section.</>
-                    : <><strong>Mount and Extract artifacts</strong> from at least ONE playbook evidence folder to unlock this section.</>
-                  }
-                </p>
-                {!siftAgentConfigured && (
-                  <Button onClick={() => navigate("/sift-agent", { replace: true })}>
-                    Go to SIFT Agent
-                  </Button>
+            <div className="h-[calc(80vh-17rem)] flex flex-col rounded-md pt-0 pr-4 pb-4 pl-4">
+              <div className="shrink-0 px-3 py-2 grid grid-cols-[1fr_auto_1fr] items-center">
+                {leftTab === "results" ? (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <FolderOpen className="size-3.5" />
+                    <span className="font-mono">results/</span>
+                  </div>
+                ) : (
+                  <div />
                 )}
+                <Tabs value={leftTab} onValueChange={setLeftTab}>
+                  <TabsList>
+                    <TabsTrigger value="tool-call" className="text-xs">Run AI Agent</TabsTrigger>
+                    <TabsTrigger value="results" className="text-xs">Results</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                {leftTab === "results" && (
+                  <div className="justify-self-end">
+                    <Button size="sm" className="w-fit">Benchmark with LLM</Button>
+                  </div>
+                )}
+                {leftTab === "tool-call" && <div />}
               </div>
-            ) : (
-            <div className="h-[calc(80vh-17rem)] flex flex-col rounded-md p-4">
+              {leftTab === "tool-call" && (!siftAgentConfigured || !hasStagedEvidence) ? (
+                <div className="flex-1 flex flex-col items-center justify-center">
+                  <Lock className="mb-4 size-12 text-primary" />
+                  <h3 className="mb-2 text-lg font-semibold">Run AI Agent locked</h3>
+                  <p className="mb-6 text-sm text-muted-foreground text-center px-4">
+                    {!siftAgentConfigured && !hasStagedEvidence
+                      ? <>Configure <strong>SIFT Agent</strong> and <strong>Mount and Extract artifacts</strong> from at least ONE playbook evidence folder to run the AI agent.</>
+                      : !siftAgentConfigured
+                      ? <>Configure <strong>SIFT Agent</strong> to run the AI agent.</>
+                      : <><strong>Mount and Extract artifacts</strong> from at least ONE playbook evidence folder to run the AI agent.</>
+                    }
+                  </p>
+                  {!siftAgentConfigured && (
+                    <Button onClick={() => navigate("/sift-agent", { replace: true })}>
+                      Go to SIFT Agent
+                    </Button>
+                  )}
+                </div>
+              ) : (
+              <>
+              {leftTab === "tool-call" && (
               <div className="shrink-0">
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-sm font-medium">Current Workflow Selected:</span>
@@ -861,7 +918,7 @@ export function BenchmarkContent({
                   )}
                 </div>
                  <div className="flex items-center justify-between gap-3 mt-3">
-                  <div className="flex items-center gap-3">
+                   <div className="flex items-center gap-3">
                     <span className="text-sm font-medium">Select Model:</span>
                     {models.length === 0 ? (
                       <span className="text-muted-foreground text-sm">Loading models...</span>
@@ -878,33 +935,22 @@ export function BenchmarkContent({
                       </Select>
                     )}
                     {workflowTokens && (
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <div className="text-xs text-muted-foreground flex items-center gap-3">
                         <span>Tokens: {workflowTokens.input + workflowTokens.output + workflowTokens.reasoning}</span>
                         <span>Cost: ${workflowTokens.cost.toFixed(6)}</span>
                       </div>
                     )}
                   </div>
-                  {leftTab === "tool-call" ? (
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" onClick={() => setShowConfirmAbortDialog(true)} disabled={!isWorkflowRunning}>Abort</Button>
-                      <Button size="sm" onClick={() => setShowConfirmRunWorkflowDialog(true)} disabled={!selectedEvidenceFolder || !selectedWorkflowName || !selectedModel || isWorkflowRunning}>Run Workflow</Button>
-                    </div>
-                  ) : (
-                    <Button size="sm">Benchmark with LLM</Button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" onClick={() => setShowConfirmAbortDialog(true)} disabled={!isWorkflowRunning}>Abort</Button>
+                    <Button size="sm" onClick={() => setShowConfirmRunWorkflowDialog(true)} disabled={!selectedEvidenceFolder || !selectedWorkflowName || !selectedModel || isWorkflowRunning}>Run Workflow</Button>
+                  </div>
                 </div>
               </div>
-              <div className="flex gap-3 mt-4 flex-1 min-h-0">
-                <div className="w-1/3 min-h-0 flex flex-col">
-                  <div className="shrink-0 px-3 pb-2 flex justify-center">
-                    <Tabs value={leftTab} onValueChange={setLeftTab}>
-                      <TabsList>
-                        <TabsTrigger value="tool-call" className="text-xs">Rounds</TabsTrigger>
-                        <TabsTrigger value="results" className="text-xs">Results</TabsTrigger>
-                      </TabsList>
-                    </Tabs>
-                  </div>
-                  <div className="flex-1 min-h-0 px-3 pb-3">
+              )}
+              <div className="flex gap-3 mt-2 flex-1 min-h-0">
+                <div className={`${leftTab === "tool-call" ? "w-1/6" : "w-1/3"} min-h-0 flex flex-col`}>
+                  <div className={`flex-1 min-h-0 ${leftTab === "tool-call" ? "pr-3" : "px-3"} pb-3`}>
                     <div className="h-full overflow-auto">
                     {leftTab === "tool-call" ? (
                       <div className="h-full flex flex-col">
@@ -934,14 +980,9 @@ export function BenchmarkContent({
                                 </TreeNode>
                               ))
                             )}
+                            <div ref={roundsBottomRef} />
                           </TreeView>
                         </TreeProvider>
-                        {workflowTokens && (
-                          <div className="shrink-0 border-t pt-2 px-3 pb-1 text-xs text-muted-foreground space-y-0.5">
-                            <div>Tokens: {workflowTokens.input} in / {workflowTokens.output} out / {workflowTokens.reasoning} reasoning</div>
-                            <div>Cost: ${workflowTokens.cost.toFixed(6)}</div>
-                          </div>
-                        )}
                       </div>
                     ) : (
                       <div className="h-full overflow-auto">
@@ -1016,19 +1057,19 @@ export function BenchmarkContent({
               </div>
             </div>
             </div>
-                <div className="w-2/3 flex flex-col gap-2 min-h-0">
+                <div className={`${leftTab === "tool-call" ? "w-5/6" : "w-2/3"} flex flex-col gap-2 min-h-0`}>
                    {(() => {
                      if (leftTab === "results" && selectedResultFilePath) {
                        if (resultFileLoading) {
                          return (
-                           <pre className="h-full overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                           <pre className="h-full overflow-auto rounded-4xl border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
                              Loading...
                            </pre>
                          )
                        }
                        if (!resultFileContent || resultFileContent.content === null) {
                          return (
-                           <pre className="h-full overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                           <pre className="h-full overflow-auto rounded-4xl border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
                              Could not load file content.
                            </pre>
                          )
@@ -1044,31 +1085,25 @@ export function BenchmarkContent({
                                   {data.tokens && (
                                     <>
                                       <span>Tokens: {data.tokens.input} in / {data.tokens.output} out / {data.tokens.reasoning} reasoning</span>
-                                      {data.cost != null && <span>Cost: ${Number(data.cost).toFixed(6)}</span>}
-                                    </>
-                                  )}
-                                </div>
+                                       {data.cost != null && <span>Cost: ${Number(data.cost).toFixed(6)}</span>}
+                                     </>
+                                    )}
+                </div>
                                 {Array.isArray(data.rounds) && data.rounds.length > 0 ? (
                                   <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-auto">
                                     {data.rounds.map((r: any, idx: number) => (
                                      <div key={idx} className="flex flex-col gap-1 shrink-0">
                                        <div className="text-xs font-medium text-muted-foreground">Round {r.round ?? idx + 1}</div>
-                                       {r.thinking && (
-                                         <details className="text-xs">
-                                           <summary className="text-muted-foreground cursor-pointer">Thinking ({r.thinking.length} chars)</summary>
-                                           <pre className="mt-1 overflow-auto max-h-32 rounded-md border bg-muted/50 p-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">{r.thinking}</pre>
-                                         </details>
-                                       )}
                                        {r.text && (
-                                         <details className="text-xs">
-                                           <summary className="text-muted-foreground cursor-pointer">Response ({r.text.length} chars)</summary>
-                                           <pre className="mt-1 overflow-auto max-h-32 rounded-md border bg-muted/50 p-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">{r.text}</pre>
-                                         </details>
-                                       )}
+                                          <details className="text-xs">
+                                            <summary className="text-muted-foreground cursor-pointer">Thinking/Response ({r.text.length} chars)</summary>
+                                            <pre className="mt-1 overflow-auto max-h-32 rounded-4xl border bg-muted/50 p-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">{r.text}</pre>
+                                          </details>
+                                        )}
                                        {Array.isArray(r.toolCalls) && r.toolCalls.length > 0 && (
                                          <details className="text-xs">
                                            <summary className="text-muted-foreground cursor-pointer">Tool Calls ({r.toolCalls.length})</summary>
-                                           <pre className="mt-1 overflow-auto max-h-32 rounded-md border bg-muted/50 p-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                                           <pre className="mt-1 overflow-auto max-h-32 rounded-4xl border bg-muted/50 p-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">
                                               {r.toolCalls.map((tc: any) => typeof tc === "string" ? tc : `${tc.tool}: ${tc.status}`).join("\n")}
                                            </pre>
                                          </details>
@@ -1085,7 +1120,6 @@ export function BenchmarkContent({
                          if (fileName === "reconstruction.json") {
                            return (
                              <div className="flex-1 flex flex-col min-h-0">
-                               <div className="shrink-0 text-xs font-medium text-muted-foreground mb-1">Findings ({Array.isArray(parsed) ? parsed.length : 0})</div>
                                <div className="flex-1 overflow-auto">
                                  {Array.isArray(parsed) && parsed.length > 0 ? (
                                    parsed.map((finding: any, idx: number) => (
@@ -1110,7 +1144,7 @@ export function BenchmarkContent({
                          }
                        } catch {}
                        return (
-                         <pre className="h-full overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                         <pre className="h-full overflow-auto rounded-4xl border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
                            {resultFileContent.content}
                          </pre>
                        )
@@ -1118,7 +1152,7 @@ export function BenchmarkContent({
 
                      if (leftTab === "results" && !selectedResultFilePath) {
                        return (
-                         <pre className="h-full overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                         <pre className="h-full overflow-auto rounded-4xl border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
                            Select a result file to view its contents.
                          </pre>
                        )
@@ -1127,7 +1161,7 @@ export function BenchmarkContent({
                      const selected = rounds.find(r => r.key === selectedRoundKey)
                      if (!selected) {
                        return (
-                         <pre className="h-full overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                         <pre className="h-full overflow-auto rounded-4xl border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
                            Select a round to view details.
                          </pre>
                        )
@@ -1136,7 +1170,7 @@ export function BenchmarkContent({
                         <>
                           <div className="flex-1 flex flex-col min-h-0">
                             <div className="shrink-0 text-xs font-medium text-muted-foreground mb-1">Tool Calls</div>
-                            <pre className="flex-1 overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                            <pre ref={toolCallsPreRef} className="flex-1 overflow-auto rounded-4xl border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
                               {selected.toolCalls.length > 0
                                 ? selected.toolCalls.map((tc) => JSON.stringify({
                                     tool: tc.tool,
@@ -1149,25 +1183,20 @@ export function BenchmarkContent({
                             </pre>
                           </div>
                           <div className="flex-1 flex flex-col min-h-0">
-                            <div className="shrink-0 text-xs font-medium text-muted-foreground mb-1">Thinking</div>
-                            <pre className="flex-1 overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
-                              {selected.thinking || "No thinking in this round."}
-                            </pre>
-                          </div>
-                          <div className="flex-1 flex flex-col min-h-0">
-                            <div className="shrink-0 text-xs font-medium text-muted-foreground mb-1">Response</div>
-                            <pre className="flex-1 overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
-                              {selected.text || "No text output in this round."}
+                            <div className="shrink-0 text-xs font-medium text-muted-foreground mb-1">Thinking / Response</div>
+                            <pre ref={thinkingResponsePreRef} className="flex-1 overflow-auto rounded-4xl border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                              {selected.text || "No response in this round."}
                             </pre>
                           </div>
                         </>
                       )
-                   })()}
-                 </div>
+                    })()}
+                  </div>
               </div>
-            </div>
+               </>
             )}
-          </AccordionContent>
+              </div>
+           </AccordionContent>
         </AccordionItem>
       </Accordion>
       <AlertDialog open={showRunPlaybookDialog} onOpenChange={setShowRunPlaybookDialog}>

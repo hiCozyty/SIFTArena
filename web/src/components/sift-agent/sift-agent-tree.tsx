@@ -143,7 +143,7 @@ export function SiftAgentTree({
     >
       <div className="flex h-full flex-col">
         <div className="min-h-0 min-w-0 flex-1 max-w-full flex flex-col">
-          <TreeView className="pl-0 rounded-lg m-2 -ml-[5px] flex-1 overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <TreeView className="pl-0 pt-0 rounded-lg mt-0 mr-2 mb-2 ml-2 -ml-[5px] flex-1 overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <TreeNode nodeId="workflows" isLast={true}>
               <div className="group relative mx-1 flex items-center rounded-4xl px-3 py-2">
                 <TreeIcon hasChildren />

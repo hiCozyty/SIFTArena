@@ -1,0 +1,10 @@
+services:
+  sift:
+    volumes:
+      - ../../workflows:/home/sift/workflows
+      - ../../results:/home/sift/results
+      - ../../evidence/five_abilities_no_noise/disk-image.E01:/home/sift/evidence/five_abilities_no_noise/disk-image.E01:ro
+      - ../../evidence/five_abilities_no_noise/disk-image.E01.sha256:/home/sift/evidence/five_abilities_no_noise/disk-image.E01.sha256:ro
+      - ../../evidence/five_abilities_no_noise/memory.dump:/home/sift/evidence/five_abilities_no_noise/memory.dump:ro
+      - ../../evidence/five_abilities_no_noise/memory.dump.sha256:/home/sift/evidence/five_abilities_no_noise/memory.dump.sha256:ro
+      - ../../evidence/five_abilities_no_noise/staged:/home/sift/evidence/five_abilities_no_noise/staged

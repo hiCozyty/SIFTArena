@@ -1,5 +1,5 @@
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
-import { mkdir } from "node:fs/promises"
+import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { initializeOpencodeSessionFromDocker } from "./workflows.js"
 
@@ -66,10 +66,37 @@ Attack window: ${startMs} - ${endMs}`
   const events = await client.event.subscribe()
   console.log("[runWorkflow] subscribed to events, sending prompt...")
 
+  const resultsDir = join(ROOT_DIR, "results", playbookName, providerID, modelID, String(timestamp))
+  await mkdir(resultsDir, { recursive: true })
+  console.log("[runWorkflow] results directory ensured:", resultsDir)
+
+  const pollTimer = setInterval(async () => {
+    if (abortController.signal.aborted) return
+    try {
+      const { data: session } = await client.session.get({ sessionID: sessionId })
+      if (session?.tokens) {
+        const t = session.tokens
+        const c = session.cost ?? 0
+        ws.send(JSON.stringify({
+          type: "runOpencodeWorkflow:tokens",
+          tokens: { input: t.input, output: t.output, reasoning: t.reasoning, cost: c },
+        }))
+      }
+    } catch {}
+    if (rounds.length > 0) {
+      try {
+        await writeFile(join(resultsDir, "rounds.json"), JSON.stringify({ rounds, tokens: null, cost: null }, null, 2))
+      } catch {}
+    }
+  }, 1000)
+
+  console.log("[runWorkflow] firing promptAsync with session:", sessionId)
   client.session.promptAsync({
     sessionID: sessionId,
     model: { providerID, modelID },
     parts: [{ type: "text", text: prompt }],
+  }).then(() => {
+    console.log("[runWorkflow] promptAsync resolved successfully")
   }).catch(err => {
     if (!abortController.signal.aborted) {
       console.error("[runWorkflow] promptAsync error:", err.message)
@@ -85,12 +112,25 @@ Attack window: ${startMs} - ${endMs}`
   let accumulatedThinking = ""
   let textBuffer = ""
   const rounds = []
+  let eventCount = 0
+
+  const watchdogTimer = setInterval(() => {
+    if (abortController.signal.aborted) return
+    console.log("[runWorkflow] watchdog: event loop alive, events received:", eventCount)
+  }, 10000)
+
+  console.log("[runWorkflow] entering event loop...")
 
   try {
     for await (const event of events.stream) {
       if (abortController.signal.aborted) break
 
+      eventCount++
       const et = event.type
+
+      if (eventCount <= 5 || eventCount % 50 === 0) {
+        console.log(`[runWorkflow] event #${eventCount}: type=${et}`, eventCount <= 3 ? JSON.stringify(event).slice(0, 200) : "")
+      }
 
       if (et === "message.part.updated") {
         const props = event.properties || {}
@@ -178,6 +218,7 @@ Attack window: ${startMs} - ${endMs}`
               thinking: accumulatedThinking,
               text: textBuffer,
             }))
+            break
           }
         }
       }
@@ -192,8 +233,13 @@ Attack window: ${startMs} - ${endMs}`
       }
     }
   } finally {
+    clearInterval(watchdogTimer)
+    clearInterval(pollTimer)
+    console.log("[runWorkflow] exiting event loop, total events:", eventCount)
     currentRunAbort = null
   }
+
+  console.log("[runWorkflow] event loop finished, fetching final tokens...")
 
   let tokens = null
   let cost = null
@@ -208,12 +254,14 @@ Attack window: ${startMs} - ${endMs}`
   ws.send(JSON.stringify({ type: "runOpencodeWorkflow:done", tokens, cost }))
 
   try {
-    const outDir = join(ROOT_DIR, "results", playbookName, providerID, modelID, String(timestamp))
-    await mkdir(outDir, { recursive: true })
-    try { await Bun.write(join(outDir, "groundTruth.json"), Bun.file(gtPath)) } catch {}
-    const outPath = join(outDir, "rounds.json")
-    await Bun.write(outPath, JSON.stringify({ rounds, tokens, cost }, null, 2))
-    console.log("[runWorkflow] wrote", outPath)
+    try {
+      await Bun.write(join(resultsDir, "groundTruth.json"), await Bun.file(gtPath).text())
+      console.log("[runWorkflow] wrote groundTruth.json to", resultsDir)
+    } catch (gtErr) {
+      console.error("[runWorkflow] failed to write groundTruth.json:", gtErr.message)
+    }
+    await Bun.write(join(resultsDir, "rounds.json"), JSON.stringify({ rounds, tokens, cost }, null, 2))
+    console.log("[runWorkflow] wrote rounds.json to", resultsDir)
   } catch (writeErr) {
     console.error("[runWorkflow] failed to write rounds.json:", writeErr.message)
   }

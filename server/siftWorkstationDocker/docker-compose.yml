@@ -26,7 +26,6 @@ services:
       - VNC_COL_DEPTH=24
 
     volumes:
-      - ../../evidence:/home/sift/evidence
       - ../../workflows:/home/sift/workflows
       - ../../results:/home/sift/results
 
