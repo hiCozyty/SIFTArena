@@ -142,6 +142,7 @@ export async function preAgentStagingPipeline(_, __, data, ws) {
       if (!block.includes("<Event")) continue
       const eidMatch = block.match(/<EventID>(\d+)<\/EventID>/)
       if (!eidMatch) continue
+      const eventId = parseInt(eidMatch[1], 10)
       const tsMatch = block.match(/TimeCreated SystemTime="([^"]+)"/)
       let timestamp = null
       if (tsMatch) {
@@ -149,7 +150,7 @@ export async function preAgentStagingPipeline(_, __, data, ws) {
         timestamp = new Date(tsStr).getTime()
       }
       if (timestamp && timestamp >= windowStart && timestamp <= windowEnd) {
-        events.push({ eventId: parseInt(eidMatch[1], 10), timestamp, rawPreview: block.slice(0, 3000) })
+        events.push({ eventId, timestamp, rawPreview: block.slice(0, eventId === 4104 ? 32000 : 3000) })
       }
     }
     await writeJsonRemote(`${outputDir}/${logName}.json`, events)
@@ -337,31 +338,34 @@ print(json.dumps(result))
   }
   await writeJsonRemote(`${outputDir}/volatility_handles_lsass.json`, lsassHandles)
 
-  // high-access handles from non-system processes
-  const highAccessHandles = []
-  const targetPids = processes.filter(p => p.pid > 4 && p.name !== "lsass.exe").slice(0, 20).map(p => p.pid)
+  // handles from non-system processes (descending PID: newest first)
+  const allProcessHandles = []
+  const targetPids = processes.filter(p => p.pid > 4 && p.name !== "lsass.exe").sort((a, b) => b.pid - a.pid).map(p => p.pid)
   for (const pid of targetPids) {
     const handlesRaw = await runVolPlugin("windows.handles", `--pid ${pid}`)
-    const lines = handlesRaw.split("\n").filter(l => l.includes("0x1410") || l.includes("0x1fffff") || l.includes("0x1f0fff"))
-    for (const line of lines) {
-      highAccessHandles.push({ pid, processName: processes.find(p => p.pid === pid)?.name, handleInfo: line.trim() })
-    }
+    const lines = handlesRaw.split("\n").slice(1).filter(l => l.trim())
+    const parsed = lines.map(l => {
+      const parts = l.split("\t")
+      if (parts.length < 6) return null
+      return {
+        pid: parseInt(parts[0], 10),
+        process: parts[1],
+        offset: parts[2],
+        handle: parts[3],
+        type: parts[4],
+        access: parts[5],
+        name: parts[6]?.trim() || ""
+      }
+    }).filter(Boolean)
+    allProcessHandles.push({ pid, processName: processes.find(p => p.pid === pid)?.name, handles: parsed })
   }
-  await writeJsonRemote(`${outputDir}/volatility_high_access_handles.json`, highAccessHandles)
+  await writeJsonRemote(`${outputDir}/volatility_all_process_handles.json`, allProcessHandles)
 
   // malfind
   const malfindRaw = await runVolPlugin("windows.malfind")
   const malfindEntries = malfindRaw.split("\n").filter(l => l.includes("PAGE_EXECUTE_READWRITE")).slice(0, 200)
   await writeJsonRemote(`${outputDir}/volatility_malfind.json`, malfindEntries)
 
-  // dlllist for suspicious processes
-  const suspiciousNames = ["powershell", "rundll32", "procdump", "python"]
-  const dllResults = []
-  for (const proc of processes.filter(p => suspiciousNames.some(n => p.name.toLowerCase().includes(n)))) {
-    const dllRaw = await runVolPlugin("windows.dlllist", `--pid ${proc.pid}`)
-    dllResults.push({ pid: proc.pid, processName: proc.name, dlls: dllRaw.split("\n").slice(2, 50) })
-  }
-  await writeJsonRemote(`${outputDir}/volatility_dlllist.json`, dllResults)
   sendStatus("volatility", "done", "Volatility complete")
 
   // Manifest
@@ -377,7 +381,7 @@ print(json.dumps(result))
       mftEntries: mftEntries.length,
       prefetchFiles: prefetchResults.length,
       processes: processes.length,
-      highAccessHandles: highAccessHandles.length,
+      allProcessHandles: allProcessHandles.length,
     },
     generatedAt: new Date().toISOString(),
   }

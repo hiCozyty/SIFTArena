@@ -90,7 +90,7 @@ RUN curl -fsSL https://bun.sh/install | bash && \
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-VOLUME ["/home/sift/workflows", "/home/sift/results"]
+VOLUME ["/home/sift/evidence", "/home/sift/workflows", "/home/sift/results"]
 
 WORKDIR /home/sift
 
