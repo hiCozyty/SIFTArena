@@ -7,7 +7,7 @@ You will receive a message in this format:
 ```
 Playbook: <name>
 Evidence: /home/sift/evidence/<name>
-Results: /home/sift/results/<name>
+Results: /home/sift/results/<name>/<provider>/<model-name>/<timestamp>
 Model: <llm-model-name>
 Attack window: <startMs> - <endMs>
 ```
@@ -18,7 +18,7 @@ Convert the attack window millisecond timestamps to UTC before beginning. All ar
 
 ## Output
 
-When you are done, write a single JSON file to `/home/sift/results/<name>/<model-name>/reconstruction.json` in this format:
+When you are done, write `reconstruction.json` to the Results directory provided in your input.
 
 ```json
 [

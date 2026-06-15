@@ -13,7 +13,7 @@ You will receive a message in this format:
 ```
 Playbook: <name>
 Evidence: /home/sift/evidence/<name>
-Results: /home/sift/results/<name>
+Results: /home/sift/results/<name>/<provider>/<model-name>/<timestamp>
 Model: <llm-model-name>
 Attack window: <startMs> - <endMs>
 ```
@@ -22,11 +22,24 @@ The staged artifact directory is at `/home/sift/evidence/<name>/staged/`.
 
 Convert the attack window millisecond timestamps to UTC before beginning. All artifact timestamps are in UTC. All your reasoning must stay within the attack window.
 
+## Artifact Handling — CRITICAL
+
+**NEVER load entire JSON files.** The staged artifact files (`sysmon.json`, `security.json`, `powershell.json`, `mft_timeline.json`, `prefetch.json`, `usn_journal.json`, etc.) are large arrays containing thousands of events. Loading them whole will exhaust your context window.
+
+Instead, use `bash` with targeted tools:
+
+- **grep** for keywords and patterns: `grep -i "lsass\|mimikatz\|procdump" file.json`
+- **jq** for structured filtering: `jq '[.[] | select(.time_utc >= "..." and .time_utc <= "...")]' file.json`
+- **jq + grep** combined: `jq -r '.[] | .rawPreview // empty' file.json | grep -i "<pattern>"`
+- **jq** to inspect structure first: `jq '.[0] | keys' file.json` then `jq '.[0]' file.json` to see field examples
+
+If you need the output of a query, redirect it to a temp file you can then read with the `read` tool — but only read the file after confirming its size is small (`wc -l`). Never `cat` or `read` a multi-megabyte JSON file.
+
 ---
 
 ## Output
 
-When you are done, write a single JSON file to `/home/sift/results/<name>/<model-name>/reconstruction.json` in this format:
+When you are done, write `reconstruction.json` to the Results directory provided in your input.
 
 ```json
 [

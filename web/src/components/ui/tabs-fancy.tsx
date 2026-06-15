@@ -232,7 +232,13 @@ function TabsFancy({
                   <AlertDialogHeader>
                     <AlertDialogTitle>Deploy Changes</AlertDialogTitle>
                     <AlertDialogDescription>
-                      Do you want to deploy this new vm?
+                      <span className="text-destructive font-bold">NOT RECOMMENDED.</span>
+                      <br /><br />
+                      For this VM to function properly you need to manually run your own Ansible script for staging the VM and keep track of your own snapshotting logic.
+                      <br /><br />
+                      For this lab to work, the 4 initially deployed VMs are sufficient.
+                      <br /><br />
+                      <span className="font-bold">ARE YOU SURE you want to proceed?</span>
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>

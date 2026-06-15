@@ -158,6 +158,10 @@ export function BenchmarkContent({
   const [leftTab, setLeftTab] = useState("tool-call")
   const [deleteEvidenceDialogOpen, setDeleteEvidenceDialogOpen] = useState(false)
   const [pendingDeleteEvidenceName, setPendingDeleteEvidenceName] = useState<string | null>(null)
+  const [isWorkflowRunning, setIsWorkflowRunning] = useState(false)
+  const [toolCalls, setToolCalls] = useState<{ callID: string, tool: string, status: string, input?: Record<string, unknown>, output?: string, error?: string }[]>([])
+  const [workflowOutput, setWorkflowOutput] = useState("")
+  const [workflowTokens, setWorkflowTokens] = useState<{ input: number, output: number, reasoning: number, cost: number } | null>(null)
 
   useEffect(() => {
     if (!evidenceReady) return
@@ -250,6 +254,44 @@ export function BenchmarkContent({
         const { step, message } = data as { step: string, status: "running" | "success" | "error", message: string }
         const label = STAGING_LABELS[step] ?? step
         setMountStreamOutput((prev) => prev + (message ? `${label}: ${message}\n` : `${label}\n`))
+      }
+    })
+    return unsub
+  }, [])
+
+  useEffect(() => {
+    const unsub = backendWs.subscribe((data) => {
+      if (data.type === "runOpencodeWorkflow:start") {
+        setIsWorkflowRunning(true)
+        setWorkflowOutput("")
+        setToolCalls([])
+        setWorkflowTokens(null)
+      }
+      if (data.type === "runOpencodeWorkflow:thinking") {
+        setWorkflowOutput((prev) => prev + `[thinking] ${data.text}\n`)
+      }
+      if (data.type === "runOpencodeWorkflow:text") {
+        setWorkflowOutput((prev) => prev + (data.text as string))
+      }
+      if (data.type === "runOpencodeWorkflow:tool") {
+        const tc = data as { callID: string, tool: string, status: string, input?: Record<string, unknown>, output?: string, error?: string }
+        setToolCalls((prev) => {
+          const existing = prev.find((t) => t.callID === tc.callID)
+          if (existing) {
+            return prev.map((t) => t.callID === tc.callID ? { ...t, ...tc } : t)
+          }
+          return [...prev, { callID: tc.callID, tool: tc.tool, status: tc.status, input: tc.input, output: tc.output, error: tc.error }]
+        })
+      }
+      if (data.type === "runOpencodeWorkflow:usage") {
+        setWorkflowTokens(data as { input: number, output: number, reasoning: number, cost: number })
+      }
+      if (data.type === "runOpencodeWorkflow:done") {
+        setIsWorkflowRunning(false)
+      }
+      if (data.type === "runOpencodeWorkflow:error") {
+        setWorkflowOutput((prev) => prev + `\n[error] ${data.error}\n`)
+        setIsWorkflowRunning(false)
       }
     })
     return unsub
@@ -712,7 +754,7 @@ export function BenchmarkContent({
                 )}
               </div>
             ) : (
-            <div className="h-[calc(80vh-17rem)] flex flex-col border border-white/30 rounded-md p-4">
+            <div className="h-[calc(80vh-17rem)] flex flex-col rounded-md p-4">
               <div className="shrink-0">
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-medium">Current Workflow Selected:</span>
@@ -738,8 +780,12 @@ export function BenchmarkContent({
                   </div>
                   {leftTab === "tool-call" ? (
                     <div className="flex items-center gap-2">
-                      <Button size="sm">Abort</Button>
-                      <Button size="sm">Run Workflow</Button>
+                      <Button size="sm" onClick={() => {
+                        executeWsOperation({ messageType: "abortOpencodeWorkflow", sendFn: () => backendWs.send({ type: "abortOpencodeWorkflow" }) }).catch(() => {})
+                      }} disabled={!isWorkflowRunning}>Abort</Button>
+                      <Button size="sm" onClick={() => {
+                        executeWsOperation({ messageType: "runOpencodeWorkflow", sendFn: () => backendWs.send({ type: "runOpencodeWorkflow", data: { playbookName: selectedPlaybookName, workflowName: selectedWorkflowName, model: selectedModel } }) }).catch(() => {})
+                      }} disabled={!selectedPlaybookName || !selectedWorkflowName || !selectedModel || isWorkflowRunning}>Run Workflow</Button>
                     </div>
                   ) : (
                     <Button size="sm">Benchmark with LLM</Button>
@@ -769,174 +815,40 @@ export function BenchmarkContent({
                         className="flex-1 min-h-0"
                       >
                         <TreeView className="p-0 overflow-auto h-full">
-                          <TreeNode nodeId="tool-1">
-                            <TreeNodeTrigger>
-                              <TreeLabel>get_process_list</TreeLabel>
-                            </TreeNodeTrigger>
-                          </TreeNode>
-                          <TreeNode nodeId="tool-2">
-                            <TreeNodeTrigger>
-                              <TreeLabel>read_registry_key</TreeLabel>
-                            </TreeNodeTrigger>
-                          </TreeNode>
-                          <TreeNode nodeId="tool-3">
-                            <TreeNodeTrigger>
-                              <TreeLabel>enumerate_network_connections</TreeLabel>
-                            </TreeNodeTrigger>
-                          </TreeNode>
-                          <TreeNode nodeId="tool-4">
-                            <TreeNodeTrigger>
-                              <TreeLabel>parse_event_logs</TreeLabel>
-                            </TreeNodeTrigger>
-                          </TreeNode>
-                          <TreeNode nodeId="tool-5">
-                            <TreeNodeTrigger>
-                              <TreeLabel>dump_process_memory</TreeLabel>
-                            </TreeNodeTrigger>
-                          </TreeNode>
-                          <TreeNode nodeId="tool-6">
-                            <TreeNodeTrigger>
-                              <TreeLabel>scan_file_system</TreeLabel>
-                            </TreeNodeTrigger>
-                          </TreeNode>
-                          <TreeNode nodeId="tool-7">
-                            <TreeNodeTrigger>
-                              <TreeLabel>analyze_prefetch_files</TreeLabel>
-                            </TreeNodeTrigger>
-                          </TreeNode>
-                      <TreeNode nodeId="tool-8">
-                        <TreeNodeTrigger>
-                          <TreeLabel>extract_usn_journal</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                      <TreeNode nodeId="tool-9">
-                        <TreeNodeTrigger>
-                          <TreeLabel>parse_mft_timeline</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                      <TreeNode nodeId="tool-10">
-                        <TreeNodeTrigger>
-                          <TreeLabel>volatility_pstree</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                      <TreeNode nodeId="tool-11">
-                        <TreeNodeTrigger>
-                          <TreeLabel>volatility_malfind</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                      <TreeNode nodeId="tool-12">
-                        <TreeNodeTrigger>
-                          <TreeLabel>volatility_dlllist</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                      <TreeNode nodeId="tool-13">
-                        <TreeNodeTrigger>
-                          <TreeLabel>volatility_handles</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                      <TreeNode nodeId="tool-14">
-                        <TreeNodeTrigger>
-                          <TreeLabel>volatility_netscan</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                      <TreeNode nodeId="tool-15">
-                        <TreeNodeTrigger>
-                          <TreeLabel>parse_security_evtx</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                      <TreeNode nodeId="tool-16">
-                        <TreeNodeTrigger>
-                          <TreeLabel>parse_sysmon_evtx</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                      <TreeNode nodeId="tool-17">
-                        <TreeNodeTrigger>
-                          <TreeLabel>parse_powershell_evtx</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                      <TreeNode nodeId="tool-18">
-                        <TreeNodeTrigger>
-                          <TreeLabel>extract_lsass_dump</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                      <TreeNode nodeId="tool-19">
-                        <TreeNodeTrigger>
-                          <TreeLabel>correlate_attack_window</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                      <TreeNode nodeId="tool-20">
-                        <TreeNodeTrigger>
-                          <TreeLabel>generate_forensic_report</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                      <TreeNode nodeId="tool-21">
-                        <TreeNodeTrigger>
-                          <TreeLabel>validate_artifact_integrity</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                      <TreeNode nodeId="tool-22">
-                        <TreeNodeTrigger>
-                          <TreeLabel>extract_kernel_modules</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                      <TreeNode nodeId="tool-23">
-                        <TreeNodeTrigger>
-                          <TreeLabel>audit_scheduled_tasks</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                      <TreeNode nodeId="tool-24">
-                        <TreeNodeTrigger>
-                          <TreeLabel>parse_wmi_activity</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                      <TreeNode nodeId="tool-25">
-                        <TreeNodeTrigger>
-                          <TreeLabel>reconstruct_user_sessions</TreeLabel>
-                        </TreeNodeTrigger>
-                      </TreeNode>
-                    </TreeView>
-                  </TreeProvider>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
-                    No results yet. Run a workflow to see output here.
-                  </div>
-                )}
+                          {toolCalls.length === 0 && !isWorkflowRunning ? (
+                            <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+                              No tool calls yet. Run a workflow to see output here.
+                            </div>
+                          ) : (
+                            toolCalls.map((tc) => (
+                              <TreeNode key={tc.callID} nodeId={tc.callID}>
+                                <TreeNodeTrigger>
+                                  <TreeLabel>{tc.tool}</TreeLabel>
+                                </TreeNodeTrigger>
+                              </TreeNode>
+                            ))
+                          )}
+                        </TreeView>
+                      </TreeProvider>
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+                        {workflowTokens ? (
+                          <div className="text-center space-y-1">
+                            <div>Tokens: {workflowTokens.input} in / {workflowTokens.output} out / {workflowTokens.reasoning} reasoning</div>
+                            <div>Cost: ${workflowTokens.cost.toFixed(6)}</div>
+                          </div>
+                        ) : (
+                          "No results yet. Run a workflow to see output here."
+                        )}
+                      </div>
+                    )}
               </div>
             </div>
             </div>
                 <div className="w-2/3">
                    <pre className="h-full overflow-auto rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
-{`Select a playbook and extract artifacts to begin timeline analysis.
-
-Line 2 — Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-Line 3 — Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
-Line 4 — Ut enim ad minim veniam, quis nostrud exercitation ullamco.
-Line 5 — Duis aute irure dolor in reprehenderit in voluptate velit.
-Line 6 — Excepteur sint occaecat cupidatat non proident, sunt in culpa.
-Line 7 — Nemo enim ipsam voluptatem quia voluptas sit aspernatur.
-Line 8 — Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet.
-Line 9 — Consectetur, adipisci velit, sed quia non numquam eius modi.
-Line 10 — Ut enim ad minima veniam, quis nostrum exercitationem ullam.
-Line 11 — Corporis suscipit laboriosam, nisi ut aliquid ex ea commodi.
-Line 12 — Quis autem vel eum iure reprehenderit qui in ea voluptate.
-Line 13 — Velit esse quam nihil molestiae consequatur, vel illum.
-Line 14 — Qui dolorem eum fugiat quo voluptas nulla pariatur.
-Line 15 — At vero eos et accusamus et iusto odio dignissimos ducimus.
-Line 16 — Qui blanditiis praesentium voluptatum deleniti atque corrupti.
-Line 17 — Quos dolores et quas molestias excepturi sint occaecati.
-Line 18 — Cupiditate non provident, similique sunt in culpa qui officia.
-Line 19 — Deserunt mollitia animi, id est laborum et dolorum fuga.
-Line 20 — Et harum quidem rerum facilis est et expedita distinctio.
-Line 21 — Temporibus autem quibusdam et aut officiis debitis aut rerum necessitatibus saepe eveniet ut et voluptates repudiandae sint et molestiae non recusandae.
-Line 22 — Itaque earum rerum hic tenetur a sapiente delectus, ut aut reiciendis voluptatibus maiores alias.
-Line 23 — On the other hand, we denounce with righteous indignation and dislike men who are so beguiled and demoralized by the charms of pleasure of the moment, so blinded by desire.
-Line 24 — In a free hour, when our power of choice is untrammelled and when nothing prevents our being able to do what we like best, every pleasure is to be welcomed.
-Line 25 — But in certain circumstances and owing to the claims of duty or the obligations of business it will frequently occur that pleasures have to be repudiated.
-Line 26 — No one rejects, dislikes, or avoids pleasure itself, because it is pleasure, but because those who do not know how to pursue pleasure rationally encounter consequences.
-Line 27 — Nor again is there anyone who loves or pursues or desires to obtain pain of itself, because it is pain, but occasionally circumstances occur in which toil and pain can procure great pleasure.
-Line 28 — To take a trivial example, which of us ever undertakes laborious physical exercise, except to obtain some advantage from it? But who has any right to find fault with a man who chooses.
-Line 29 — Unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore.`}
-                  </pre>
+{workflowOutput || "Select a playbook and extract artifacts to begin timeline analysis."}
+                   </pre>
                 </div>
               </div>
             </div>

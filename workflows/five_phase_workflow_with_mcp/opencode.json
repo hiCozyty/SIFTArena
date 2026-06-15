@@ -2,8 +2,12 @@
   "$schema": "https://opencode.ai/config.json",
   "instructions": ["AGENTS.md"],
   "permission": {
-    "edit": "deny",
-    "bash": "deny"
+    "edit": "allow",
+    "bash": "allow",
+    "external_directory": {
+        "/home/sift/evidence/**": "allow",
+        "/home/sift/results/**": "allow"
+    }
   },
   "mcp": {
     "customMCP": {

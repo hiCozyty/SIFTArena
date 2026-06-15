@@ -1,0 +1,56 @@
+[
+  {
+    "technique": "comsvcs.dll MiniDump via rundll32.exe",
+    "mitre": "T1003.001",
+    "timestampUtc": "2026-06-14T19:18:57.000Z",
+    "evidence": [
+      "dump_files.json: lsass-comsvcs.dmp at inode 109699",
+      "sysmon.json: 10 ProcessAccess events at 19:18:57.293-19:18:57.354",
+      "sysmon.json: 4 ImageLoad events at 19:18:58.145-19:18:58.204 clustered together",
+      "sysmon.json: 5 ProcessTerminated events in +0-5s bucket include short-lived rundll32 process",
+      "volatility_pstree.json: lsass.exe PID 720"
+    ],
+    "description": "Dump file lsass-comsvcs.dmp on disk directly confirms LSASS dump via the comsvcs.dll MiniDump technique. This method executes rundll32.exe with comsvcs.dll's exported MiniDump function: rundll32.exe C:\\windows\\system32\\comsvcs.dll, MiniDump 720 lsass-comsvcs.dmp full. The initial burst of 10 Sysmon Event 10 (ProcessAccess) records at 19:18:57 represents the rundll32 process opening a handle to lsass.exe (PID 720) with PROCESS_VM_READ access required for minidump. Four ImageLoad events within 60ms at 19:18:58 correspond to comsvcs.dll and its dependencies being mapped into the dumping process. The first 5 process terminations include rundll32.exe exiting after completing the dump write."
+  },
+  {
+    "technique": "PowerShell Scripted comsvcs.dll MiniDump Invocation",
+    "mitre": "T1003.001",
+    "timestampUtc": "2026-06-14T19:18:57.078Z",
+    "evidence": [
+      "volatility_pstree.json: powershell.exe PID 468 (since 2026-06-10, parent: explorer.exe)",
+      "volatility_pstree.json: powershell.exe PID 1744 (since 2026-06-10, parent: explorer.exe with child NETSTAT.EXE)",
+      "volatility_malfind.json: powershell.exe PID 468 - 3 RWX memory regions (VadS, 1-2 pages)",
+      "volatility_malfind.json: powershell.exe PID 1744 - 3 RWX memory regions (VadS, 1-2 pages)",
+      "powershell.json: 1973 events in 50s (543 command starts, 543 command ends, 381 script blocks, 466 pipeline details)",
+      "sysmon.json: 69 ProcessAccess events across attack window"
+    ],
+    "description": "Two long-running PowerShell processes (PIDs 468, 1744, running since June 10) show RWX memory regions consistent with PowerShell's dynamic code generation or reflective assembly loading, frequently seen during in-memory offense tooling. 1973 PowerShell events in 50 seconds represent extremely dense script execution — 543 command start/stop pairs indicate rapid command dispatch. PowerShell can invoke the comsvcs.dll MiniDump function via [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer or via Add-Type with P/Invoke to MiniDumpWriteDump, both of which would generate the observed script block logging (381 Event 4104 records). PID 1744 additionally spawned NETSTAT.EXE (PIDs 5988, 6116), indicating the same PowerShell process performed network reconnaissance. The PowerShell processes themselves would not need to hold open handles to lsass at memory capture time since rundll32.exe (a separate process) performed the actual handle open and dump."
+  },
+  {
+    "technique": "WinRM Remote PowerShell Session for LSASS Dump",
+    "mitre": "T1003.001",
+    "timestampUtc": "2026-06-14T19:18:57.717Z",
+    "evidence": [
+      "volatility_pstree.json: wsmprovhost.exe PID 2792, 3780, 3860 (PPID 840 svchost.exe)",
+      "volatility_malfind.json: wsmprovhost.exe PID 2792 - 3 RWX regions",
+      "volatility_malfind.json: wsmprovhost.exe PID 3780 - 3 RWX regions",
+      "volatility_malfind.json: wsmprovhost.exe PID 3860 - 3 RWX regions",
+      "security.json: 56 Event 4624 logon events (type 3/10 network logon)",
+      "sysmon.json: Event 22 DNS query at 19:19:05.332"
+    ],
+    "description": "Three wsmprovhost.exe (WinRM PowerShell host plugin) processes were active under svchost.exe PID 840 during the attack window, each with RWX memory regions characteristic of PowerShell script execution. These are created when PowerShell远程会话 (New-PSSession / Enter-PSSession) are established over WinRM (HTTP/HTTPS on 5985/5986). An attacker could pivot from the local PowerShell process (PIDs 468/1744) to establish remote WinRM sessions and execute the comsvcs.dll MiniDump technique on remote systems, or execute the dump locally via a WinRM session to obscure the source. The DNS query at 19:19:05 (Sysmon Event 22) may relate to WinRM name resolution. The 56 logon events (Event 4624) in the 50-second window include network logons consistent with WinRM authentication."
+  },
+  {
+    "technique": "Rapid Sequential LSASS Handle Operations and Process Cleanup",
+    "mitre": "T1003.001",
+    "timestampUtc": "2026-06-14T19:19:02.000Z",
+    "evidence": [
+      "sysmon.json: 30 ProcessAccess events in +5-10s bucket (19:19:00-04)",
+      "sysmon.json: 22 ProcessTerminated events in +5-10s bucket",
+      "sysmon.json: 69 total ProcessAccess events across the window (peak at +0-10s: 51 events)",
+      "volatility_high_access_handles.json: Only csrss.exe and wininit.exe have handles to lsass.exe at capture time",
+      "volatility_pstree.json: No rundll32.exe, procdump.exe, mimikatz.exe, or taskmgr.exe in active processes"
+    ],
+    "description": "The attack exhibits a clear two-phase pattern: maximum ProcessAccess (30 events) and ProcessTerminated (22 events) coincide at +5-10 seconds into the window. 51 of 69 total ProcessAccess events (74%) occur within the first 10 seconds. Each dump attempt opens a handle to lsass (requires PROCESS_VM_READ | PROCESS_QUERY_INFORMATION), performs the minidump, closes the handle, and the dumping process terminates. The absence of any attack tool processes (rundll32, procdump, mimikatz, taskmgr) in the memory snapshot confirms all dump processes completed and exited before memory capture. This cleanup pattern — rapid creation, dump, and exit — is characteristic of scripted or automated dump execution where 5+ dump invocations can complete within 10 seconds."
+  }
+]
