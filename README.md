@@ -1,9 +1,44 @@
-## Getting started
-```
+## Getting Started
+
+### Hardware Requirements
+
+#### Lean Mode
+- **1 x86/64 machine** (lead node) — runs the server, Docker instances, and local web app
+- Download evidence files (each 6+ GB) from the [releases page](https://github.com/hiCozyty/siftarena/releases) to work with existing data
+- **Limitations:** Highly restricted attack chain and playbook configuration
+- **Available:** Workflow selection, custom workflows, model selection, agentic analysis on existing data
+
+#### Comprehensive Mode
+- **Everything from Lean Mode, plus:**
+- **1 additional x86/64 machine** to host the Ludus range / Proxmox server (optional)
+- Full attack chain and playbook configuration, live range orchestration
+
+### Prerequisites
+- [Bun](https://bun.sh) (JavaScript runtime)
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- [Docker](https://www.docker.com/)
+- [OpenCode Go subscription](https://opencode.ai) — API key required (set `OPENCODE_API_KEY` in `.env`)
+
+### Setup
+```bash
+# 1. Install Python dependencies
 uv init --python 3.12
 uv add ansible evil-winrm-py
-uv sync 
+uv sync
+
+# 2. Install JS dependencies
+cd server && bun install && cd ../web && bun install && cd ..
+
+# 3. Configure environment
+cp .env.example .env        # fill in your values
+cp web/.env.example web/.env
 ```
+
+### Run
+```bash
+cd server && bun run start
+```
+This starts the backend API server, OpenCode Docker instances, SIFT workstation, and the web dev server — all in one command.
 
 ## Environment Setup
 

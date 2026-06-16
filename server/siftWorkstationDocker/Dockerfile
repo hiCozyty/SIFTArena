@@ -1,6 +1,6 @@
 FROM ubuntu:22.04
 
-LABEL maintainer="shadow-protocol"
+LABEL maintainer="SIFTArena"
 LABEL description="SANS SIFT Workstation with XFCE desktop, TigerVNC + websockify, and SSH"
 
 ENV DEBIAN_FRONTEND=noninteractive

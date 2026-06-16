@@ -1,0 +1,22 @@
+[
+  {
+    "technique": "LSASS credential dumping via comsvcs.dll MiniDump",
+    "mitre": "T1003.001",
+    "timestampUtc": "2026-06-15T23:51:05.349Z",
+    "evidence": [
+      "dump_files.json: lsass-comsvcs.dmp found on disk — filename directly indicates comsvcs.dll MiniDump method",
+      "sysmon.json: Sysmon Event ID 10 (ProcessAccess) at 1781567465349 and 1781567465885 — process opened handle to lsass.exe with PROCESS_ALL_ACCESS",
+      "security.json: Security Event ID 4656 (Handle Request) and 4663 (Handle Access) at 1781567465349 and 1781567465884 — corroborates handle open/access to lsass.exe",
+      "security.json: Security Event ID 4690 (Handle Duplicate) and 4658 (Handle Close) at same timestamps — handle was duplicated then closed, consistent with MiniDumpWriteDump API pattern",
+      "mft_timeline.json: MFT record for C:/ProgramData shows modification/access/creation (type 'mac.') at 2026-06-15T23:51:05Z — matches expected output directory for dump file",
+      "sysmon.json: Sysmon Event ID 5 (ProcessTerminate) cluster around 1781567465773-1781567466084 — short-lived process (rundll32.exe) exited after dumping",
+      "sysmon.json: Sysmon Event ID 255 (Error) at 1781567465668-1781567465790 — Sysmon errors during rapid process create/exit, consistent with rundll32 launching and exiting quickly",
+      "volatility_all_process_handles.json: powershell.exe PID 1744 holds Process-type handle 0x5a4 with access 0x1f3fff (PROCESS_ALL_ACCESS) to lsass.exe — excessive access for PowerShell, includes PROCESS_VM_READ needed for MiniDump",
+      "volatility_all_process_handles.json: powershell.exe PID 468 holds Process-type handle 0xdc with access 0x1f3fff (PROCESS_ALL_ACCESS) to lsass.exe",
+      "volatility_all_process_handles.json: wsmprovhost.exe PID 3780 holds Process-type handle 0x38c with access 0x1f3fff (PROCESS_ALL_ACCESS) to lsass.exe",
+      "volatility_malfind.json: powershell.exe PID 468 and 1744 both have PAGE_EXECUTE_READWRITE memory regions — consistent with reflective DLL loading or code injection",
+      "volatility_pstree.json: powershell.exe PID 1744 spawned from explorer.exe with no command-line arguments shown — likely interactive session used by attacker; spawned NETSTAT.EXE (reconnaissance)"
+    ],
+    "description": "LSASS dump performed via comsvcs.dll MiniDump method. The dump file lsass-comsvcs.dmp was recovered from disk, directly confirming the technique. Sysmon Event 10 (ProcessAccess) and Security 4656/4663 at 23:51:05.349Z and 23:51:05.885Z show handle requests, access, duplication, and close — the exact API sequence for MiniDumpWriteDump (OpenProcess → DuplicateHandle → MiniDumpWriteDump → CloseHandle). MFT shows C:/ProgramData modified at 23:51:05Z, consistent with the dump output directory. The attack likely originated from an interactive PowerShell session (PID 1744, spawned from explorer.exe) or via WinRM (wsmprovhost.exe PID 3780). Sysmon Error events (ID 255) at the same time suggest a very short-lived process (rundll32.exe) that launched and exited before Sysmon could fully track it. Both PowerShell processes hold PROCESS_ALL_ACCESS (0x1f3fff) handles to lsass.exe in the memory snapshot, further corroborating the attack path. Memory regions marked PAGE_EXECUTE_READWRITE in both PowerShell instances suggest reflective code loading may have been used."
+  }
+]

@@ -1,0 +1,15 @@
+[
+  {
+    "technique": "LSASS memory dump via comsvcs.dll MiniDump",
+    "mitre": "T1003.001",
+    "timestampUtc": "2026-06-16T00:50:42.000Z",
+    "evidence": [
+      "dump_files.json: lsass-comsvcs.dmp found on disk (inode 109699)",
+      "mft_timeline.json: C:/ProgramData directory MAC at 2026-06-16T00:50:42Z — consistent with dump file write destination",
+      "security.json: EventID 4663 (object access) at 2026-06-16T00:50:42.989Z and 00:50:44.165Z — file operation on dump file",
+      "security.json: EventID 4656 (handle creation) at 2026-06-16T00:50:42.988Z — handle opened to dump file",
+      "sysmon.json: 76 EventID 10 (ProcessAccess) events clustered at 12 distinct timestamps between 00:50:20Z and 00:51:32Z, with clusters at 00:50:42Z and 00:50:44Z coinciding with dump file creation"
+    ],
+    "description": "Dump file 'lsass-comsvcs.dmp' recovered from disk confirms successful LSASS process memory dump. The filename directly references comsvcs.dll, indicating use of the comsvcs.dll MiniDump export function (typically invoked via rundll32.exe or PowerShell P/Invoke). MFT confirms C:\\ProgramData was modified/accessed/created at 00:50:42Z — the likely dump file destination. Security EventID 4663 and 4656 at paired timestamps confirm file object access operations consistent with writing a dump file. Sysmon EventID 10 clusters at coinciding timestamps represent LSASS process handle access events. Volatility confirms lsass.exe PID 720 with no injected modules or suspicious memory regions — expected for this out-of-process technique. Prefetch shows RUNDLL32.EXE last run on 2026-06-10 (pre-attack), suggesting the comsvcs call may have been made via an alternative method such as PowerShell P/Invoke or a script that calls comsvcs.dll directly without creating a persistent prefetch entry."
+  }
+]

@@ -1,0 +1,23 @@
+{
+  "playbookName": "single_ability_no_noise",
+  "startedAt": 1781573139882,
+  "finishedAt": 1781573160771,
+  "timeline": [
+    {
+      "index": 0,
+      "id": "03455985e8bf5d2ee43947cadaca2256",
+      "name": "Dump LSASS.exe Memory using direct system calls and API unhooking",
+      "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. This can be achieved using direct system calls and API unhooking in an effort to avoid detection. \nhttps://github.com/outflanknl/Dumpert\nhttps://outflank.nl/blog/2019/06/19/red-team-tactics-combining-direct-system-calls-and-srdi-to-bypass-av-edr/\nUpon successful execution, you should see the following file created C:\\\\windows\\\\temp\\\\dumpert.dmp.\n\nIf you see a message saying \\\"The system cannot find the path specified.\\\", try using the  get-prereq_commands to download the  tool first.\n",
+      "command": "\"C:\\Users\\Public\\Outflank-Dumpert.exe\"",
+      "taskName": "workfolderssvc",
+      "type": "ability",
+      "repeatIndex": null,
+      "startedAt": 1781573149777,
+      "finishedAt": 1781573158183,
+      "durationMs": 8406,
+      "status": "success",
+      "error": null
+    }
+  ],
+  "backgroundEvents": []
+}

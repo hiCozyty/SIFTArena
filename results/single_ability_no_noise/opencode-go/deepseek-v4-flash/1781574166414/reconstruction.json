@@ -1,0 +1,16 @@
+[
+  {
+    "technique": "LSASS Memory Dump via Comsvcs.dll MiniDump",
+    "mitre": "T1003.001",
+    "timestampUtc": "2026-06-16T01:25:47.138Z",
+    "evidence": [
+      "dump_files.json (lsass-comsvcs.dmp)",
+      "sysmon.json (Event ID 1 - Process Create)",
+      "sysmon.json (Event ID 10 - Process Access x39)",
+      "security.json (Event ID 4656 - Handle Request)",
+      "volatility_pstree.json (no rundll32.exe in memory - exited before snapshot)",
+      "volatility_all_process_handles.json (no attacker handle to lsass - dump completed)"
+    ],
+    "description": "Direct evidence: dump_files.json contains 'lsass-comsvcs.dmp' (inode 109699). The filename encodes both target (lsass) and method (comsvcs), matching the documented comsvcs.dll MiniDump technique where rundll32.exe loads comsvcs.dll and calls MiniDumpWriteDump on the LSASS process. Sysmon shows 1 process creation event (Event 1) at 01:25:47.138Z followed immediately by 39 process access events (Event 10) starting at 01:25:47.139Z, consistent with rundll32.exe opening a handle to lsass.exe with PROCESS_ALL_ACCESS for the dump operation. Security Event 4656 at 01:25:47.097Z records a handle-to-object request that correlates with this access. 21 process termination events (Event 5) indicate the dump process exited after completion. The memory snapshot confirms no rundll32.exe is active and no attacker holds an lsass handle at capture time, consistent with the dump completing and the tool exiting before the memory dump was acquired. PowerShell logs, USN journal, and MFT are empty or contain no relevant entries. Prefetch shows RUNDLL32.EXE execution history on the system, consistent with the technique."
+  }
+]
