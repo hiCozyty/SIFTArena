@@ -6,6 +6,8 @@ https://github.com/hiCozyty/SIFTArena
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
+## ATTENTION
+My dev post account got suspended for who knows what reason after I submitted my project on time. I can't even find the link. 
 
 
 ## Demonstration Video
