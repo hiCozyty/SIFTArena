@@ -16,3 +16,4 @@ plans/
 evidence/*/staged
 evidence/*/staged/*
 evidence/*
+evidence.tar
