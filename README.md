@@ -6,13 +6,15 @@ https://github.com/hiCozyty/SIFTArena
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
-## Setup Instructions
 
-See [Getting Started](#getting-started) below.
 
-## Live Deployment / Step-by-Step Instructions
+## Demonstration Video
 
-See [Getting Started](#getting-started) below.
+https://github.com/user-attachments/assets/168b5530-3b0d-40f8-9a28-8d06a3eedb9c
+
+## Alternative Demo Video
+
+https://vimeo.com/1201633842
 
 ## Features & Functionality
 
@@ -33,9 +35,14 @@ See [Getting Started](#getting-started) below.
 - Configurable workflows for benchmarking effectiveness in reconstructing timelines of events from artifacts
 - Measure agent accuracy against ground truth across different models and attack scenarios
 
-## Demonstration Video
 
-https://vimeo.com/1201633842
+## Setup Instructions
+
+See [Getting Started](#getting-started) below.
+
+## Live Deployment / Step-by-Step Instructions
+
+See [Getting Started](#getting-started) below.
 
 ## Architecture Diagram
 
