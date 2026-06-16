@@ -12,7 +12,7 @@ plans/
 *.dump
 *.E01
 *.sha256
-groundTruth.json
+
 evidence/*/staged
 evidence/*/staged/*
 evidence/*

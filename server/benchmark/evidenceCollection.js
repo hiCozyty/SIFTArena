@@ -1,5 +1,5 @@
 import { $ } from "bun"
-import { readdir, rm, writeFile } from "node:fs/promises"
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises"
 import { lastPlaybookResult } from "../playbook/runPlaybook.js"
 
 export function getHost() {
@@ -266,6 +266,7 @@ export async function collectEvidence({ playbookName, vmid = 107, overwrite = fa
       checkAbort(currentStep)
       if (sendStatus) sendStatus("groundTruth", "running", "Writing ground truth...")
       if (lastPlaybookResult) {
+        await mkdir(`./groundTruth/${playbookName}`, { recursive: true })
         await writeFile(`./groundTruth/${playbookName}/groundTruth.json`, JSON.stringify(lastPlaybookResult, null, 2))
         if (sendStatus) sendStatus("groundTruth", "success", "Ground truth written")
       } else {

@@ -1,0 +1,18 @@
+[
+  {
+    "technique": "LSASS credential dumping via comsvcs.dll MiniDump",
+    "mitre": "T1003.001",
+    "timestampUtc": "2026-06-15T23:51:05.000Z",
+    "evidence": [
+      "dump_files.json: lsass-comsvcs.dmp file found on disk",
+      "mft_timeline.json: C:/ProgramData created/modified at 2026-06-15T23:51:05Z (possible dump destination)",
+      "security.json: EventID 4656 (handle request) at 2026-06-15T23:51:05.349Z and 23:51:05.884Z",
+      "security.json: EventID 4663 (handle access) at 2026-06-15T23:51:05.349Z and 23:51:05.884Z",
+      "sysmon.json: 71 EventID 10 (ProcessAccess) events within the attack window",
+      "volatility_pstree.json: powershell.exe PID 468 (alive during window) and PID 1744 (alive during window) — potential execution vectors",
+      "volatility_pstree.json: WmiPrvSE.exe PID 2952 created at 2026-06-15T23:50:49Z — potential WMI-based execution",
+      "volatility_malfind.json: powershell.exe PIDs 468 and 1744 each have 3 PAGE_EXECUTE_READWRITE VAD regions, indicating potential code injection or shellcode"
+    ],
+    "description": "Dump file lsass-comsvcs.dmp was found on disk. The filename convention 'comsvcs' indicates the comsvcs.dll MiniDump export was used, typically executed via: rundll32.exe C:\\Windows\\System32\\comsvcs.dll,MiniDump <PID> <dump_path> full. The MFT shows C:\\ProgramData was created/modified at 23:51:05Z, which aligns with the dump timestamp. Sysmon EventID 10 (ProcessAccess) events throughout the window indicate lsass handle access. Security EventID 4656 (object handle request) and 4663 (object handle access) at 23:51:05Z align with the dump operation. Two powershell.exe processes (PIDs 468 and 1744) were alive during the window and have PAGE_EXECUTE_READWRITE memory regions detected by malfind. WmiPrvSE.exe PID 2952 was spawned at 23:50:49Z, suggesting WMI could have been used as the execution vector. No rundll32.exe was present in the process tree at capture time, consistent with a short-lived process that exited after the dump completed."
+  }
+]
